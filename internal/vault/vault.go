@@ -358,6 +358,9 @@ func decodeData(plaintext []byte) (*model.Data, error) {
 	if d.Services == nil {
 		d.Services = []model.Service{}
 	}
+	if d.KnownHosts == nil {
+		d.KnownHosts = []model.KnownHost{}
+	}
 	if err := d.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}

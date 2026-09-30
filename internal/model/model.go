@@ -10,6 +10,8 @@ type Data struct {
 	Projects []Project `json:"projects"`
 	Servers  []Server  `json:"servers"`
 	Services []Service `json:"services"`
+	// KnownHosts are the server host keys the user has confirmed.
+	KnownHosts []KnownHost `json:"knownHosts"`
 }
 
 // Project groups related servers.
@@ -90,10 +92,11 @@ type Service struct {
 // New returns an empty Data at the current schema version.
 func New() *Data {
 	return &Data{
-		Version:  CurrentVersion,
-		Projects: []Project{},
-		Servers:  []Server{},
-		Services: []Service{},
+		Version:    CurrentVersion,
+		Projects:   []Project{},
+		Servers:    []Server{},
+		Services:   []Service{},
+		KnownHosts: []KnownHost{},
 	}
 }
 
@@ -101,9 +104,10 @@ func New() *Data {
 // slices is enough.
 func (d *Data) Clone() *Data {
 	return &Data{
-		Version:  d.Version,
-		Projects: append([]Project{}, d.Projects...),
-		Servers:  append([]Server{}, d.Servers...),
-		Services: append([]Service{}, d.Services...),
+		Version:    d.Version,
+		Projects:   append([]Project{}, d.Projects...),
+		Servers:    append([]Server{}, d.Servers...),
+		Services:   append([]Service{}, d.Services...),
+		KnownHosts: append([]KnownHost{}, d.KnownHosts...),
 	}
 }

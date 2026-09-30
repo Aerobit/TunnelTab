@@ -53,11 +53,39 @@ Nothing is installed on your computer; to remove TunnelTab, delete the folder.
 
 ## Choosing how to log in: keys, agent or password
 
-*(Phase 2/4)*
+Each server uses one login method. From most to least recommended:
+
+| Method | What you provide | Good to know |
+|---|---|---|
+| **SSH agent** | Nothing — your key is already loaded in an agent | Windows: enable the *OpenSSH Authentication Agent* service and run `ssh-add`. Linux: the usual `ssh-agent` (`SSH_AUTH_SOCK`). Nothing secret is stored in TunnelTab. Not portable: the agent lives on each PC. |
+| **Key stored in TunnelTab** | Paste your private key (and its passphrase, if it has one) | Most portable: the key travels inside the encrypted vault. |
+| **Key file** | Path to a private key file (and its passphrase, if any) | A relative path such as `keys/id_ed25519` means "inside the TunnelTab folder", so you can keep the key next to the app on a USB stick. |
+| **Password** | The server password | Works everywhere, but keys are safer. Stored only inside the encrypted vault. |
+
+When editing a server, leave a password/key/passphrase field **blank to keep
+the saved one**. Switching to a different login method deletes the old
+method's saved secrets.
+
+Supported key types: Ed25519 (recommended), ECDSA and RSA, in OpenSSH or PEM
+format — the same files the `ssh` command uses.
 
 ## Confirming a server's fingerprint
 
-*(Phase 2/4)*
+Every SSH server has a *host key* that proves it's really your server. The
+first time you connect, TunnelTab shows its **fingerprint**, for example:
+
+```
+ssh-ed25519 SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s
+```
+
+- **Check it** against your VPS provider's console, or run
+  `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server, then
+  confirm. Your password or key is **not sent** until you do.
+- TunnelTab remembers the key (inside the encrypted vault).
+- If a remembered server ever shows a **different** key, TunnelTab refuses to
+  connect and warns you. That happens legitimately when a server is
+  reinstalled — but it's also exactly what an attacker intercepting your
+  connection would look like. Only replace the key if you know why it changed.
 
 ## Opening a terminal
 

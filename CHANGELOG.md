@@ -7,6 +7,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- SSH engine (`internal/sshx`): one shared connection per server, login by
+  password (incl. keyboard-interactive), key file, vault-stored key or
+  ssh-agent (Linux socket / Windows OpenSSH agent), host-key confirmation
+  and change detection, 127.0.0.1-only port forwards with stable auto
+  ports, keep-alives, reconnection with back-off, and pausing while the
+  vault is locked.
+- Confirmed host keys are stored in the encrypted vault instead of a
+  plain-text known_hosts file.
+- In-process test SSH server (`internal/sshx/sshtest`).
 - Encrypted vault (`internal/vault`): Argon2id + AES-256-GCM, authenticated
   header, atomic saves with a backup copy, password change, auto-lock.
 - Data model (`internal/model`): projects, servers (agent / key file / vault

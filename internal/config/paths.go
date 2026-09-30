@@ -16,7 +16,6 @@ type Paths struct {
 	DataDir     string // the data folder itself
 	Vault       string // encrypted projects, servers, services and secrets
 	VaultBackup string // previous vault, kept by every save
-	KnownHosts  string // confirmed server host keys (OpenSSH format)
 	Settings    string // non-secret preferences
 	LogDir      string // rotated log files
 }
@@ -27,7 +26,6 @@ func PathsFor(dataDir string) Paths {
 		DataDir:     dataDir,
 		Vault:       filepath.Join(dataDir, "vault.enc"),
 		VaultBackup: filepath.Join(dataDir, "vault.enc.bak"),
-		KnownHosts:  filepath.Join(dataDir, "known_hosts"),
 		Settings:    filepath.Join(dataDir, "settings.json"),
 		LogDir:      filepath.Join(dataDir, "logs"),
 	}

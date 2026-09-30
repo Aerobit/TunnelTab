@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **Phase 1 complete** (config, vault, data model). Next: Phase 2 — SSH engine.
+> Status: **Phase 2 complete** (SSH engine). Next: Phase 3 — local server and API.
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -53,7 +53,6 @@ tunneltab/
 ├── README.txt
 └── data/                    created on first run, shared by all builds
     ├── vault.enc            projects, servers, services, secrets — all encrypted
-    ├── known_hosts          confirmed server fingerprints
     ├── settings.json        non-secret prefs (port, auto-lock time)
     └── logs/                rotated; never contains secrets
 ```
@@ -81,7 +80,8 @@ tunneltab/
 │   ├── config/             portable paths, settings, logging
 │   ├── vault/              KDF, encryption, file format, auto-lock
 │   ├── model/              projects, servers, services (data types + validation)
-│   ├── sshx/               connections, auth methods, known_hosts, forwards, PTY
+│   ├── sshx/               connections, auth methods, host-key checks, forwards, PTY
+│   │   └── sshtest/        in-process SSH server for tests
 │   ├── server/             HTTP server, auth/session, API handlers, events, terminal WS
 │   ├── platform/           open browser, system terminal launch, per-OS bits
 │   └── atomicfile/         crash-safe file writes (used by vault and settings)
@@ -130,7 +130,7 @@ All IDs are generated server-side. All fields validated in `internal/model` befo
 | Wrong password / tampering | AES-256-GCM authentication fails → clear "wrong password or corrupted vault" error. Atomic writes + one backup copy. |
 | Secrets leaking at runtime | No secrets in command lines, env vars, logs, API responses or error messages. Secrets only returned to the SSH engine, never to the browser. |
 | Unattended PC | Auto-lock after inactivity (default 15 min, configurable). Lock wipes the in-memory key; running tunnels keep running unless "close all on lock" is enabled. |
-| Server impersonation (MITM) | Own `known_hosts`. First connection shows fingerprint and asks you to confirm. Changed key → hard block with explanation and a deliberate "replace key" action. |
+| Server impersonation (MITM) | Confirmed host keys stored inside the encrypted vault (a plain `known_hosts` file would reveal which servers you use). First connection shows the fingerprint and asks you to confirm; no credentials are sent before that. Changed key → hard block with explanation and a deliberate "replace key" action. |
 | Malicious website attacking the local server | Bind 127.0.0.1 only; per-launch random token → HttpOnly SameSite=Strict cookie; reject bad `Host` (DNS rebinding) and `Origin` (CSRF / cross-site WebSocket); strict CSP; no CORS. |
 | Other devices on the network using tunnels | Forwards bind to 127.0.0.1 only. |
 | Command injection | No shell is ever invoked for SSH. Only the optional "system terminal" launch runs an external program, with arguments passed as an array and validated. |
@@ -144,7 +144,7 @@ All IDs are generated server-side. All fields validated in `internal/model` befo
 2. **Unlock screen**; manual **Lock** button; auto-lock.
 3. **Projects / servers / services** — add, edit, delete, drag between projects (same look as local.browser).
 4. **Connection management** — one SSH connection per server, shared by its tunnels and terminals; keep-alive; auto-reconnect with backoff; live status dot per server/service.
-5. **Web UI quick launch** — "Open" starts the tunnel if needed, then opens `protocol://127.0.0.1:<localPort><path>`; auto-pick a free local port if taken.
+5. **Web UI quick launch** — "Open" starts the tunnel if needed, then opens `protocol://127.0.0.1:<localPort><path>`. Local port "auto" gives each service a stable port (derived from its ID) so cookies/bookmarks survive restarts; a fixed port that's busy is reported clearly rather than silently changed.
 6. **Built-in terminal** — tabs, resize, copy/paste, reconnect; multiple terminals per server.
 7. **System terminal (optional)** — Windows Terminal / `ssh.exe`; Linux: gnome-terminal, konsole, xfce4-terminal, xterm (auto-detect). Key/agent auth only (never passes passwords).
 8. **Settings** — auto-lock time, close-tunnels-on-lock, change master password, back up vault, dashboard port.
@@ -158,7 +158,7 @@ Each phase ends with tests passing and docs updated (`ARCHITECTURE.md` grows wit
 |---|---|---|
 | 0 ✅ | **Scaffold** — repo layout, go.mod, build scripts, CI, docs skeletons, CLAUDE.md/AGENTS.md | `build.sh` produces empty binaries for all targets |
 | 1 ✅ | **Config + vault + model** | Create/unlock/change-password/lock round-trip; tamper & wrong-password tests |
-| 2 | **SSH engine** — auth methods, known_hosts, connection pool, forwards, reconnect | Integration tests against an in-process test SSH server: forward traffic, bad host key blocked, reconnect works |
+| 2 ✅ | **SSH engine** — auth methods, host-key checks, connection pool, forwards, reconnect | Integration tests against an in-process test SSH server: forward traffic, bad host key blocked, reconnect works |
 | 3 | **Local server + API** — session auth, Host/Origin checks, REST, event stream | Security tests: requests without cookie / wrong Host / wrong Origin rejected |
 | 4 | **Dashboard UI** — port local.browser design; unlock, projects, servers, services, fingerprint prompt, settings | Full manual walkthrough works in Chrome + Firefox |
 | 5 | **Terminal** — xterm.js ↔ PTY over WebSocket; system-terminal launcher | Interactive shell against test server; resize works |

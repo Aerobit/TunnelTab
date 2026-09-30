@@ -21,9 +21,10 @@ const (
 	MaxSecretLen      = 1024
 	MaxPathLen        = 1024
 
-	MaxProjects = 500
-	MaxServers  = 1000
-	MaxServices = 2000
+	MaxProjects   = 500
+	MaxServers    = 1000
+	MaxServices   = 2000
+	MaxKnownHosts = 2000
 )
 
 // ValidationError explains which field is invalid and why. Messages are
@@ -199,6 +200,9 @@ func (d *Data) Validate() error {
 	if len(d.Services) > MaxServices {
 		return invalid("services", "too many (max %d)", MaxServices)
 	}
+	if len(d.KnownHosts) > MaxKnownHosts {
+		return invalid("knownHosts", "too many (max %d)", MaxKnownHosts)
+	}
 
 	ids := map[string]bool{}
 	checkID := func(kind, id string) error {
@@ -237,6 +241,12 @@ func (d *Data) Validate() error {
 			return fmt.Errorf("server %q: %w", s.Name, err)
 		}
 		servers[s.ID] = true
+	}
+
+	for i := range d.KnownHosts {
+		if err := d.KnownHosts[i].Validate(); err != nil {
+			return err
+		}
 	}
 
 	localPorts := map[int]string{}

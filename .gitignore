@@ -1,10 +1,9 @@
 # Build output
 /dist/
 
-# User data — never commit (vault, known_hosts, settings, logs)
+# User data — never commit (vault, settings, logs)
 /data/
 **/data/vault.enc*
-**/data/known_hosts
 
 # Local test artefacts
 *.test

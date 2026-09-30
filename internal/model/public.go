@@ -6,6 +6,8 @@ type PublicData struct {
 	Projects []Project      `json:"projects"`
 	Servers  []PublicServer `json:"servers"`
 	Services []Service      `json:"services"`
+	// KnownHosts are public keys, not secrets; shown so the user can review them.
+	KnownHosts []KnownHost `json:"knownHosts"`
 }
 
 // PublicServer is a Server without secrets.
@@ -57,9 +59,10 @@ func (s Server) Public() PublicServer {
 // Public returns a copy of d that is safe to send to the dashboard.
 func (d *Data) Public() *PublicData {
 	p := &PublicData{
-		Projects: append([]Project{}, d.Projects...),
-		Servers:  make([]PublicServer, len(d.Servers)),
-		Services: append([]Service{}, d.Services...),
+		Projects:   append([]Project{}, d.Projects...),
+		Servers:    make([]PublicServer, len(d.Servers)),
+		Services:   append([]Service{}, d.Services...),
+		KnownHosts: append([]KnownHost{}, d.KnownHosts...),
 	}
 	for i, s := range d.Servers {
 		p.Servers[i] = s.Public()

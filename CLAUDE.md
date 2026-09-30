@@ -36,9 +36,11 @@ one, stop and ask the user instead.
    checked: `Host` must be the exact loopback address+port (DNS rebinding);
    state-changing requests and WebSockets must have a same-origin `Origin`
    (CSRF). No CORS headers, ever.
-6. **Host keys are verified** against `data/known_hosts`. Unknown keys need
-   explicit user confirmation; changed keys are blocked. Never use
-   `ssh.InsecureIgnoreHostKey()` outside tests.
+6. **Host keys are verified** against the keys confirmed in the vault
+   (`model.Data.KnownHosts`, never a plain-text file). Unknown keys need
+   explicit user confirmation, and the key stored is exactly the one shown
+   (`UnknownHostKeyError.Key`); changed keys are blocked. Never use
+   `ssh.InsecureIgnoreHostKey()`, even in tests (use `sshtest`).
 7. **No shell is invoked.** SSH is done in-process with `golang.org/x/crypto/ssh`.
    The only external program launched is the optional system terminal, with
    arguments passed as a slice (never a command string) and never with a
@@ -69,8 +71,8 @@ one, stop and ask the user instead.
 - **Frontend:** vanilla JS (ES modules) + CSS. No frameworks, no bundlers, no
   inline `<script>` or `on*=` attributes, no `innerHTML` with untrusted data
   (use `textContent` / DOM APIs).
-- **Tests:** every package has tests; SSH tests use an in-process test SSH
-  server, never a real host. Security checks (auth, Host/Origin, redaction)
+- **Tests:** every package has tests; SSH tests use the in-process test SSH
+  server in `internal/sshx/sshtest`, never a real host. Security checks (auth, Host/Origin, redaction)
   have their own tests.
 - **Docs:** when behaviour or structure changes, update `docs/ARCHITECTURE.md`
   (and `USER_GUIDE.md` / `SECURITY.md` if user-visible or security-relevant)

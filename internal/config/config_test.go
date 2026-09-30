@@ -16,7 +16,6 @@ func TestPathsFor(t *testing.T) {
 	want := map[string]string{
 		p.Vault:       "vault.enc",
 		p.VaultBackup: "vault.enc.bak",
-		p.KnownHosts:  "known_hosts",
 		p.Settings:    "settings.json",
 		p.LogDir:      "logs",
 	}

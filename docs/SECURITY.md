@@ -25,9 +25,11 @@ private reporting instead: the repository's **Security** tab →
 | Tampering with the vault file | AES-256-GCM detects any change; a tampered or corrupted vault refuses to open rather than loading bad data. |
 | Leaving the PC unlocked | Auto-lock after inactivity (default 15 minutes) wipes the key from memory. |
 | Secrets leaking at runtime | Secrets are never sent to the browser and never appear in logs, error messages, command lines or environment variables. |
-| Connecting to an impostor server (MITM) | Host keys are checked against `data/known_hosts`. New servers show their fingerprint for you to confirm; a changed key is blocked. |
+| Connecting to an impostor server (MITM) | Host keys are checked against the keys you confirmed, stored inside the encrypted vault. A new server shows its fingerprint for you to confirm, and no password or key is sent to it before you do. A changed key is blocked. The client asks the server for the confirmed key type, so a server can't dodge the check by offering a different kind of key. |
 | Malicious websites attacking the local dashboard | The server listens on `127.0.0.1` only, requires a per-launch session cookie, rejects wrong `Host` headers (DNS rebinding) and cross-site `Origin` headers (CSRF), sends no CORS headers, and uses a strict Content Security Policy. |
 | Other devices on your network using your tunnels | Tunnels listen on `127.0.0.1` only. |
+| Which servers you use leaking from the folder | Server addresses and fingerprints are only stored inside the encrypted vault; there is no plain-text `known_hosts` file. |
+| Credentials lingering in the SSH engine | The engine asks the vault for credentials on each connect and drops them once connected. While the vault is locked, dropped connections wait ("paused") instead of reusing stored credentials. |
 | Command injection | SSH runs inside the app; no shell is ever used. |
 | Supply-chain / CDN compromise of the UI | All web assets are bundled in the executable; nothing is loaded from the internet. |
 
@@ -57,7 +59,7 @@ private reporting instead: the repository's **Security** tab →
 | Encryption | AES-256-GCM, random 12-byte nonce per save. The header (format, KDF parameters, salt) is authenticated as additional data. |
 | Master password | At least 8 characters (the dashboard will also show a strength meter). |
 | Randomness | `crypto/rand` |
-| SSH | `golang.org/x/crypto/ssh`, modern algorithms only |
+| SSH | `golang.org/x/crypto/ssh` with its default (modern) algorithms; host-key algorithms pinned to the confirmed key's type |
 
 ## Recommendations for users
 

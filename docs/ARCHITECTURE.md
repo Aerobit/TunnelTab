@@ -4,7 +4,7 @@ How TunnelTab is put together, and where to make changes.
 
 > **Living document.** Sections marked *(planned)* describe the design from
 > [PLAN.md](../PLAN.md) and are replaced with the real details as each phase
-> is built. Current phase: **1 — config, vault and data model complete**.
+> is built. Current phase: **2 — SSH engine complete**.
 
 ## Overview
 
@@ -50,7 +50,8 @@ TunnelTab is one Go executable. When started it:
 | `internal/vault` | Master-password KDF, encrypted file format, atomic save + backup, auto-lock | Done |
 | `internal/model` | Project / Server / Service types, IDs, validation, CRUD operations, secret-free public view | Done |
 | `internal/atomicfile` | Crash-safe file writes (temp file → fsync → rename) | Done |
-| `internal/sshx` | Connection pool, auth, known_hosts, forwards, PTY sessions, reconnect | *(planned, Phase 2)* |
+| `internal/sshx` | Connection pool, auth, host-key checks, forwards, keep-alive, reconnect | Done (PTY sessions: Phase 5) |
+| `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
 | `internal/server` | HTTP server, session auth, Host/Origin checks, API, events, terminal WS | *(planned, Phase 3)* |
 | `internal/platform` | Open browser, launch system terminal, single instance | *(planned, Phases 3 & 5)* |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Scaffold |
@@ -64,14 +65,13 @@ Each package has a `doc.go` describing its job in more detail.
 data/
 ├── vault.enc        all projects, servers, services and secrets (encrypted)
 ├── vault.enc.bak    previous version, kept by every save
-├── known_hosts      confirmed server host keys (OpenSSH format)
 ├── settings.json    non-secret preferences
 └── logs/            rotated logs; never contain secrets
 ```
 
 ## Data model (`internal/model`)
 
-`model.Data` is the whole vault payload: `{version, projects[], servers[], services[]}`.
+`model.Data` is the whole vault payload: `{version, projects[], servers[], services[], knownHosts[]}`.
 
 | Type | Fields | Notes |
 |---|---|---|
@@ -79,6 +79,7 @@ data/
 | Server | `id, projectId, name, host, port, username, auth, order` | `host`: DNS name or IP; `username`: letters, digits, `. _ @ -` |
 | Auth | `type` + fields for that type | See below; unused fields are cleared on save |
 | Service | `id, serverId, label, remoteHost, remotePort, localPort, protocol, path, autoStart, order` | `remoteHost` defaults to `127.0.0.1`; `localPort` 0 = auto; fixed local ports must be unique |
+| KnownHost | `host, key, addedAt` | `host` is `name` for port 22, `[name]:port` otherwise; `key` in authorized_keys format; `SetHostKey` replaces a host's keys |
 
 | `auth.type` | Uses | Secret fields |
 |---|---|---|
@@ -139,6 +140,54 @@ validated, saved, then swapped in) · `ChangePassword` · `Touch` /
 `model.CurrentVersion` (payload), keep reading the old version, and add a
 migration in `vault.decodeData`.
 
+## SSH engine (`internal/sshx`)
+
+```
+StartForward(service) ──▶ listen 127.0.0.1:<port> ──▶ acquire(server) ──▶ dial (first user only)
+                                                          │                  │
+                                    shared *serverConn ◀──┘      Targets(serverID) → vault
+                                          │                     authMethods → ssh.ClientConfig
+                                   supervise(): keep-alive,      hostKeyCallback(confirmed keys)
+                                   reconnect with back-off
+browser ──▶ 127.0.0.1:<port> ──▶ forward.handle ──▶ client.Dial(remoteHost:remotePort) (direct-tcpip)
+```
+
+- **`Manager`** owns everything. `StartForward`, `StopForward`, `StopServer`
+  (call on server edit/delete), `Forwards`, `Servers`, `Resume` (call after
+  unlock), `Close`. State changes are reported through `Config.OnEvent`.
+- **One connection per server**, reference-counted by its forwards (and later
+  terminals); closed when the last user stops.
+- **Credentials are not kept.** Every (re)connect calls `Config.Targets`
+  (backed by the vault) and drops the result once connected. While the vault
+  is locked, `Targets` returns `ErrPaused` and the connection waits in state
+  `paused` until `Resume`.
+- **Host keys:** `hostKeyCallback` accepts only confirmed keys.
+  `*UnknownHostKeyError` carries the presented key and fingerprint: the
+  dashboard asks the user, stores *that* key (`SetHostKey`) and retries.
+  `*HostKeyChangedError` blocks. Host-key algorithms are pinned to the
+  confirmed key's type. SSH verifies the host key before authentication, so
+  no credentials reach an unconfirmed server.
+- **Login methods** (`auth.go`): password (+ keyboard-interactive), vault key,
+  key file (relative paths resolve against `Config.BaseDir`, the portable
+  folder), ssh-agent (`agent_unix.go`: `SSH_AUTH_SOCK`; `agent_windows.go`:
+  the OpenSSH agent pipe).
+- **Forwards** (`forward.go`) listen on 127.0.0.1 only. The port is bound
+  before connecting, so a busy port fails fast (`ErrPortInUse`). Auto ports
+  (`localPort` 0) try a stable port derived from the service ID
+  (20000–29999), then any free port.
+- **Resilience:** keep-alive every 30 s; 3 missed → reconnect. Reconnect
+  back-off 1 s → 30 s. Network errors retry forever; auth failures and
+  host-key problems stop the server's forwards with state `failed`.
+
+| State | Meaning |
+|---|---|
+| `connecting` | first connection attempt |
+| `connected` / `active` | server up / forward usable |
+| `reconnecting` | connection lost, retrying |
+| `paused` | waiting for the vault to be unlocked |
+| `failed` | gave up (error explains why) |
+| `stopped` | stopped by the user |
+
 ## Settings and logs (`internal/config`)
 
 - `settings.json`: `port` (1024–65535, default 47811), `autoLockMinutes`
@@ -173,6 +222,9 @@ Quit handling, closing tunnels on exit.
 | Add a validation rule | `internal/model/validate.go` (+ a case in `model_test.go`) |
 | Add a secret field | `internal/model/model.go` with `secret:"true"`, then `public.go` (the test will remind you) |
 | Add a setting | `internal/config/settings.go` (`Settings`, defaults, `Validate`) |
+| Add a login method | `internal/model` (`AuthType`, validation, `normalizeAuth`, `Public`), then `internal/sshx/auth.go` |
+| Change keep-alive / reconnect timing | `sshx.NewManager` defaults (`internal/sshx/manager.go`) |
+| Test something against SSH | `internal/sshx/sshtest` (add features there, never use a real server) |
 | Support another terminal program | `internal/platform` |
 
 This table grows as the code is written.
