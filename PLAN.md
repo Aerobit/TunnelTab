@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **Phase 0 complete** (scaffold). Next: Phase 1 — config, vault and data model.
+> Status: **Phase 1 complete** (config, vault, data model). Next: Phase 2 — SSH engine.
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -83,7 +83,8 @@ tunneltab/
 │   ├── model/              projects, servers, services (data types + validation)
 │   ├── sshx/               connections, auth methods, known_hosts, forwards, PTY
 │   ├── server/             HTTP server, auth/session, API handlers, events, terminal WS
-│   └── platform/           open browser, system terminal launch, per-OS bits
+│   ├── platform/           open browser, system terminal launch, per-OS bits
+│   └── atomicfile/         crash-safe file writes (used by vault and settings)
 ├── web/                    web.go embeds static/ into the binary
 │   └── static/             dashboard (HTML/CSS/JS, vendored xterm.js)
 ├── docs/
@@ -156,7 +157,7 @@ Each phase ends with tests passing and docs updated (`ARCHITECTURE.md` grows wit
 | # | Phase | Done when |
 |---|---|---|
 | 0 ✅ | **Scaffold** — repo layout, go.mod, build scripts, CI, docs skeletons, CLAUDE.md/AGENTS.md | `build.sh` produces empty binaries for all targets |
-| 1 | **Config + vault + model** | Create/unlock/change-password/lock round-trip; tamper & wrong-password tests |
+| 1 ✅ | **Config + vault + model** | Create/unlock/change-password/lock round-trip; tamper & wrong-password tests |
 | 2 | **SSH engine** — auth methods, known_hosts, connection pool, forwards, reconnect | Integration tests against an in-process test SSH server: forward traffic, bad host key blocked, reconnect works |
 | 3 | **Local server + API** — session auth, Host/Origin checks, REST, event stream | Security tests: requests without cookie / wrong Host / wrong Origin rejected |
 | 4 | **Dashboard UI** — port local.browser design; unlock, projects, servers, services, fingerprint prompt, settings | Full manual walkthrough works in Chrome + Firefox |

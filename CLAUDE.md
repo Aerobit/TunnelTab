@@ -55,8 +55,13 @@ one, stop and ask the user instead.
 ## Conventions
 
 - **Go:** standard library first; minimal, well-known dependencies only
-  (currently planned: `golang.org/x/crypto`, a WebSocket library,
+  (in use: `golang.org/x/crypto`; planned: a WebSocket library,
   `github.com/Microsoft/go-winio`). Ask before adding others.
+- All data changes go through `vault.Update` (which validates and saves
+  atomically); never write `vault.enc` or `settings.json` directly — use
+  `internal/atomicfile`.
+- New secret fields must be tagged `secret:"true"` and hidden in
+  `internal/model/public.go`.
 - Errors: wrap with context (`fmt.Errorf("unlock vault: %w", err)`); never
   include secret values.
 - Per-OS code goes in `internal/platform` using build tags / `_windows.go`,

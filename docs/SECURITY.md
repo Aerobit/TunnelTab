@@ -44,13 +44,18 @@ private reporting instead: the repository's **Security** tab →
   a tunnel is open. TunnelTab is designed for single-user PCs.
 - **Forgotten master password.** There is no recovery by design; keep a backup
   of your SSH keys elsewhere.
+- **Secrets in memory while unlocked.** The derived key is wiped on lock, but
+  decrypted secrets are Go strings, which can't be overwritten; they are
+  released for garbage collection. Someone who can read the app's memory
+  while it runs (see "malware" above) could find them.
 
-## Cryptography *(parameters confirmed in Phase 1)*
+## Cryptography
 
 | Purpose | Choice |
 |---|---|
-| Key derivation | Argon2id (`golang.org/x/crypto/argon2`), random 16-byte salt, parameters stored in the vault header so they can be raised later |
-| Encryption | AES-256-GCM, random 12-byte nonce per save |
+| Key derivation | Argon2id (`golang.org/x/crypto/argon2`): 4 passes, 256 MiB, 4 threads, random 16-byte salt. About 0.2 s on a fast desktop, 0.5–1 s on a typical laptop. Parameters are stored in the vault header so they can be raised later; values outside safe bounds are rejected. |
+| Encryption | AES-256-GCM, random 12-byte nonce per save. The header (format, KDF parameters, salt) is authenticated as additional data. |
+| Master password | At least 8 characters (the dashboard will also show a strength meter). |
 | Randomness | `crypto/rand` |
 | SSH | `golang.org/x/crypto/ssh`, modern algorithms only |
 
