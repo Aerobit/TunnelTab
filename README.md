@@ -1,85 +1,226 @@
+<div align="center">
+
+<img src="packaging/icon.png" alt="TunnelTab logo" width="112">
+
 # TunnelTab
 
-**Your servers, one click away.** A portable SSH terminal and web-UI launcher
-for your own VPSs — no install, no accounts, no cloud.
+### Your servers, one click away.
+
+A portable SSH terminal and web-UI launcher for your own VPSs.<br>
+**No install. No accounts. No cloud.**
+
+[![Download](https://img.shields.io/github/v/release/Aerobit/TunnelTab?sort=semver&label=download&style=for-the-badge&color=2f81f7)](https://github.com/Aerobit/TunnelTab/releases/latest)
+&nbsp;
+[![Windows | Linux](https://img.shields.io/badge/Windows%20%7C%20Linux-x64-3fb950?style=for-the-badge)](#-quick-start)
 
 [![CI](https://github.com/Aerobit/TunnelTab/actions/workflows/ci.yml/badge.svg)](https://github.com/Aerobit/TunnelTab/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/Aerobit/TunnelTab?sort=semver)](https://github.com/Aerobit/TunnelTab/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/built%20with-Go-00ADD8?logo=go&logoColor=white)](https://go.dev)
 
-## What it does
+[Features](#-features) · [Screenshots](#-screenshots) · [Quick start](#-quick-start) · [Security](#-security) · [FAQ](#-faq) · [User guide](docs/USER_GUIDE.md)
 
-- **SSH terminal in your browser** — click a server, get a shell in a new tab.
-- **Web UI quick launch** — click *Open* on a service (n8n, Portainer, Grafana…);
-  TunnelTab starts an SSH tunnel and opens the page for you.
-- **Organised by project** — group servers and their services; drag (or use
-  the keyboard) to reorder them.
-- **Portable** — one folder for Windows and Linux. Copy it to another PC or a
-  USB stick and carry on.
-- **Secure by design** — secrets live in a vault encrypted with your master
-  password; server fingerprints are verified; everything stays on `127.0.0.1`.
-- **Log in your way** — SSH agent, a key stored in the vault, a key file, or a
-  password.
-- **Stays up** — tunnels reconnect by themselves after network drops or sleep,
-  and auto-lock keeps an unattended PC safe.
+<br>
 
-## Screenshots
+<img src="docs/images/dashboard.png" alt="TunnelTab dashboard: projects with servers and their web apps; two tunnels running" width="900">
 
-<p align="center">
-  <img src="docs/images/dashboard.png" alt="TunnelTab dashboard: projects with servers and their web apps; two tunnels running" width="820">
-</p>
+</div>
 
-| | |
-|---|---|
-| ![In-browser SSH terminal](docs/images/terminal.png) | ![Confirming a new server's fingerprint](docs/images/fingerprint.png) |
-| **Terminal** — a real SSH shell in a browser tab | **Fingerprint check** — nothing is sent until you confirm the server |
-| ![Adding a server](docs/images/add-server.png) | ![Settings](docs/images/settings.png) |
-| **Add a server** — agent, stored key, key file or password | **Settings** — auto-lock, master password, confirmed servers |
-| ![First run](docs/images/setup.png) | ![Unlock](docs/images/unlock.png) |
-| **First run** — choose a master password | **Unlock** — everything stays encrypted until you do |
+<br>
+
+## 💡 Why TunnelTab?
+
+Your self-hosted apps (n8n, Portainer, Grafana, admin panels) shouldn't be
+open to the internet, so you reach them through SSH tunnels. That usually
+means remembering `ssh -L 5678:localhost:5678 …` commands, keeping terminal
+windows open, and starting over after every Wi-Fi drop.
+
+**TunnelTab turns all of that into buttons.** Add your servers once, then
+click **Open ↗** to reach a web app or **Terminal ↗** to get a shell, right
+in your browser.
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### 🖥️ Terminal in a tab
+A real SSH shell in your browser. Click a server, get a terminal. Open as
+many as you like.
+
+</td>
+<td width="33%" valign="top">
+
+### 🚀 One-click web UIs
+Click **Open** on a service. TunnelTab starts the SSH tunnel and opens the
+page for you.
+
+</td>
+<td width="33%" valign="top">
+
+### 🗂️ Organised by project
+Group servers and their services. Drag (or use the keyboard) to reorder
+them.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 🔐 Secure by design
+Secrets live in an encrypted vault. Server fingerprints are verified.
+Everything stays on `127.0.0.1`.
+
+</td>
+<td valign="top">
+
+### 💼 Truly portable
+One folder for Windows and Linux. Copy it to another PC or a USB stick
+and carry on.
+
+</td>
+<td valign="top">
+
+### 🔄 Stays connected
+Tunnels reconnect by themselves after network drops or sleep. Auto-lock
+protects an unattended PC.
+
+</td>
+</tr>
+</table>
+
+**Log in your way:** SSH agent · a key stored in the vault · a key file · a password
+
+## 📸 Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/terminal.png" alt="In-browser SSH terminal"></td>
+<td width="50%"><img src="docs/images/fingerprint.png" alt="Confirming a new server's fingerprint"></td>
+</tr>
+<tr>
+<td align="center"><b>Terminal</b><br><sub>A real SSH shell in a browser tab</sub></td>
+<td align="center"><b>Fingerprint check</b><br><sub>Nothing is sent until you confirm the server</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/add-server.png" alt="Adding a server"></td>
+<td><img src="docs/images/settings.png" alt="Settings"></td>
+</tr>
+<tr>
+<td align="center"><b>Add a server</b><br><sub>Agent, stored key, key file or password</sub></td>
+<td align="center"><b>Settings</b><br><sub>Auto-lock, master password, confirmed servers</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/setup.png" alt="First run"></td>
+<td><img src="docs/images/unlock.png" alt="Unlock"></td>
+</tr>
+<tr>
+<td align="center"><b>First run</b><br><sub>Choose a master password</sub></td>
+<td align="center"><b>Unlock</b><br><sub>Everything stays encrypted until you do</sub></td>
+</tr>
+</table>
 
 <sub>Screenshots use made-up demo data (see [docs/images](docs/images/README.md)).</sub>
 
-## Quick start
+## ⚡ Quick start
 
-**Needs:** Windows 10/11 or Linux (64-bit) and any modern browser. Nothing to
-install on your PC or your servers.
+> **Needs:** Windows 10/11 or Linux (64-bit) and any modern browser.
+> Nothing to install on your PC or your servers.
 
-1. Download the latest `tunneltab-<version>.zip` from
+1. **Download** the latest `tunneltab-<version>.zip` from
    [Releases](https://github.com/Aerobit/TunnelTab/releases/latest) and
    **extract** it anywhere (Documents, a USB stick…).
-2. Run it:
+2. **Run it:**
    - **Windows:** double-click `tunneltab.exe`
-     (if SmartScreen appears: *More info → Run anyway* — it isn't code-signed).
    - **Linux:** `./tunneltab-linux-amd64`
-3. Your browser opens the dashboard. Create a master password, add a server,
-   and click **Terminal ↗** or **Open ↗**.
+3. **Set up:** your browser opens the dashboard. Create a master password,
+   add a server, and click **Terminal ↗** or **Open ↗**.
 
-Full instructions, troubleshooting and FAQ: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+> [!NOTE]
+> On Windows, SmartScreen may warn you because the app isn't code-signed.
+> Click **More info → Run anyway**.
 
-## How it works
+📖 Full instructions, troubleshooting and FAQ: **[User guide](docs/USER_GUIDE.md)**
 
-```
-Browser tab  ──localhost only──▶  tunneltab (one executable)  ──SSH──▶  your VPS
- dashboard                         vault · SSH engine · tunnels
+## 🧭 How it works
+
+```mermaid
+flowchart LR
+    B["🌐 Browser tab<br/><sub>dashboard + terminals</sub>"]
+    T["🟦 tunneltab<br/><sub>vault · SSH engine · tunnels</sub>"]
+    S["🖧 Your servers<br/><sub>VPS · home lab · NAS</sub>"]
+    B -- "127.0.0.1 only" --> T
+    T -- "SSH" --> S
 ```
 
 TunnelTab is a single Go program with its own SSH client, so it doesn't need
 OpenSSH, sshpass, Node.js or a browser extension. Details:
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Security
+## 🛡️ Security
 
-Credentials are encrypted with a key derived from your master password
-(Argon2id + AES-256-GCM) and never leave the app. The dashboard server only
-listens on `127.0.0.1` and rejects requests from other websites. Read
-[docs/SECURITY.md](docs/SECURITY.md) for the full threat model — including what
-TunnelTab does **not** protect against — and
-[docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for the pre-release review.
+| | |
+|---|---|
+| 🔑 **Encrypted vault** | Credentials are encrypted with a key derived from your master password (Argon2id + AES-256-GCM) and never leave the app. |
+| 🏠 **Local only** | The dashboard and every tunnel listen on `127.0.0.1`. Other devices and websites can't use them. |
+| 🔍 **Verified servers** | New server fingerprints must be confirmed. Changed fingerprints are blocked. |
+| 🔒 **Auto-lock** | The vault locks after inactivity (15 min by default) and the key is wiped from memory. |
+| 📡 **No phoning home** | TunnelTab contacts only your servers, plus GitHub when *you* click **Check for updates**. |
 
-## Building from source
+Read [SECURITY.md](docs/SECURITY.md) for the full threat model, including
+what TunnelTab does **not** protect against, and
+[SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for the pre-release review.
 
-You need [Go](https://go.dev/dl/) 1.27 or newer.
+## ❓ FAQ
+
+<details>
+<summary><b>Does it need an account, a server component or Tailscale?</b></summary>
+<br>
+No. It talks SSH directly to your servers, like the <code>ssh</code> command does.
+</details>
+
+<details>
+<summary><b>Which servers work?</b></summary>
+<br>
+Any server you can reach with SSH: VPSs, home servers, Raspberry Pis, NAS
+boxes. Nothing needs to be installed on the server.
+</details>
+
+<details>
+<summary><b>Can I use it on several PCs?</b></summary>
+<br>
+Yes. Copy the folder, or keep it on a USB stick or in a synced folder. Just
+don't run the <i>same</i> folder on two PCs at once.
+</details>
+
+<details>
+<summary><b>Why does it open in my browser instead of its own window?</b></summary>
+<br>
+So it doesn't need to bundle a browser engine. The program stays small and
+portable, and you get your browser's tabs and zoom.
+</details>
+
+<details>
+<summary><b>How do I update without losing my servers?</b></summary>
+<br>
+Everything you saved is in the <code>data</code> folder. Quit TunnelTab,
+replace the program files with the ones from the new zip, and leave
+<code>data</code> alone. Step-by-step: <a href="docs/USER_GUIDE.md#faq">User guide → FAQ</a>.
+</details>
+
+<details>
+<summary><b>I forgot my master password.</b></summary>
+<br>
+There's no way to recover it. That's what keeps a stolen copy useless.
+Delete the <code>data</code> folder and start again. Your servers' own
+passwords and keys are unaffected.
+</details>
+
+## 🛠️ Building from source
+
+<details>
+<summary>You need <a href="https://go.dev/dl/">Go</a> 1.27 or newer.</summary>
+<br>
 
 ```bash
 bash scripts/build.sh          # Linux/macOS/WSL
@@ -91,10 +232,15 @@ Both produce `dist/tunneltab/` and `dist/tunneltab-<version>.zip`. See
 how releases are made. Contributions and AI-assisted edits follow
 [CLAUDE.md](CLAUDE.md).
 
-## License
+</details>
+
+## 📄 License
 
 [MIT](LICENSE). Bundled third-party software (Go, x/crypto, x/sys,
 coder/websocket, xterm.js) is listed with its licenses in
 `THIRD_PARTY_NOTICES.txt` inside every release.
 
-TunnelTab is the successor to the `local.browser` browser extension.
+<div align="center">
+<br>
+<sub>TunnelTab is the successor to the <code>local.browser</code> browser extension.</sub>
+</div>
