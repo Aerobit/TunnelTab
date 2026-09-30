@@ -7,18 +7,39 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
-// sddl returns a path's access list in SDDL form, e.g. "D:P(A;OICI;FA;;;SY)…".
-func sddl(t *testing.T, path string) string {
+// aclSIDs returns the account of every entry in a path's access list, and
+// whether the list is protected from inheriting its parent's entries.
+//
+// Entries are compared by SID rather than by their text (SDDL) form,
+// because SDDL abbreviates well-known accounts (e.g. "LA" for the built-in
+// Administrator that CI runs as).
+func aclSIDs(t *testing.T, path string) (sids []*windows.SID, protected bool) {
 	t.Helper()
 	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sd.String()
+	control, _, err := sd.Control()
+	if err != nil {
+		t.Fatal(err)
+	}
+	acl, _, err := sd.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < int(acl.AceCount); i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(acl, uint32(i), &ace); err != nil {
+			t.Fatal(err)
+		}
+		sids = append(sids, (*windows.SID)(unsafe.Pointer(&ace.SidStart)))
+	}
+	return sids, control&windows.SE_DACL_PROTECTED != 0
 }
 
 func TestRestrictToOwnerWindows(t *testing.T) {
@@ -37,21 +58,36 @@ func TestRestrictToOwnerWindows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	me := user.User.Sid.String()
-	d := sddl(t, dir)
-	if !strings.HasPrefix(d, "D:P") {
-		t.Errorf("folder access list is not protected from inheritance: %s", d)
+	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, protected := aclSIDs(t, dir); !protected {
+		t.Error("the folder still inherits permissions from its parent")
 	}
 	for _, p := range []string{dir, existing, created} {
-		s := sddl(t, p)
-		if !strings.Contains(s, me) {
-			t.Errorf("%s: current user missing: %s", filepath.Base(p), s)
-		}
-		// No access for Everyone (WD), Users (BU) or Authenticated Users (AU).
-		for _, other := range []string{";;;WD)", ";;;BU)", ";;;AU)"} {
-			if strings.Contains(s, other) {
-				t.Errorf("%s: grants access to %s: %s", filepath.Base(p), other, s)
+		sids, _ := aclSIDs(t, p)
+		hasUser := false
+		for _, sid := range sids {
+			switch {
+			case sid.Equals(user.User.Sid):
+				hasUser = true
+			case sid.Equals(system):
+			default:
+				t.Errorf("%s: grants access to another account: %s", filepath.Base(p), sid)
 			}
 		}
+		if !hasUser {
+			t.Errorf("%s: the current user has no access (entries: %s)", filepath.Base(p), strings.TrimSpace(sidList(sids)))
+		}
 	}
+}
+
+func sidList(sids []*windows.SID) string {
+	var b strings.Builder
+	for _, s := range sids {
+		b.WriteString(s.String() + " ")
+	}
+	return b.String()
 }
