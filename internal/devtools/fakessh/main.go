@@ -2,14 +2,19 @@
 // behind it, so the dashboard can be tried without a real VPS. It is a
 // development tool and is not part of release builds.
 //
-//	go run ./internal/devtools/fakessh
+//	go run ./internal/devtools/fakessh              # random port
+//	go run ./internal/devtools/fakessh -port 2222   # fixed port
+//	go run ./internal/devtools/fakessh -demo        # realistic prompt and canned
+//	                                                 # command output (README screenshots)
 //
 // It prints the host, port, username and password to enter in TunnelTab,
 // and the remote port of the demo web app to add as a service.
 package main
 
 import (
+	"flag"
 	"fmt"
+	"html"
 	"net"
 	"net/http"
 	"os"
@@ -22,6 +27,10 @@ import (
 )
 
 func main() {
+	port := flag.Int("port", 0, "SSH port on 127.0.0.1 (0 = random)")
+	demo := flag.Bool("demo", false, "realistic prompt and canned command output, for screenshots")
+	flag.Parse()
+
 	web, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -30,12 +39,18 @@ func main() {
 	go http.Serve(web, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, "<!doctype html><title>Demo app</title><h1>Hello through the tunnel!</h1><p>You asked for %s</p>",
-			template(r.URL.Path))
+			html.EscapeString(r.URL.Path))
 	}))
 
+	opts := sshtest.Options{User: "demo", Password: "demo-password", Addr: fmt.Sprintf("127.0.0.1:%d", *port)}
+	if *demo {
+		opts.Banner = demoBanner
+		opts.Prompt = "\x1b[1;32mdemo@homelab\x1b[0m:\x1b[1;34m~\x1b[0m$ "
+		opts.Commands = demoCommands
+	}
+
 	// sshtest is written for tests; a throwaway testing.T is enough here.
-	t := &testing.T{}
-	srv := sshtest.Start(t, sshtest.Options{User: "demo", Password: "demo-password"})
+	srv := sshtest.Start(&testing.T{}, opts)
 
 	fmt.Println("Fake SSH server running. In TunnelTab add a server with:")
 	fmt.Printf("  Host:      %s\n  SSH port:  %d\n  Username:  demo\n  Log in:    Password = demo-password\n", srv.Host, srv.Port)
@@ -49,16 +64,20 @@ func main() {
 	srv.Close()
 }
 
-// template escapes text for HTML.
-func template(s string) string {
-	out := make([]rune, 0, len(s))
-	for _, r := range s {
-		switch r {
-		case '<', '>', '&', '"', '\'':
-			out = append(out, []rune(fmt.Sprintf("&#%d;", r))...)
-		default:
-			out = append(out, r)
-		}
-	}
-	return string(out)
+// Demo mode content: made up, for screenshots only.
+const demoBanner = `Linux homelab 6.8.0-45-generic x86_64
+
+Last login: Mon Sep 29 21:14:03 2026 from 10.0.0.12`
+
+var demoCommands = map[string]string{
+	"uptime": " 09:41:07 up 23 days,  4:12,  1 user,  load average: 0.08, 0.11, 0.09\n",
+	"df -h": `Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1        78G   21G   54G  28% /
+/dev/sdb1       916G  402G  468G  47% /srv/data
+`,
+	"docker ps": `NAMES       STATUS        PORTS
+n8n         Up 6 days     127.0.0.1:5678->5678/tcp
+grafana     Up 23 days    127.0.0.1:3000->3000/tcp
+postgres    Up 23 days    5432/tcp
+`,
 }

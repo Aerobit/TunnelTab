@@ -7,6 +7,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- In-browser SSH terminal: "Terminal ↗" opens a tab with xterm.js over a
+  WebSocket (one-time 30-second tickets), sharing the server's connection;
+  resize, copy/paste, reconnect, exit status; all terminals close when
+  TunnelTab locks.
+- `github.com/coder/websocket` dependency; xterm.js 6 vendored.
+- README screenshots (`docs/images/`), generated with demo data by
+  `tests/e2e/readme-shots.js`; `fakessh` gained `-port` and `-demo`.
 - Dashboard (`web/static`): first-run setup with strength meter, unlock with
   rate-limit countdown, projects/servers/services with drag-to-move, live
   tunnel status, one-click Open, fingerprint confirmation (with an explicit

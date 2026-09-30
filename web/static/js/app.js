@@ -348,6 +348,7 @@ function renderServer(s) {
         h("span", { class: "mono muted" }, `${s.username}@${s.host}${s.port !== 22 ? ":" + s.port : ""}`),
         h("span", { class: "badge" }, AUTH_TEXT[s.auth.type] || s.auth.type)),
       h("div", { class: "actions" },
+        h("button", { class: "chip open", onclick: () => openTerminal(s), title: "Open an SSH terminal in a new tab" }, "Terminal ↗"),
         h("button", { class: "chip", onclick: () => testServer(s), title: "Check the connection and login" }, "Test"),
         h("button", { class: "chip", onclick: () => serverDialog(s.projectId, s) }, "Edit"),
         h("button", { class: "chip add", onclick: () => serviceDialog(s.id) }, "+ Service"))),
@@ -447,6 +448,11 @@ async function openService(svc, button) {
   }
   const link = h("a", { href: res.url, target: "_blank", rel: "noopener noreferrer" }, " Open it now");
   toast(`${svc.label} is ready.`, "success", link);
+}
+
+function openTerminal(server) {
+  // Same-origin page; it signs in with the session this tab already has.
+  window.open(`/terminal.html#${encodeURIComponent(server.id)}`, "_blank", "noopener");
 }
 
 async function openSettings() {

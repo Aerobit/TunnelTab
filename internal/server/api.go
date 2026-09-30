@@ -53,6 +53,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("POST /api/services/{id}/stop", s.handleStopService)
 	a("POST /api/hostkeys/confirm", s.handleConfirmHostKey)
 	a("POST /api/hostkeys/forget", s.handleForgetHostKey)
+	a("POST /api/terminals", s.handleOpenTerminal)
+	// Authenticated by its one-time ticket instead of the session header.
+	mux.HandleFunc("GET /api/terminals/connect", s.handleConnectTerminal)
 }
 
 // --- JSON helpers -----------------------------------------------------------

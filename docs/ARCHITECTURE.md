@@ -4,7 +4,7 @@ How TunnelTab is put together, and where to make changes.
 
 > **Living document.** Sections marked *(planned)* describe the design from
 > [PLAN.md](../PLAN.md) and are replaced with the real details as each phase
-> is built. Current phase: **4 — dashboard complete**.
+> is built. Current phase: **5 — terminal complete**.
 
 ## Overview
 
@@ -50,10 +50,10 @@ TunnelTab is one Go executable. When started it:
 | `internal/vault` | Master-password KDF, encrypted file format, atomic save + backup, auto-lock | Done |
 | `internal/model` | Project / Server / Service types, IDs, validation, CRUD operations, secret-free public view | Done |
 | `internal/atomicfile` | Crash-safe file writes (temp file → fsync → rename) | Done |
-| `internal/sshx` | Connection pool, auth, host-key checks, forwards, keep-alive, reconnect | Done (PTY sessions: Phase 5) |
+| `internal/sshx` | Connection pool, auth, host-key checks, forwards, terminals (PTY), keep-alive, reconnect | Done |
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
-| `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events | Done (terminal WebSocket: Phase 5) |
-| `internal/platform` | Open browser, error dialog, instance file | Done (system terminal: Phase 5) |
+| `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events, terminal WebSocket | Done |
+| `internal/platform` | Open browser, error dialog, instance file | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
 | `web/static` | The dashboard (vanilla JS modules + CSS) | Done |
 | `internal/devtools/fakessh` | Local SSH server + demo web app for trying the dashboard (not shipped) | Done |
@@ -259,6 +259,8 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `POST /services/{id}/stop` | | |
 | `POST /hostkeys/confirm` | `{token, replace}` | stores the pending key |
 | `POST /hostkeys/forget` | `{host}` | removes a confirmed key (asks again next time) |
+| `POST /terminals` | `{serverId, cols, rows}` | opens a shell; `{ticket, serverName}` (see Terminals) |
+| `GET /terminals/connect?ticket=…` | WebSocket | terminal stream; authenticated by the one-time ticket, not the session header |
 
 Status codes: 400 invalid input, 401 not signed in / wrong password, 403
 failed security check, 404 not found, 409 conflict (incl. host-key
@@ -287,6 +289,37 @@ sent). Each `data:` line is JSON:
 A `: ping` comment is sent every 20 s. Slow clients get `resync` instead of
 blocking the app.
 
+## Terminals
+
+```
+dashboard: "Terminal ↗" ──opens──▶ terminal.html#<serverId> (new tab, same origin)
+terminal.js: POST /api/terminals {serverId, cols, rows}
+             ──▶ Manager.OpenShell (host-key/login errors come back as API errors)
+             ◀── {ticket, serverName}           (one-time, 30 s)
+             WebSocket /api/terminals/connect?ticket=… (Origin checked)
+             ⇄ binary frames = terminal bytes; text frames = JSON control
+```
+
+- **Engine** (`internal/sshx/shell.go`): `OpenShell` requests an
+  `xterm-256color` PTY and a shell on the server's shared connection (so it
+  reuses a tunnel's connection, and keeps the connection open while in use).
+  `Resize`, `Close`, `Done`, `ExitStatus` → `(code, nil)` for a normal exit,
+  `(-1, ErrShellClosed)` when TunnelTab closed it, `(-1, err)` when the
+  connection dropped. Max 32 terminals.
+- **Server** (`internal/server/terminal.go`): tickets are stored hashed,
+  used once, and an unused ticket's shell is closed after 30 s. WebSocket
+  control messages: browser → app `{"type":"resize","cols":…,"rows":…}`;
+  app → browser `{"type":"exit","code":…,"message":…}` just before closing.
+- **Locking closes every terminal** (tunnels only close if the setting says
+  so): an open shell is too sensitive to leave on an unattended PC.
+- **Page** (`web/static/terminal.html`, `js/terminal.js`, `terminal.css`):
+  xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon;
+  Ctrl+Shift+C copies, Ctrl+Shift+V pastes, Enter or *Reconnect* after the
+  session ends.
+- **CSP exception:** xterm.js creates `<style>` elements, so
+  `/terminal.html` alone gets `style-src 'self' 'unsafe-inline'`. Scripts
+  stay `'self'`-only everywhere; terminal output is drawn as text, never HTML.
+
 ## Dashboard (`web/static`)
 
 Plain ES modules, no framework and no build step; the files are embedded in
@@ -300,6 +333,8 @@ the executable as-is.
 | `js/dialogs.js` | Native `<dialog>` modals (`openDialog`, `confirmDialog`), form `field`/`checkbox`, toasts |
 | `js/forms.js` | Project/server/service/settings dialogs; `withHostKeys(fn)` runs a connecting call and handles fingerprint confirmation |
 | `js/app.js` | Screens (signed out, setup, unlock, dashboard), state, rendering, live events, actions |
+| `terminal.html`, `js/terminal.js`, `terminal.css` | The terminal page (see Terminals) |
+| `vendor/xterm/` | xterm.js 6 + fit addon (MIT), bundled; see its README to update |
 | `app.css` | All styling (dark GitHub palette from local.browser) |
 
 **Flow:** `start()` signs in → `GET /api/state` → setup, unlock or
@@ -309,7 +344,8 @@ to the unlock screen (`vault`). Screens the user may be typing into are
 never redrawn by a background refresh.
 
 **Rules** (the CSP enforces the first):
-- No inline `<script>`, no `on…=` attributes, no `style=` attributes.
+- No inline `<script>`, no `on…=` attributes, no `style=` attributes
+  (the terminal page may use inline styles only because xterm.js needs them).
 - No `innerHTML`; build DOM with `h()`.
 - Pages opened for services get no `window.opener` access.
 - Messages that must be seen while a dialog is open go *inside* the dialog
@@ -348,6 +384,8 @@ Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`.
 | Add a setting | `internal/config/settings.go` (`Settings`, defaults, `Validate`) |
 | Add a login method | `internal/model` (`AuthType`, validation, `normalizeAuth`, `Public`), then `internal/sshx/auth.go` |
 | Change keep-alive / reconnect timing | `sshx.NewManager` defaults (`internal/sshx/manager.go`) |
+| Change the terminal (theme, keys, font) | `web/static/js/terminal.js` |
+| Update xterm.js | replace the files in `web/static/vendor/xterm/` (see its README), run `tests/e2e` |
 | Test something against SSH | `internal/sshx/sshtest` (add features there, never use a real server) |
 | Support another terminal program | `internal/platform` |
 

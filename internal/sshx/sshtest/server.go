@@ -1,6 +1,7 @@
 // Package sshtest runs a small in-process SSH server for tests. It supports
-// password, keyboard-interactive and public-key login, keep-alive requests
-// and direct-tcpip port forwarding, and can drop all connections on demand
+// password, keyboard-interactive and public-key login, keep-alive requests,
+// direct-tcpip port forwarding and interactive shells with a PTY (a tiny
+// fake shell, see shell.go), and can drop all connections on demand
 // to exercise reconnection. It is only for tests; never use it in the app.
 package sshtest
 
@@ -26,6 +27,15 @@ type Options struct {
 	KeyboardOnly        bool            // accept Password only via keyboard-interactive
 	AuthorizedKeys      []ssh.PublicKey // enables public-key login
 	HostKey             ssh.Signer      // generated when nil
+
+	// Fake shell appearance (defaults: "Welcome to the fake shell", "$ ").
+	Banner string
+	Prompt string
+	// Commands maps an exact command line to canned output (demo mode).
+	Commands map[string]string
+
+	// Addr to listen on (default 127.0.0.1:0, a random port).
+	Addr string
 }
 
 // Server is a running test SSH server.
@@ -65,7 +75,11 @@ func Start(t testing.TB, opts Options) *Server {
 	if opts.HostKey == nil {
 		opts.HostKey = NewHostKey(t)
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	addr := opts.Addr
+	if addr == "" {
+		addr = "127.0.0.1:0"
+	}
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,11 +228,14 @@ func (s *Server) handle(nc net.Conn, cfg *ssh.ServerConfig) {
 		}
 	}()
 	for nc := range chans {
-		if nc.ChannelType() != "direct-tcpip" {
-			nc.Reject(ssh.UnknownChannelType, "only direct-tcpip is supported")
-			continue
+		switch nc.ChannelType() {
+		case "direct-tcpip":
+			go handleDirectTCPIP(nc)
+		case "session":
+			go handleSession(nc, s.opts)
+		default:
+			nc.Reject(ssh.UnknownChannelType, "unsupported channel type")
 		}
-		go handleDirectTCPIP(nc)
 	}
 	conn.Wait()
 }

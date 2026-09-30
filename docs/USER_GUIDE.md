@@ -1,7 +1,7 @@
 # TunnelTab user guide
 
-> 🚧 **Being written alongside the app.** The terminal (Phase 5) and
-> troubleshooting/FAQ (Phase 7) sections are still to come.
+> 🚧 **Being written alongside the app.** The troubleshooting and FAQ
+> sections arrive with the first release.
 
 ## Contents
 
@@ -120,7 +120,19 @@ ssh-ed25519 SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s
 
 ## Opening a terminal
 
-*(Phase 5)*
+Click **Terminal ↗** on a server. A new browser tab opens with a shell on
+that server, logged in the same way as its tunnels (and reusing the same
+connection when one is open). Open as many as you like, side by side.
+
+- **Copy:** select text, then **Ctrl+Shift+C**. **Paste:** **Ctrl+Shift+V**
+  (or right-click → Paste). Plain **Ctrl+C** stops the running command, as
+  in any terminal.
+- The terminal resizes with the window.
+- When the session ends (you typed `exit`, the connection dropped, or
+  TunnelTab locked), the top bar says why. Press **Enter** or click
+  **Reconnect** to start a new session.
+- **Locking TunnelTab closes all terminals**, so nobody can use an open shell
+  on an unattended PC. Unlock, then reconnect.
 
 ## Services and web UI quick launch
 

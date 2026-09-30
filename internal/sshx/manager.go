@@ -82,6 +82,7 @@ type Manager struct {
 	mu       sync.Mutex
 	servers  map[string]*serverConn
 	forwards map[string]*forward // by service ID; nil value = starting
+	shells   map[*Shell]struct{}
 	closed   bool
 }
 
@@ -103,7 +104,7 @@ func NewManager(cfg Config) *Manager {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}}
+	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, shells: map[*Shell]struct{}{}}
 }
 
 func (m *Manager) emit(e Event) {
@@ -148,6 +149,17 @@ func (m *Manager) StopServer(serverID string) {
 	for _, f := range m.forwardsFor(serverID) {
 		m.StopForward(f.svc.ID)
 	}
+	m.mu.Lock()
+	var shells []*Shell
+	for s := range m.shells {
+		if s.serverID == serverID {
+			shells = append(shells, s)
+		}
+	}
+	m.mu.Unlock()
+	for _, s := range shells {
+		s.Close()
+	}
 }
 
 // StopAll stops every forward (and so every connection). The Manager stays
@@ -185,6 +197,7 @@ func (m *Manager) Close() {
 	for _, id := range ids {
 		m.StopForward(id)
 	}
+	m.CloseShells()
 }
 
 // --- Server connections -----------------------------------------------------
@@ -492,6 +505,7 @@ func (sc *serverConn) watch(client *ssh.Client) bool {
 }
 
 // failServer stops all forwards of a server that can't be reconnected.
+// (Terminals end by themselves when their connection drops.)
 func (m *Manager) failServer(serverID string, err error) {
 	for _, f := range m.forwardsFor(serverID) {
 		m.stopForward(f.svc.ID, StateFailed, err)

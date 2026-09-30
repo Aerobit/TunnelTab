@@ -3,9 +3,9 @@
 **Your servers, one click away.** A portable SSH terminal and web-UI launcher
 for your own VPSs — no install, no accounts, no cloud.
 
-> 🚧 **Status: early development.** The project scaffold is in place; the app
-> itself is being built in phases (see [PLAN.md](PLAN.md)). Nothing below works
-> yet — this README describes the finished v1.
+> 🚧 **Status: in development, not yet released.** Tunnels, the dashboard and
+> the in-browser terminal work; hardening and the first release are next
+> (see [PLAN.md](PLAN.md)).
 
 ## What it does
 
@@ -18,6 +18,23 @@ for your own VPSs — no install, no accounts, no cloud.
 - **Secure by design** — secrets live in a vault encrypted with your master
   password; server fingerprints are verified; everything stays on `127.0.0.1`.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="TunnelTab dashboard: projects with servers and their web apps; two tunnels running" width="820">
+</p>
+
+| | |
+|---|---|
+| ![In-browser SSH terminal](docs/images/terminal.png) | ![Confirming a new server's fingerprint](docs/images/fingerprint.png) |
+| **Terminal** — a real SSH shell in a browser tab | **Fingerprint check** — nothing is sent until you confirm the server |
+| ![Adding a server](docs/images/add-server.png) | ![Settings](docs/images/settings.png) |
+| **Add a server** — agent, stored key, key file or password | **Settings** — auto-lock, master password, confirmed servers |
+| ![First run](docs/images/setup.png) | ![Unlock](docs/images/unlock.png) |
+| **First run** — choose a master password | **Unlock** — everything stays encrypted until you do |
+
+<sub>Screenshots use made-up demo data (see [docs/images](docs/images/README.md)).</sub>
+
 ## Quick start
 
 1. Download the latest `tunneltab-<version>.zip` from
@@ -27,7 +44,7 @@ for your own VPSs — no install, no accounts, no cloud.
      (if SmartScreen appears: *More info → Run anyway*).
    - **Linux:** `./tunneltab-linux-amd64`
 3. Your browser opens the dashboard. Create a master password, add a server,
-   and click **Terminal** or **Open**.
+   and click **Terminal ↗** or **Open ↗**.
 
 Full instructions: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 

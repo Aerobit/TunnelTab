@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Terminal — TunnelTab</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="vendor/xterm/xterm.css">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="terminal.css">
+</head>
+<body class="terminal-page">
+  <header class="term-bar">
+    <div class="brand"><img src="icon.svg" alt="" width="22" height="22"><span id="term-title">Terminal</span></div>
+    <span id="term-status" class="pill connecting">Connecting…</span>
+    <div class="spacer"></div>
+    <span class="hint term-keys">Copy <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> · Paste <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd></span>
+    <button id="term-reconnect" class="btn primary small" hidden>Reconnect</button>
+  </header>
+  <div id="term-message" class="term-message" hidden></div>
+  <main id="terminal" class="term-view"></main>
+  <script type="module" src="js/terminal.js"></script>
+</body>
+</html>

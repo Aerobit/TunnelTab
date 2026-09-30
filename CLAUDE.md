@@ -43,10 +43,10 @@ one, stop and ask the user instead.
    explicit user confirmation, and the key stored is exactly the one shown
    (`UnknownHostKeyError.Key`); changed keys are blocked. Never use
    `ssh.InsecureIgnoreHostKey()`, even in tests (use `sshtest`).
-7. **No shell is invoked.** SSH is done in-process with `golang.org/x/crypto/ssh`.
-   The only external program launched is the optional system terminal, with
-   arguments passed as a slice (never a command string) and never with a
-   password.
+7. **No local shell is invoked.** SSH is done in-process with
+   `golang.org/x/crypto/ssh`. The only external program launched is the
+   browser opener (`internal/platform`), with arguments passed as a slice.
+   Terminals are closed whenever the vault locks.
 8. **IDs are generated server-side** and all input is validated in
    `internal/model` before use.
 9. **No network access except SSH to the user's servers.** The web UI loads
@@ -59,8 +59,8 @@ one, stop and ask the user instead.
 ## Conventions
 
 - **Go:** standard library first; minimal, well-known dependencies only
-  (in use: `golang.org/x/crypto`; planned: a WebSocket library,
-  `github.com/Microsoft/go-winio`). Ask before adding others.
+  (in use: `golang.org/x/crypto`, `github.com/coder/websocket`; frontend:
+  vendored xterm.js). Ask before adding others.
 - All data changes go through `vault.Update` (which validates and saves
   atomically); never write `vault.enc` or `settings.json` directly — use
   `internal/atomicfile`.

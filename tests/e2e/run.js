@@ -147,6 +147,33 @@ function start(cmd, args, opts) {
   await stolen.close();
   step("tunneled web app can't read the session or call the API");
 
+  // 5b. Terminal in a new tab.
+  const [termPage] = await Promise.all([
+    context.waitForEvent("page"),
+    page.getByRole("button", { name: "Terminal ↗" }).click(),
+  ]);
+  termPage.on("pageerror", (e) => problems.push("terminal pageerror: " + e.message));
+  termPage.on("console", (m) => m.type() === "error" && !m.text().startsWith("Failed to load resource") && problems.push("terminal console: " + m.text()));
+  await termPage.locator("#term-status", { hasText: "Connected" }).waitFor();
+  const termText = () => termPage.locator(".xterm-rows").innerText();
+  const waitTerm = async (want) => {
+    for (let i = 0; i < 100; i++) {
+      if ((await termText()).includes(want)) return;
+      await termPage.waitForTimeout(50);
+    }
+    throw new Error("terminal never showed " + JSON.stringify(want) + ":\n" + (await termText()));
+  };
+  await waitTerm("Welcome to the fake shell");
+  assert.strictEqual(await termPage.title(), "Demo VPS — TunnelTab");
+  await termPage.keyboard.type("echo hello from the browser");
+  await termPage.keyboard.press("Enter");
+  await waitTerm("hello from the browser\n");
+  await termPage.keyboard.type("size");
+  await termPage.keyboard.press("Enter");
+  await waitTerm("x");
+  await termPage.screenshot({ path: `${OUT}/07-terminal.png` });
+  step("terminal opens in a new tab and runs commands");
+
   // 6. Settings shows the confirmed server.
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("heading", { name: "Settings" }).waitFor();
@@ -170,15 +197,26 @@ function start(cmd, args, opts) {
   // 7. Lock / unlock; the tunnel keeps running.
   await page.getByRole("button", { name: "Lock" }).click();
   await page.getByRole("heading", { name: "Unlock TunnelTab" }).waitFor();
+  await termPage.locator("#term-message", { hasText: "TunnelTab was locked" }).waitFor();
+  await termPage.screenshot({ path: `${OUT}/08-terminal-locked.png` });
   await page.getByLabel("Master password").fill("wrong password");
   await page.getByRole("button", { name: "Unlock" }).click();
   await page.getByText("wrong master password").waitFor();
-  await shot("07-unlock-wrong");
+  await shot("09-unlock-wrong");
   await page.waitForFunction(() => document.querySelector("button[type=submit]")?.textContent === "Unlock", null, { timeout: 5000 });
   await page.getByLabel("Master password").fill("a brand new passphrase");
   await page.getByRole("button", { name: "Unlock" }).click();
   await page.locator(".pill.active").waitFor();
   step("lock and unlock (rate-limited retry), tunnel still running");
+
+  // Reconnect the terminal after unlocking.
+  await termPage.getByRole("button", { name: "Reconnect" }).click();
+  await termPage.locator("#term-status", { hasText: "Connected" }).waitFor();
+  await termPage.keyboard.type("exit 7");
+  await termPage.keyboard.press("Enter");
+  await termPage.locator("#term-message", { hasText: "exited with code 7" }).waitFor();
+  await termPage.close();
+  step("locking closed the terminal; it reconnects after unlock; exit code shown");
 
   // 8. Reload keeps the session.
   await page.reload();

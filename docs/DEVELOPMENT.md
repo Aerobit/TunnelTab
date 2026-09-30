@@ -67,6 +67,7 @@ behind it:
 
 ```bash
 go run ./internal/devtools/fakessh      # prints host, port, username, password
+                                        # -port 2222 for a fixed port, -demo for a realistic prompt
 go run ./cmd/tunneltab --no-browser     # in a second terminal
 ```
 
@@ -90,6 +91,11 @@ node run.js
 
 CI runs it on every push (job *Browser end-to-end*); the screenshots are
 attached to the run as an artifact. Run it after any dashboard change.
+
+### README screenshots
+
+`node readme-shots.js` (same folder) regenerates `docs/images/*.png` with
+made-up demo data. Run it when the UI changes and commit the images.
 
 ## Building the portable package
 

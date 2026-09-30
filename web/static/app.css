@@ -22,6 +22,7 @@
 }
 
 * { box-sizing: border-box; }
+html { background: var(--bg); }
 [hidden] { display: none !important; }
 
 body {

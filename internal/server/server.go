@@ -74,6 +74,8 @@ type Server struct {
 
 	pendingMu   sync.Mutex
 	pendingKeys map[string]pendingKey
+
+	terms terminals
 }
 
 // New creates a Server. It opens the vault if one exists (locked).
@@ -102,6 +104,7 @@ func New(cfg Config) (*Server, error) {
 		launchTokens: map[[32]byte]time.Time{},
 		sessions:     map[[32]byte]time.Time{},
 		pendingKeys:  map[string]pendingKey{},
+		terms:        terminals{pending: map[[32]byte]*sshx.Shell{}},
 	}
 	s.mgr = sshx.NewManager(sshx.Config{
 		Targets: s.target,
@@ -131,8 +134,9 @@ func (s *Server) SetAddr(addr net.Addr) {
 	s.addrMu.Unlock()
 }
 
-// Close stops all tunnels and connections.
+// Close stops all tunnels, terminals and connections.
 func (s *Server) Close() {
+	s.closePendingTerminals()
 	s.mgr.Close()
 	s.events.close()
 }
@@ -263,7 +267,15 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "+
+		styleSrc := "'self'"
+		if r.URL.Path == "/terminal.html" {
+			// xterm.js creates <style> elements for colours and cell sizes.
+			// Allowing inline *styles* (never scripts) on this page only is
+			// the smallest exception that lets it render. Terminal output is
+			// drawn as text, not HTML, so it can't inject markup either way.
+			styleSrc = "'self' 'unsafe-inline'"
+		}
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src "+styleSrc+"; img-src 'self' data:; "+
 			"font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
@@ -367,6 +379,9 @@ func (s *Server) onVaultLocked() {
 	if closeTunnels {
 		s.mgr.StopAll()
 	}
+	// Open terminals are live shells on your servers: always close them.
+	s.closePendingTerminals()
+	s.mgr.CloseShells()
 	s.pendingMu.Lock()
 	s.pendingKeys = map[string]pendingKey{}
 	s.pendingMu.Unlock()

@@ -33,8 +33,10 @@ private reporting instead: the repository's **Security** tab →
 | Other devices on your network using your tunnels | Tunnels listen on `127.0.0.1` only. |
 | Which servers you use leaking from the folder | Server addresses and fingerprints are only stored inside the encrypted vault; there is no plain-text `known_hosts` file. |
 | Credentials lingering in the SSH engine | The engine asks the vault for credentials on each connect and drops them once connected. While the vault is locked, dropped connections wait ("paused") instead of reusing stored credentials. |
-| Command injection | SSH runs inside the app; no shell is ever used. |
-| Supply-chain / CDN compromise of the UI | All web assets are bundled in the executable; nothing is loaded from the internet. |
+| Command injection | SSH runs inside the app; no local shell is ever used. |
+| An open terminal on an unattended PC | Locking (manually or automatically) closes every terminal. |
+| Someone else attaching to your terminal | A terminal is connected with a one-time ticket that expires after 30 seconds, only from the dashboard's own origin; unused tickets close their shell. |
+| Supply-chain / CDN compromise of the UI | All web assets, including xterm.js, are bundled in the executable; nothing is loaded from the internet. The terminal page allows inline *styles* (xterm.js needs them) but never inline scripts. |
 
 ### Not protected against
 
