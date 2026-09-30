@@ -518,6 +518,14 @@ func TestChangedHostKeyNeedsExplicitReplace(t *testing.T) {
 	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": m["token"]}, 400)
 	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": m["token"], "replace": true}, 200)
 	h.mustCall("POST", "/api/servers/"+serverID+"/test", nil, 200)
+
+	// Forgetting the key means the next connection asks again.
+	addr := model.HostKeyAddress(sshSrv.Host, sshSrv.Port)
+	h.mustCall("POST", "/api/hostkeys/forget", map[string]string{"host": addr}, 204)
+	h.mustCall("POST", "/api/hostkeys/forget", map[string]string{"host": addr}, 404)
+	if m := h.mustCall("POST", "/api/servers/"+serverID+"/test", nil, http.StatusConflict); m["error"] != "unknown_host_key" {
+		t.Fatalf("got %v", m)
+	}
 }
 
 func TestSSHErrors(t *testing.T) {
@@ -535,6 +543,35 @@ func TestSSHErrors(t *testing.T) {
 		t.Fatalf("got %v", m)
 	}
 	h.mustCall("POST", "/api/services/"+model.NewID()+"/start", nil, 404)
+}
+
+func TestEditingServerOnlyRestartsWhenConnectionChanges(t *testing.T) {
+	h := ready(t)
+	sshSrv, serverID, svcID := sshSetup(t, h)
+	h.srv.currentVault().Update(func(d *model.Data) error {
+		_, err := d.SetHostKey(model.HostKeyAddress(sshSrv.Host, sshSrv.Port), sshSrv.HostKey.PublicKey())
+		return err
+	})
+	h.mustCall("POST", "/api/services/"+svcID+"/start", nil, 200)
+	edit := func(name, password string) {
+		h.mustCall("PUT", "/api/servers/"+serverID, map[string]any{
+			"name": name, "host": sshSrv.Host, "port": sshSrv.Port, "username": "tester",
+			"auth": map[string]string{"type": "password", "password": password},
+		}, 200)
+	}
+
+	edit("renamed", "") // blank password = keep the saved one
+	if len(h.srv.mgr.Forwards()) != 1 {
+		t.Fatal("renaming a server closed its tunnel")
+	}
+	edit("renamed", sshPassword) // a newly entered password (even the same) is still the same login
+	if len(h.srv.mgr.Forwards()) != 1 {
+		t.Fatal("re-entering the same password closed the tunnel")
+	}
+	edit("renamed", "Different-Pw-1") // login changed
+	if len(h.srv.mgr.Forwards()) != 0 {
+		t.Fatal("changing the login kept the old connection's tunnel")
+	}
 }
 
 func TestLockClosesTunnelsWhenConfigured(t *testing.T) {

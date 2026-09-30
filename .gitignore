@@ -16,3 +16,7 @@ coverage.*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Browser end-to-end test
+/tests/e2e/node_modules/
+/tests/e2e/screenshots/

@@ -60,6 +60,37 @@ port to your PC:
 
 `data/` is git-ignored, so dev vaults are never committed.
 
+## Trying the dashboard without a VPS
+
+`internal/devtools/fakessh` runs a local SSH server with a demo web page
+behind it:
+
+```bash
+go run ./internal/devtools/fakessh      # prints host, port, username, password
+go run ./cmd/tunneltab --no-browser     # in a second terminal
+```
+
+Add a server with the printed details (password login), confirm the
+printed fingerprint, then add a service with the printed remote port.
+
+## Browser end-to-end test
+
+`tests/e2e/run.js` drives the real program in headless Chromium: vault,
+project, server, fingerprint, service, opening through the tunnel,
+security checks, password change, lock/unlock, quit. It fails on any
+JavaScript error or CSP violation and saves screenshots to
+`tests/e2e/screenshots/`.
+
+```bash
+cd tests/e2e
+npm ci
+npx playwright install --with-deps chromium   # once; drop --with-deps without admin rights
+node run.js
+```
+
+CI runs it on every push (job *Browser end-to-end*); the screenshots are
+attached to the run as an artifact. Run it after any dashboard change.
+
 ## Building the portable package
 
 ```bash

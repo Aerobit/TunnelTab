@@ -1,0 +1,11 @@
+{
+  "name": "tunneltab-e2e",
+  "private": true,
+  "description": "Browser end-to-end test for the TunnelTab dashboard (development only; not part of the app).",
+  "scripts": {
+    "test": "node run.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

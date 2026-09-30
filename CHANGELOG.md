@@ -7,6 +7,18 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Dashboard (`web/static`): first-run setup with strength meter, unlock with
+  rate-limit countdown, projects/servers/services with drag-to-move, live
+  tunnel status, one-click Open, fingerprint confirmation (with an explicit
+  warning flow for changed keys), settings (auto-lock, master password,
+  confirmed servers), lock and quit.
+- `POST /api/hostkeys/forget` to remove a confirmed fingerprint.
+- `fakessh` development server and a Playwright browser walkthrough
+  (`tests/e2e`), also run in CI.
+
+### Changed
+- Editing a server only restarts its tunnels when the address, username or
+  login changes (a rename keeps them running).
 - Local web server and JSON API (`internal/server`): one-time launch links,
   bearer-token sessions, Host/Origin/Sec-Fetch-Site checks, strict security
   headers, unlock rate limiting, host-key confirmation flow, live event

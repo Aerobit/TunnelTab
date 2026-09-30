@@ -71,8 +71,9 @@ one, stop and ask the user instead.
 - Per-OS code goes in `internal/platform` using build tags / `_windows.go`,
   `_linux.go` files.
 - **Frontend:** vanilla JS (ES modules) + CSS. No frameworks, no bundlers, no
-  inline `<script>` or `on*=` attributes, no `innerHTML` with untrusted data
-  (use `textContent` / DOM APIs).
+  inline `<script>`, `on*=` or `style=` attributes (the CSP blocks them), no
+  `innerHTML` — build DOM with `h()` from `web/static/js/dom.js`. After any
+  dashboard change, run the browser test (`tests/e2e`, see DEVELOPMENT.md).
 - **Tests:** every package has tests; SSH tests use the in-process test SSH
   server in `internal/sshx/sshtest`, never a real host. Security checks (auth, Host/Origin, redaction)
   have their own tests.

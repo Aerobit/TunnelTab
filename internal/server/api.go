@@ -52,6 +52,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("POST /api/services/{id}/start", s.handleStartService)
 	a("POST /api/services/{id}/stop", s.handleStopService)
 	a("POST /api/hostkeys/confirm", s.handleConfirmHostKey)
+	a("POST /api/hostkeys/forget", s.handleForgetHostKey)
 }
 
 // --- JSON helpers -----------------------------------------------------------
@@ -421,13 +422,20 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.ID = r.PathValue("id")
-	var out model.Server
-	if err := s.update(func(d *model.Data) (err error) { out, err = d.UpdateServer(in); return }); err != nil {
+	var old, out model.Server
+	if err := s.update(func(d *model.Data) (err error) {
+		old, _ = d.Server(in.ID)
+		out, err = d.UpdateServer(in)
+		return
+	}); err != nil {
 		s.writeDataError(w, err)
 		return
 	}
-	// Address or credentials may have changed: drop the old connection.
-	s.mgr.StopServer(out.ID)
+	// If the address, username or login changed, the open connection (and
+	// its tunnels) no longer matches: close it. A rename keeps it running.
+	if old.Host != out.Host || old.Port != out.Port || old.Username != out.Username || old.Auth != out.Auth {
+		s.mgr.StopServer(out.ID)
+	}
 	writeJSON(w, http.StatusOK, out.Public())
 }
 
@@ -605,6 +613,29 @@ func (s *Server) writeSSHError(w http.ResponseWriter, err error) {
 	default:
 		writeError(w, http.StatusBadGateway, "ssh_error", err.Error())
 	}
+}
+
+// handleForgetHostKey removes the confirmed keys for an address; the next
+// connection asks for confirmation again.
+func (s *Server) handleForgetHostKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Host string `json:"host"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := s.update(func(d *model.Data) error {
+		if len(d.HostKeysFor(req.Host)) == 0 {
+			return model.ErrNotFound
+		}
+		d.ForgetHostKey(req.Host)
+		return nil
+	}); err != nil {
+		s.writeDataError(w, err)
+		return
+	}
+	s.log.Info("host key forgotten", "address", req.Host)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleConfirmHostKey(w http.ResponseWriter, r *http.Request) {

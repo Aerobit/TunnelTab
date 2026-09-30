@@ -1,8 +1,7 @@
 # TunnelTab user guide
 
-> 🚧 **Being written alongside the app.** Sections are filled in as each
-> feature is built (see [PLAN.md](../PLAN.md)). Headings below show what the
-> finished guide will cover.
+> 🚧 **Being written alongside the app.** The terminal (Phase 5) and
+> troubleshooting/FAQ (Phase 7) sections are still to come.
 
 ## Contents
 
@@ -37,19 +36,51 @@ Nothing is installed on your computer; to remove TunnelTab, delete the folder.
 
 ## First run: creating your master password
 
-*(Phase 4)*
+The first time TunnelTab opens, it asks you to choose a **master password**.
+It encrypts everything TunnelTab stores — servers, keys, passwords and
+confirmed fingerprints — in `data/vault.enc`.
+
+- Use at least 8 characters; a passphrase of several words is best. The
+  meter shows roughly how strong it is.
+- **It cannot be recovered.** If you forget it, delete the `data` folder and
+  start again (your servers' own passwords and keys are unaffected).
 
 ## Unlocking and locking
 
-*(Phase 4)*
+Each time TunnelTab starts, enter your master password to unlock it.
+
+- **Lock** (top bar) locks immediately. TunnelTab also locks by itself after
+  15 minutes without use (change this in Settings).
+- While locked, running tunnels keep working. If a connection drops while
+  locked, it waits and reconnects after you unlock. To close all tunnels on
+  lock instead, turn on *Close all tunnels when TunnelTab locks* in Settings.
+- After several wrong passwords you have to wait a little before trying
+  again (up to 30 seconds).
 
 ## Projects
 
-*(Phase 4)*
+Projects group your servers — for example *Personal*, *Client A*,
+*Production*. Use **+ Project** in the top bar; **Edit** on a project renames
+it or deletes it (deleting also deletes its servers and services).
+
+Drag a server onto another project to move it.
 
 ## Adding a server
 
-*(Phase 4)*
+On a project, click **+ Server** and fill in:
+
+| Field | Example |
+|---|---|
+| Name | Web VPS |
+| Host | `vps.example.com` or `203.0.113.10` |
+| SSH port | `22` |
+| Username | `root` |
+| Log in with | see [Choosing how to log in](#choosing-how-to-log-in-keys-agent-or-password) |
+
+When you save, TunnelTab connects once to check everything. The first time,
+it shows the server's fingerprint for you to confirm (see below). A green
+dot next to a server means it's connected; **Test** checks it again at any
+time.
 
 ## Choosing how to log in: keys, agent or password
 
@@ -93,11 +124,43 @@ ssh-ed25519 SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s
 
 ## Services and web UI quick launch
 
-*(Phase 4)*
+A **service** is a web app (or any TCP port) running on your server, such as
+n8n, Portainer or Grafana. On a server, click **+ Service**:
+
+| Field | Meaning |
+|---|---|
+| Name | What you call it, e.g. *n8n* |
+| Remote host | Where the app listens, as seen from the server — usually `127.0.0.1`. Use a Docker container name or internal IP if the app runs elsewhere. |
+| Remote port | The app's port on the server, e.g. `5678` |
+| Local port | The port on your PC. Leave blank for a stable automatic port, or pick one (e.g. `5678`) |
+| Protocol | `http` or `https` — how the browser should open it |
+| Path | Added to the address, e.g. `/admin` |
+| Start automatically | Start this tunnel every time you unlock |
+
+Then:
+
+- **Open ↗** starts the tunnel if needed and opens the app in a new tab.
+- **Start** / **Stop** controls the tunnel without opening anything.
+- While running, the service shows its address (e.g. `localhost:23720`) —
+  click it to open the app again. The label shows *Running*,
+  *Reconnecting…* or *Waiting for unlock*.
+
+Tunnels only listen on your own PC (`127.0.0.1`); other devices on your
+network can't use them.
+
+*"The local port is already in use"* means another program uses that port:
+choose another local port, or leave it blank.
 
 ## Settings
 
-*(Phase 4)*
+**Settings** (top bar):
+
+- **Lock after inactivity** — Never, 5 min … 4 hours (default 15 min).
+- **Close all tunnels when TunnelTab locks** — off by default.
+- **Dashboard port** — default 47811; applies after restarting TunnelTab.
+- **Change master password** — enter the current one and the new one twice.
+- **Confirmed servers** — every fingerprint you've trusted. **Forget**
+  removes one, so the next connection asks you to confirm again.
 
 ## Backups and moving to another PC
 

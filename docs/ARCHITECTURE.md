@@ -4,7 +4,7 @@ How TunnelTab is put together, and where to make changes.
 
 > **Living document.** Sections marked *(planned)* describe the design from
 > [PLAN.md](../PLAN.md) and are replaced with the real details as each phase
-> is built. Current phase: **3 — local server and API complete**.
+> is built. Current phase: **4 — dashboard complete**.
 
 ## Overview
 
@@ -54,7 +54,10 @@ TunnelTab is one Go executable. When started it:
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
 | `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events | Done (terminal WebSocket: Phase 5) |
 | `internal/platform` | Open browser, error dialog, instance file | Done (system terminal: Phase 5) |
-| `web` | Embeds `web/static/` into the binary (`web.Files`) | Scaffold |
+| `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
+| `web/static` | The dashboard (vanilla JS modules + CSS) | Done |
+| `internal/devtools/fakessh` | Local SSH server + demo web app for trying the dashboard (not shipped) | Done |
+| `tests/e2e` | Browser walkthrough (Playwright) against the real program | Done |
 | `scripts/mkzip` | Build helper: zips the portable folder | Done |
 
 Each package has a `doc.go` describing its job in more detail.
@@ -255,6 +258,7 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `POST /services/{id}/start` | | `{forward, url}` |
 | `POST /services/{id}/stop` | | |
 | `POST /hostkeys/confirm` | `{token, replace}` | stores the pending key |
+| `POST /hostkeys/forget` | `{host}` | removes a confirmed key (asks again next time) |
 
 Status codes: 400 invalid input, 401 not signed in / wrong password, 403
 failed security check, 404 not found, 409 conflict (incl. host-key
@@ -283,6 +287,34 @@ sent). Each `data:` line is JSON:
 A `: ping` comment is sent every 20 s. Slow clients get `resync` instead of
 blocking the app.
 
+## Dashboard (`web/static`)
+
+Plain ES modules, no framework and no build step; the files are embedded in
+the executable as-is.
+
+| File | Job |
+|---|---|
+| `index.html` | Page shell; loads `app.css` and `js/app.js` |
+| `js/api.js` | Sign-in (launch link → session in localStorage), `api()` fetch wrapper (`ApiError` with `code`), event stream reader with reconnect |
+| `js/dom.js` | `h(tag, attrs, …children)` element builder — text is always inserted as text nodes, never `innerHTML` |
+| `js/dialogs.js` | Native `<dialog>` modals (`openDialog`, `confirmDialog`), form `field`/`checkbox`, toasts |
+| `js/forms.js` | Project/server/service/settings dialogs; `withHostKeys(fn)` runs a connecting call and handles fingerprint confirmation |
+| `js/app.js` | Screens (signed out, setup, unlock, dashboard), state, rendering, live events, actions |
+| `app.css` | All styling (dark GitHub palette from local.browser) |
+
+**Flow:** `start()` signs in → `GET /api/state` → setup, unlock or
+dashboard. The dashboard renders from `GET /api/data`; events update tunnel
+states in place (`tunnel`), trigger a re-fetch (`data`, `resync`) or switch
+to the unlock screen (`vault`). Screens the user may be typing into are
+never redrawn by a background refresh.
+
+**Rules** (the CSP enforces the first):
+- No inline `<script>`, no `on…=` attributes, no `style=` attributes.
+- No `innerHTML`; build DOM with `h()`.
+- Pages opened for services get no `window.opener` access.
+- Messages that must be seen while a dialog is open go *inside* the dialog
+  (toasts sit behind the modal backdrop).
+
 ## Startup and shutdown (`cmd/tunneltab`)
 
 1. Resolve and create the data folder; open the log; load settings.
@@ -305,7 +337,9 @@ Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`.
 | Add a command-line flag | `cmd/tunneltab/main.go` |
 | Add an API endpoint | `internal/server/api.go` (`routes` + handler) and a test in `server_test.go`; document it in the API table above |
 | Add an event type | `internal/server/events.go` and the events table above |
-| Change the dashboard look | `web/static/` *(from Phase 4)* |
+| Change the dashboard look | `web/static/app.css` |
+| Add a dialog or form | `web/static/js/forms.js` (use `openDialog` + `field`) |
+| Change what the dashboard shows | `web/static/js/app.js` (`renderProject`, `renderServer`, `renderService`) |
 | Add a field to servers/services | `internal/model`, then the API in `internal/server`, then `web/static` |
 | Change encryption parameters | `internal/vault/format.go` — `DefaultParams` for new vaults; bounds for reading |
 | Change the vault file format | `internal/vault/format.go` — bump `formatVersion`, keep reading old files |
