@@ -189,3 +189,51 @@ Testing environment: everything through phase 6 is built and tested in the dev c
 ## 10. Out of scope for v1 (possible later)
 
 System tray icon · macOS build · Linux ARM build · "Open in system terminal" (would need TunnelTab's host-key checks and vault keys handed to an external ssh) · jump hosts / ProxyJump · SOCKS proxy mode · SFTP file browser · import from local.browser or `~/.ssh/config` · code signing.
+
+## 11. v0.2.0 — "Update now" (planned)
+
+Today **Check for updates** only reports a newer version and links to the
+release page; you download, extract and replace the files yourself. v0.2.0
+adds an **Update now** button that does this for you, without giving up the
+"no network unless you click" rule.
+
+### What the user sees
+
+1. Settings → **Check for updates** → "TunnelTab 0.2.0 is available" + release notes link + **Update now**.
+2. **Update now** asks first: "TunnelTab will restart. This closes 3 terminals and 2 tunnels. Update now?"
+3. Progress: downloading → verifying → installing → restarting.
+4. The new version opens a fresh dashboard tab; you unlock with your master password as usual. Your `data` folder is untouched.
+5. If anything fails, nothing is replaced and the message says why (e.g. "the download is not signed by TunnelTab — not installed").
+
+### Decisions
+
+| Topic | Decision |
+|---|---|
+| When | Only when the user clicks **Update now**. Still no automatic checks or downloads. |
+| Source | Only `github.com/Aerobit/TunnelTab` release assets (same host check as today's links). |
+| Trust | Releases are **signed**. The release workflow signs `SHA256SUMS.txt` with an Ed25519 private key stored as a GitHub Actions secret and publishes `SHA256SUMS.txt.sig`. The app has the public key built in and installs only a zip whose SHA-256 matches a correctly signed `SHA256SUMS.txt`. Go standard library only (`crypto/ed25519`, `crypto/sha256`) — no new dependencies. |
+| Versions | Only installs a version newer than the running one (no downgrades); dev builds can't self-update. |
+| Replacing a running exe | Download and verify into `<exe folder>/.update/`, rename the running `tunneltab.exe` → `tunneltab.exe.old`, move the new exe into place (Linux: keep mode 0755), start it, then quit. The new process waits for the old one to release the port/single-instance lock. |
+| Rollback | On the next start, if the new version started fine it deletes `*.old` and `.update/`. If it fails to start, the old exe is put back. |
+| What is replaced | Only the executable for the current OS (and the bundled `README.txt`/notices). Never the `data` folder. |
+| Refuse to update when | Running from a temp/read-only folder, the exe folder isn't writable, or the vault is mid-save. |
+| Size limits | Download capped (e.g. 100 MB) and time-limited; zip extraction guards against path traversal and zip bombs. |
+
+### One-time setup (you)
+
+1. Generate the signing key pair (I'll give exact commands; the private key never goes into the repo).
+2. Add the private key as a GitHub secret (click-by-click steps provided).
+3. The public key is committed in `internal/update`.
+
+**Note:** v0.1.0 has no updater, so the step from 0.1.0 → 0.2.0 is done by hand
+one last time. From 0.2.0 onward, **Update now** works.
+
+### Build phases
+
+| # | Phase | Done when |
+|---|---|---|
+| U1 | **Release signing** — signing tool (`scripts/` or `internal/devtools`), release workflow signs `SHA256SUMS.txt`, key setup documented in `docs/RELEASE_CHECKLIST.md` / `DEVELOPMENT.md` | A test tag produces `SHA256SUMS.txt.sig` that verifies with the committed public key |
+| U2 | **Download + verify** (`internal/update`) — fetch assets, size/time limits, signature + hash check, safe unzip | Tests with a fake release server: good release accepted; bad signature, wrong hash, wrong host, oversized, older version, path-traversal zip all rejected |
+| U3 | **Install + restart** — rename/swap, relaunch, wait for port, cleanup of `.old`, rollback on failed start | Tests on Linux in the container; you test on Windows with a real 0.2.0 → 0.2.1 update |
+| U4 | **UI** — Update now button, confirm dialog listing open terminals/tunnels, progress and errors | `tests/e2e` walkthrough with the fake release server |
+| U5 | **Docs + security** — update CLAUDE.md invariant ("never downloads or runs anything" → "only on click, only signed releases"), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE (Updates + FAQ), ARCHITECTURE (API `POST /updates/install`), CHANGELOG | Docs match behaviour; security review of the new code done |
