@@ -104,7 +104,7 @@ func (m *Manager) StartForward(svc model.Service) (ForwardStatus, error) {
 	}
 	f.wg.Add(1)
 	go f.serve()
-	m.log.Info("forward started", "service", svc.ID, "localPort", f.port, "remote", net.JoinHostPort(svc.RemoteHost, strconv.Itoa(svc.RemotePort)))
+	m.log.Info("forward started", "service", svc.ID, "localPort", f.port)
 	st := f.status()
 	m.emit(Event{Kind: "forward", ID: svc.ID, ServerID: svc.ServerID, State: st.State, LocalPort: f.port})
 	return st, nil
@@ -227,7 +227,7 @@ func (f *forward) handle(local net.Conn) {
 	target := net.JoinHostPort(f.svc.RemoteHost, strconv.Itoa(f.svc.RemotePort))
 	remote, err := client.Dial("tcp", target)
 	if err != nil {
-		f.m.log.Info("forward: remote connect failed", "service", f.svc.ID, "target", target, "error", err)
+		f.m.log.Info("forward: remote connect failed", "service", f.svc.ID)
 		return
 	}
 	defer remote.Close()

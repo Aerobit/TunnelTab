@@ -8,6 +8,8 @@ importantly — what it does **not** protect against.
 > [PLAN.md](../PLAN.md). Exact parameters are confirmed here as each part is
 > built.
 
+The most recent pre-release review is in [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
+
 ## Reporting a vulnerability
 
 Please **don't open a public issue** for security problems. Use GitHub's
@@ -28,8 +30,9 @@ private reporting instead: the repository's **Security** tab →
 | Connecting to an impostor server (MITM) | Host keys are checked against the keys you confirmed, stored inside the encrypted vault. A new server shows its fingerprint for you to confirm, and no password or key is sent to it before you do. A changed key is blocked. The client asks the server for the confirmed key type, so a server can't dodge the check by offering a different kind of key. |
 | Malicious websites attacking the local dashboard | The server listens on `127.0.0.1` only. Signing in needs a one-time link (valid 2 minutes) that only the program itself opens; it is exchanged for a session token that the dashboard sends in a header on every request. There is no login cookie, so other sites can't make your browser act on your behalf (CSRF). Requests with a wrong `Host` (DNS rebinding), a cross-origin `Origin` or a cross-site `Sec-Fetch-Site` are refused; no CORS headers are ever sent; a strict Content Security Policy blocks injected scripts. |
 | A compromised server's web UI (opened through a tunnel) attacking TunnelTab | Tunneled apps run on other ports of `127.0.0.1`. Browsers share *cookies* across those ports, which is why TunnelTab doesn't use a cookie: its session token is stored per-origin (port included), so tunneled pages can't read it, and their requests are refused by the Origin checks. |
-| Guessing the master password through the dashboard | Each wrong password doubles the wait before the next attempt (1 s, 2 s, 4 s … up to 30 s). |
-| Another user on the same PC opening your dashboard | A second launch gets a new login link only by proving it can read `data/instance.json`, which is in your owner-only data folder. |
+| Guessing the master password through the dashboard | Password checks (unlock and change password) run one at a time, and each wrong password doubles the wait before the next attempt (1 s, 2 s, 4 s … up to 30 s). |
+| Another user on the same PC opening your dashboard | A second launch gets a new login link only by proving it can read `data/instance.json`. The data folder is restricted to your account: an owner-only access list on Windows (current user + SYSTEM), mode 0700 on Linux. |
+| Log files revealing which servers you use | Logs record internal IDs and error types only — never hostnames, addresses, fingerprints, tokens or secrets (enforced by a test). |
 | Other devices on your network using your tunnels | Tunnels listen on `127.0.0.1` only. |
 | Which servers you use leaking from the folder | Server addresses and fingerprints are only stored inside the encrypted vault; there is no plain-text `known_hosts` file. |
 | Credentials lingering in the SSH engine | The engine asks the vault for credentials on each connect and drops them once connected. While the vault is locked, dropped connections wait ("paused") instead of reusing stored credentials. |
@@ -46,6 +49,9 @@ private reporting instead: the repository's **Security** tab →
   `password123` safe. Use a long passphrase.
 - **A compromised server.** TunnelTab secures the connection, not what's on
   the other end.
+- **Permissions on FAT32/exFAT drives.** These file systems have no
+  permissions, so the data folder can't be restricted there (the vault is
+  still encrypted).
 - **Other local users on a shared PC reaching your tunnels.** Tunnels bind to
   `127.0.0.1`, which other accounts on the *same* machine can connect to while
   a tunnel is open. TunnelTab is designed for single-user PCs.

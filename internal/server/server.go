@@ -66,6 +66,10 @@ type Server struct {
 	vault    *vault.Vault // nil until created
 	settings config.Settings
 
+	// unlockMu makes password attempts (unlock, change password) run one at
+	// a time, so parallel requests can't bypass the back-off.
+	unlockMu sync.Mutex
+
 	authMu        sync.Mutex
 	launchTokens  map[[32]byte]time.Time // hash → expiry
 	sessions      map[[32]byte]time.Time // hash → created
@@ -97,7 +101,7 @@ func New(cfg Config) (*Server, error) {
 		cfg:          cfg,
 		log:          cfg.Logger,
 		now:          cfg.Now,
-		static:       http.FileServer(http.FS(staticFS)),
+		static:       noDirListing(http.FileServer(http.FS(staticFS))),
 		events:       newBroker(),
 		settings:     cfg.Settings,
 		hosts:        map[string]bool{},
@@ -255,6 +259,18 @@ func (s *Server) unlockSucceeded() {
 }
 
 // --- HTTP plumbing ----------------------------------------------------------
+
+// noDirListing answers 404 for folder paths (other than "/") instead of
+// listing their files.
+func noDirListing(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // Handler returns the complete HTTP handler.
 func (s *Server) Handler() http.Handler {

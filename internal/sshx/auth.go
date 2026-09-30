@@ -72,11 +72,19 @@ func authMethods(auth model.Auth, baseDir string) ([]ssh.AuthMethod, io.Closer, 
 }
 
 func readKeyFile(path string) ([]byte, error) {
-	f, err := os.Open(path)
+	// Check before opening: opening a pipe or device could block forever.
+	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("private key file not found: %s", path)
 		}
+		return nil, fmt.Errorf("can't read private key file %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
 		return nil, fmt.Errorf("can't read private key file %s: %w", path, err)
 	}
 	defer f.Close()

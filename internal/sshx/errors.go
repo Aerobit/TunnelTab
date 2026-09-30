@@ -81,3 +81,32 @@ func friendlyDialError(address string, err error) error {
 		return fmt.Errorf("can't connect to %s: %w", address, err)
 	}
 }
+
+// ErrorKind classifies an error into a short, fixed label for log files.
+// Logs live unencrypted in the data folder, so they record the kind of
+// problem and IDs only, never hostnames, addresses or server messages; the
+// dashboard shows the full error to the user.
+func ErrorKind(err error) string {
+	var unknown *UnknownHostKeyError
+	var changed *HostKeyChangedError
+	switch {
+	case err == nil:
+		return ""
+	case errors.As(err, &unknown):
+		return "unknown_host_key"
+	case errors.As(err, &changed):
+		return "host_key_changed"
+	case errors.Is(err, ErrAuthFailed):
+		return "auth_failed"
+	case errors.Is(err, ErrKeyPassphrase):
+		return "key_passphrase"
+	case errors.Is(err, ErrPortInUse):
+		return "port_in_use"
+	case errors.Is(err, ErrPaused):
+		return "vault_locked"
+	case errors.Is(err, ErrClosed):
+		return "shut_down"
+	default:
+		return "connection_error"
+	}
+}

@@ -185,6 +185,7 @@ function start(cmd, args, opts) {
   await page.getByLabel("Repeat new").fill("a brand new passphrase");
   await page.getByRole("button", { name: "Change master password" }).click();
   await page.locator(".inline-status.bad").filter({ hasText: "wrong" }).waitFor();
+  await page.waitForTimeout(1200); // a wrong password starts a 1 s delay
   await page.getByLabel("Current").fill("correct horse battery staple");
   await page.getByLabel("New", { exact: true }).fill("a brand new passphrase");
   await page.getByLabel("Repeat new").fill("a brand new passphrase");

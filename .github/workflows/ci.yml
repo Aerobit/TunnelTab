@@ -41,6 +41,22 @@ jobs:
         if: runner.os == 'Linux'
         run: bash scripts/build.sh ci
 
+  lint:
+    name: Static analysis and vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   e2e:
     name: Browser end-to-end
     runs-on: ubuntu-latest

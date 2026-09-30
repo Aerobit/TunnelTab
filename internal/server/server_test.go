@@ -44,14 +44,14 @@ type harness struct {
 	bodies []string
 }
 
-func newHarness(t *testing.T) *harness {
+func newHarness(t *testing.T, opts ...func(*Config)) *harness {
 	t.Helper()
 	dir := t.TempDir()
 	if err := config.EnsureDataDir(dir); err != nil {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, quit: make(chan struct{}, 1)}
-	s, err := New(Config{
+	cfg := Config{
 		Paths:           config.PathsFor(dir),
 		BaseDir:         dir,
 		Settings:        config.DefaultSettings(),
@@ -60,7 +60,11 @@ func newHarness(t *testing.T) *harness {
 		OnQuit:          func() { h.quit <- struct{}{} },
 		UnlockBaseDelay: 200 * time.Millisecond,
 		Version:         "test",
-	})
+	}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +340,10 @@ func TestVaultLifecycle(t *testing.T) {
 	h.mustCall("POST", "/api/vault/unlock", map[string]string{"password": masterPW}, 200)
 
 	// Change password.
+	// A wrong current password is rate-limited like unlocking.
 	h.mustCall("POST", "/api/vault/password", map[string]string{"old": "wrong one", "new": "another long password"}, 401)
+	h.mustCall("POST", "/api/vault/password", map[string]string{"old": masterPW, "new": "another long password"}, http.StatusTooManyRequests)
+	time.Sleep(250 * time.Millisecond)
 	h.mustCall("POST", "/api/vault/password", map[string]string{"old": masterPW, "new": "tiny"}, 400)
 	h.mustCall("POST", "/api/vault/password", map[string]string{"old": masterPW, "new": "another long password"}, 200)
 	h.mustCall("POST", "/api/vault/lock", nil, 200)

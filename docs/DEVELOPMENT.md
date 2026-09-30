@@ -97,6 +97,24 @@ attached to the run as an artifact. Run it after any dashboard change.
 `node readme-shots.js` (same folder) regenerates `docs/images/*.png` with
 made-up demo data. Run it when the UI changes and commit the images.
 
+## Security checks
+
+```bash
+go run honnef.co/go/tools/cmd/staticcheck@latest ./...   # static analysis
+go run golang.org/x/vuln/cmd/govulncheck@latest ./...    # known vulnerabilities
+go test -run '^$' -fuzz '^FuzzServerValidate$' -fuzztime 60s ./internal/model
+go test -run '^$' -fuzz '^FuzzServiceValidate$' -fuzztime 60s ./internal/model
+go test -run '^$' -fuzz '^FuzzParse$' -fuzztime 60s ./internal/vault
+go test -run '^$' -fuzz '^FuzzAPIBodies$' -fuzztime 60s ./internal/server
+```
+
+The fuzz tests' seed inputs also run as ordinary tests in `go test ./...`.
+Inputs that ever made a fuzz test fail are saved under `testdata/fuzz/` —
+commit them, they become permanent regression tests. CI runs staticcheck
+and govulncheck on every push (job *Static analysis and vulnerabilities*).
+
+The last review is recorded in [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
+
 ## Building the portable package
 
 ```bash
@@ -152,8 +170,11 @@ on both Ubuntu and Windows:
 
 1. `gofmt` check (Ubuntu)
 2. `go vet ./...`
-3. `go test -race ./...`
+3. `go test -race ./...` (includes the Windows-only permission test on Windows)
 4. Full portable build (Ubuntu)
+
+plus two more jobs: *Static analysis and vulnerabilities* (staticcheck,
+govulncheck) and *Browser end-to-end* (see above).
 
 ## Making a release
 

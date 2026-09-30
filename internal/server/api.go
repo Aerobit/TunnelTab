@@ -270,10 +270,9 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "no_vault", "create a vault first")
 		return
 	}
-	if wait := s.unlockWait(); wait > 0 {
-		writeJSON(w, http.StatusTooManyRequests, map[string]any{
-			"error": "too_many_attempts", "message": "too many wrong passwords: wait a moment", "retryAfterMs": wait.Milliseconds(),
-		})
+	s.unlockMu.Lock()
+	defer s.unlockMu.Unlock()
+	if s.tooManyAttempts(w) {
 		return
 	}
 	err := v.Unlock([]byte(req.Password))
@@ -317,10 +316,18 @@ func (s *Server) handleVaultPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "no_vault", "create a vault first")
 		return
 	}
+	s.unlockMu.Lock()
+	defer s.unlockMu.Unlock()
+	if s.tooManyAttempts(w) {
+		return
+	}
 	err := v.ChangePassword([]byte(req.Old), []byte(req.New))
 	switch {
 	case errors.Is(err, vault.ErrWrongPassword):
-		writeError(w, http.StatusUnauthorized, "wrong_password", "the current master password is wrong")
+		s.unlockFailed()
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "wrong_password", "message": "the current master password is wrong", "retryAfterMs": s.unlockWait().Milliseconds(),
+		})
 	case errors.Is(err, vault.ErrWeakPassword):
 		writeError(w, http.StatusBadRequest, "weak_password", err.Error())
 	case err != nil:
@@ -329,6 +336,18 @@ func (s *Server) handleVaultPassword(w http.ResponseWriter, r *http.Request) {
 		s.log.Info("master password changed")
 		writeJSON(w, http.StatusOK, map[string]string{"status": "changed"})
 	}
+}
+
+// tooManyAttempts answers 429 if a wrong-password delay is still running.
+func (s *Server) tooManyAttempts(w http.ResponseWriter) bool {
+	wait := s.unlockWait()
+	if wait <= 0 {
+		return false
+	}
+	writeJSON(w, http.StatusTooManyRequests, map[string]any{
+		"error": "too_many_attempts", "message": "too many wrong passwords: wait a moment", "retryAfterMs": wait.Milliseconds(),
+	})
+	return true
 }
 
 // autoStart starts services marked "start after unlocking".
@@ -344,7 +363,7 @@ func (s *Server) autoStart() {
 	})
 	for _, svc := range services {
 		if _, err := s.mgr.StartForward(svc); err != nil {
-			s.log.Info("auto-start failed", "service", svc.ID, "error", err)
+			s.log.Info("auto-start failed", "service", svc.ID, "reason", sshx.ErrorKind(err))
 			s.events.publish(tunnelEvent{Type: "tunnel", Event: sshx.Event{
 				Kind: "forward", ID: svc.ID, ServerID: svc.ServerID, State: sshx.StateFailed, Error: err.Error(),
 			}})
@@ -637,7 +656,7 @@ func (s *Server) handleForgetHostKey(w http.ResponseWriter, r *http.Request) {
 		s.writeDataError(w, err)
 		return
 	}
-	s.log.Info("host key forgotten", "address", req.Host)
+	s.log.Info("host key forgotten")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -671,6 +690,6 @@ func (s *Server) handleConfirmHostKey(w http.ResponseWriter, r *http.Request) {
 	s.pendingMu.Lock()
 	delete(s.pendingKeys, req.Token)
 	s.pendingMu.Unlock()
-	s.log.Info("host key confirmed", "address", p.address, "fingerprint", ssh.FingerprintSHA256(p.key), "replaced", p.changed)
+	s.log.Info("host key confirmed", "replaced", p.changed)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "confirmed", "fingerprint": ssh.FingerprintSHA256(p.key)})
 }

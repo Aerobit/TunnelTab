@@ -825,3 +825,23 @@ func TestStopAllAndTestConnection(t *testing.T) {
 		t.Fatalf("got %v, want ErrAuthFailed", err)
 	}
 }
+
+func TestKeyFileMustBeRegular(t *testing.T) {
+	dir := t.TempDir()
+	_, _, err := authMethods(model.Auth{Type: model.AuthKeyFile, KeyPath: dir}, "")
+	if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestErrorKindHasNoDetails(t *testing.T) {
+	err := friendlyDialError("secret-host.example.com:22", errors.New("dial tcp 203.0.113.9:22: refused"))
+	if k := ErrorKind(err); k != "connection_error" {
+		t.Fatalf("kind %q", k)
+	}
+	for _, e := range []error{ErrAuthFailed, ErrKeyPassphrase, ErrPortInUse, ErrPaused, &UnknownHostKeyError{}, &HostKeyChangedError{}} {
+		if k := ErrorKind(e); strings.ContainsAny(k, " .:") || k == "" {
+			t.Errorf("ErrorKind(%T) = %q", e, k)
+		}
+	}
+}

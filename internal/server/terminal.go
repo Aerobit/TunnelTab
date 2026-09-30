@@ -32,9 +32,13 @@ import (
 
 const terminalReadLimit = 64 * 1024
 
-// terminalTicketTTL is how long a terminal ticket stays valid (a variable so
-// tests can shorten it).
-var terminalTicketTTL = 30 * time.Second
+// terminalTicketTTL is how long a terminal ticket stays valid, and
+// terminalTouchEvery how often typing in a terminal postpones auto-lock
+// (variables so tests can shorten them).
+var (
+	terminalTicketTTL  = 30 * time.Second
+	terminalTouchEvery = 10 * time.Second
+)
 
 type terminals struct {
 	mu      sync.Mutex
@@ -150,14 +154,22 @@ func (s *Server) pumpTerminal(ctx context.Context, c *websocket.Conn, shell *ssh
 		}
 	}()
 
-	// Browser → shell.
+	// Browser → shell. Typing counts as activity, so auto-lock doesn't close
+	// a terminal that is in use.
 	inputDone := make(chan struct{})
 	go func() {
 		defer close(inputDone)
+		var lastTouch time.Time
 		for {
 			typ, data, err := c.Read(ctx)
 			if err != nil {
 				return
+			}
+			if time.Since(lastTouch) >= terminalTouchEvery {
+				if v := s.currentVault(); v != nil {
+					v.Touch()
+				}
+				lastTouch = time.Now()
 			}
 			if typ == websocket.MessageBinary {
 				if _, err := shell.Write(data); err != nil {

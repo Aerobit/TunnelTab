@@ -64,6 +64,11 @@ func run() int {
 	}
 	defer logCloser.Close()
 	log.Info("starting", "version", version, "dataDir", dataDir)
+	if err := config.RestrictToOwner(dataDir); err != nil {
+		// E.g. a FAT32/exFAT USB stick has no permissions. The vault is
+		// encrypted regardless; say so in the log and carry on.
+		log.Warn("could not restrict the data folder to this user", "error", err)
+	}
 
 	settings, err := config.LoadSettings(paths.Settings)
 	if err != nil {
@@ -122,6 +127,7 @@ func run() int {
 	httpSrv := &http.Server{
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 	go func() {

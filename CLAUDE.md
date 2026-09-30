@@ -68,12 +68,17 @@ one, stop and ask the user instead.
   `internal/model/public.go`.
 - Errors: wrap with context (`fmt.Errorf("unlock vault: %w", err)`); never
   include secret values.
+- **Logs** (unencrypted, in the data folder): IDs and `sshx.ErrorKind(err)`
+  only — never hostnames, addresses, fingerprints, tokens, secrets or raw
+  SSH errors. `TestLogsContainNoSecretsOrAddresses` must keep passing.
 - Per-OS code goes in `internal/platform` using build tags / `_windows.go`,
   `_linux.go` files.
 - **Frontend:** vanilla JS (ES modules) + CSS. No frameworks, no bundlers, no
   inline `<script>`, `on*=` or `style=` attributes (the CSP blocks them), no
   `innerHTML` — build DOM with `h()` from `web/static/js/dom.js`. After any
   dashboard change, run the browser test (`tests/e2e`, see DEVELOPMENT.md).
+- **Security checks:** staticcheck, govulncheck and the fuzz tests (see
+  docs/DEVELOPMENT.md → Security checks). Keep `testdata/fuzz/` inputs.
 - **Tests:** every package has tests; SSH tests use the in-process test SSH
   server in `internal/sshx/sshtest`, never a real host. Security checks (auth, Host/Origin, redaction)
   have their own tests.

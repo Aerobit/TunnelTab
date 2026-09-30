@@ -6,6 +6,22 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- Logs no longer record server addresses, tunnel targets or connection
+  error text — only IDs and error types (enforced by a test).
+- The data folder is restricted to the current user (Windows access list,
+  Linux 0700).
+- Password checks run one at a time; changing the master password is
+  rate-limited like unlocking.
+- Key files must be regular files; folder paths no longer list files;
+  idle timeout for dashboard connections.
+- Fuzz tests for validation, the vault parser and the API; staticcheck and
+  govulncheck in CI. Review recorded in docs/SECURITY_REVIEW.md.
+
+### Fixed
+- Typing in a terminal now counts as activity, so auto-lock doesn't close
+  a terminal in use.
+
 ### Added
 - In-browser SSH terminal: "Terminal ↗" opens a tab with xterm.js over a
   WebSocket (one-time 30-second tickets), sharing the server's connection;

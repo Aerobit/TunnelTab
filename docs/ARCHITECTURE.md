@@ -4,7 +4,7 @@ How TunnelTab is put together, and where to make changes.
 
 > **Living document.** Sections marked *(planned)* describe the design from
 > [PLAN.md](../PLAN.md) and are replaced with the real details as each phase
-> is built. Current phase: **5 — terminal complete**.
+> is built. Current phase: **6 — hardening complete**.
 
 ## Overview
 
@@ -198,6 +198,12 @@ browser ──▶ 127.0.0.1:<port> ──▶ forward.handle ──▶ client.Dia
   (0 = never, max 1440, default 15), `closeTunnelsOnLock` (default false).
   A missing file means defaults; an invalid file is reported and defaults are used.
 - Logs: `data/logs/tunneltab.log`, rotated at 1 MiB, keeping 3 old files.
+  **Log policy:** IDs and error types (`sshx.ErrorKind`) only — never
+  hostnames, addresses, fingerprints, tokens or secrets, because logs are
+  not encrypted. `TestLogsContainNoSecretsOrAddresses` enforces it.
+- Permissions: `RestrictToOwner` (`perm_windows.go` / `perm_unix.go`) limits
+  the data folder to the current user at startup (a warning is logged where
+  the file system has no permissions).
 - Data folder: `--data`, else `data/` next to the executable (under `go run`,
   `./data`). `EnsureDataDir` creates it (owner-only) and reports
   `ErrNotWritable` clearly.

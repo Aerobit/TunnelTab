@@ -252,7 +252,7 @@ func (m *Manager) acquire(serverID string) (*serverConn, error) {
 	sc.initErr = err
 	close(sc.ready)
 	if err != nil {
-		m.log.Info("connect failed", "server", serverID, "error", err)
+		m.log.Info("connect failed", "server", serverID, "reason", ErrorKind(err))
 		m.mu.Lock()
 		if m.servers[serverID] == sc {
 			delete(m.servers, serverID)
@@ -379,7 +379,7 @@ func (sc *serverConn) dial() error {
 	}
 	sc.client, sc.closer, sc.state, sc.err = client, closer, StateConnected, nil
 	sc.mu.Unlock()
-	m.log.Info("connected", "server", sc.id, "address", addr)
+	m.log.Info("connected", "server", sc.id)
 	m.emit(Event{Kind: "server", ID: sc.id, ServerID: sc.id, State: StateConnected})
 	m.emitForwards(sc.id)
 	return nil
@@ -449,7 +449,7 @@ func (sc *serverConn) supervise() {
 				delay = 0
 				continue
 			case permanent(err):
-				m.log.Info("giving up on server", "server", sc.id, "error", err)
+				m.log.Info("giving up on server", "server", sc.id, "reason", ErrorKind(err))
 				sc.setState(StateFailed, err)
 				m.failServer(sc.id, err)
 				return
