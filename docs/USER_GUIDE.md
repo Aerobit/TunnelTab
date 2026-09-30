@@ -107,7 +107,11 @@ up, copy the whole `tunneltab` folder. *(More detail in Phase 7.)*
 
 ## Quitting
 
-*(Phase 3)*
+Use **Quit** in the dashboard. This closes all tunnels and stops TunnelTab.
+Closing the browser tab does **not** stop it: your tunnels keep running.
+
+To get back to the dashboard after closing the tab, just start TunnelTab
+again: it notices it's already running and opens the dashboard in a new tab.
 
 ## Troubleshooting
 

@@ -797,3 +797,31 @@ func TestUnreachableServer(t *testing.T) {
 		t.Fatal("network errors must be retryable")
 	}
 }
+
+func TestStopAllAndTestConnection(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	host, port := backend(t, "x")
+	m := newManager(t, e, nil)
+
+	if err := m.TestConnection(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "test connection to close", func() bool { return srv.ActiveConnections() == 0 })
+
+	m.StartForward(service(s.ID, host, port))
+	m.StartForward(service(s.ID, host, port))
+	m.StopAll()
+	if len(m.Forwards()) != 0 {
+		t.Fatal("StopAll left forwards running")
+	}
+	if _, err := m.StartForward(service(s.ID, host, port)); err != nil {
+		t.Fatalf("manager unusable after StopAll: %v", err)
+	}
+
+	e.setAuth(s.ID, model.Auth{Type: model.AuthPassword, Password: "nope-nope"})
+	s2 := e.addServer(srv, model.Auth{Type: model.AuthPassword, Password: "nope-nope"})
+	if err := m.TestConnection(s2.ID); !errors.Is(err, ErrAuthFailed) {
+		t.Fatalf("got %v, want ErrAuthFailed", err)
+	}
+}

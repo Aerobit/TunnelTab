@@ -18,6 +18,7 @@ func TestPathsFor(t *testing.T) {
 		p.VaultBackup: "vault.enc.bak",
 		p.Settings:    "settings.json",
 		p.LogDir:      "logs",
+		p.Instance:    "instance.json",
 	}
 	for path, name := range want {
 		if filepath.Dir(path) != p.DataDir || filepath.Base(path) != name {

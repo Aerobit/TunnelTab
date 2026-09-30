@@ -150,6 +150,27 @@ func (m *Manager) StopServer(serverID string) {
 	}
 }
 
+// StopAll stops every forward (and so every connection). The Manager stays
+// usable. Called when the vault locks with "close tunnels on lock" enabled.
+func (m *Manager) StopAll() {
+	for _, f := range m.allForwards() {
+		m.StopForward(f.svc.ID)
+	}
+}
+
+// TestConnection connects to a server (or reuses its open connection) to
+// check the address, host key and login, then releases it. It returns the
+// same errors as StartForward, so it can drive the host-key confirmation for
+// servers that have no services yet.
+func (m *Manager) TestConnection(serverID string) error {
+	sc, err := m.acquire(serverID)
+	if err != nil {
+		return err
+	}
+	m.release(sc)
+	return nil
+}
+
 // Close stops all forwards and connections. The Manager can't be used again.
 func (m *Manager) Close() {
 	m.mu.Lock()

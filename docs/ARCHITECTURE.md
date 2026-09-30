@@ -4,7 +4,7 @@ How TunnelTab is put together, and where to make changes.
 
 > **Living document.** Sections marked *(planned)* describe the design from
 > [PLAN.md](../PLAN.md) and are replaced with the real details as each phase
-> is built. Current phase: **2 — SSH engine complete**.
+> is built. Current phase: **3 — local server and API complete**.
 
 ## Overview
 
@@ -45,15 +45,15 @@ TunnelTab is one Go executable. When started it:
 
 | Path | Responsibility | Status |
 |---|---|---|
-| `cmd/tunneltab` | Entry point: flags (`--version`, `--data`), startup, shutdown | Scaffold |
+| `cmd/tunneltab` | Entry point: flags, startup, single instance, browser, shutdown | Done |
 | `internal/config` | Portable paths, `settings.json`, rotated logs | Done |
 | `internal/vault` | Master-password KDF, encrypted file format, atomic save + backup, auto-lock | Done |
 | `internal/model` | Project / Server / Service types, IDs, validation, CRUD operations, secret-free public view | Done |
 | `internal/atomicfile` | Crash-safe file writes (temp file → fsync → rename) | Done |
 | `internal/sshx` | Connection pool, auth, host-key checks, forwards, keep-alive, reconnect | Done (PTY sessions: Phase 5) |
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
-| `internal/server` | HTTP server, session auth, Host/Origin checks, API, events, terminal WS | *(planned, Phase 3)* |
-| `internal/platform` | Open browser, launch system terminal, single instance | *(planned, Phases 3 & 5)* |
+| `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events | Done (terminal WebSocket: Phase 5) |
+| `internal/platform` | Open browser, error dialog, instance file | Done (system terminal: Phase 5) |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Scaffold |
 | `scripts/mkzip` | Build helper: zips the portable folder | Done |
 
@@ -66,6 +66,7 @@ data/
 ├── vault.enc        all projects, servers, services and secrets (encrypted)
 ├── vault.enc.bak    previous version, kept by every save
 ├── settings.json    non-secret preferences
+├── instance.json    port + secret of the running copy (deleted on exit)
 └── logs/            rotated logs; never contain secrets
 ```
 
@@ -198,15 +199,102 @@ browser ──▶ 127.0.0.1:<port> ──▶ forward.handle ──▶ client.Dia
   `./data`). `EnsureDataDir` creates it (owner-only) and reports
   `ErrNotWritable` clearly.
 
-## HTTP API and events *(planned, Phase 3)*
+## Local server (`internal/server`)
 
-To be documented when implemented: endpoints, request/response shapes, event
-types sent to the dashboard, and the terminal WebSocket protocol.
+### Signing in
 
-## Startup and shutdown *(planned, Phase 3)*
+```
+tunneltab ──opens──▶ http://127.0.0.1:47811/?launch=<one-time token, 2 min>
+dashboard JS: POST /api/session {launch} ──▶ {session}   (stored in localStorage)
+every API call: Authorization: Bearer <session>
+```
 
-To be documented: single-instance detection, launch token → cookie flow,
-Quit handling, closing tunnels on exit.
+- **No cookies.** Cookies for 127.0.0.1 are sent to *every* port, including
+  tunneled web apps, and browsers treat all ports as one "site". The session
+  token lives in the dashboard's own storage (separate per port) and is sent
+  as a header, so cross-site request forgery is impossible by design.
+- Sessions last until the program exits (max 20; oldest dropped).
+- Launch and session tokens are 256-bit random, stored only as SHA-256 hashes,
+  and never logged.
+
+### Checks on every request (`guard`)
+
+1. `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding).
+2. `Origin`, when present, must be that same address; POST/PUT/DELETE must
+   have one (exception: `/api/instance/launch`, which uses the instance secret).
+3. `Sec-Fetch-Site` other than `same-origin`/`none` is refused.
+4. `OPTIONS` is refused; no CORS headers are ever sent.
+5. Security headers: strict CSP (no inline scripts), `nosniff`, `DENY`
+   framing, `no-referrer`, COOP/CORP `same-origin`; API responses `no-store`.
+6. Request bodies are limited to 1 MiB; unknown JSON fields are rejected.
+
+### API reference
+
+All paths are under `/api`; all except the first two need a session.
+Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
+
+| Method & path | Body | Result |
+|---|---|---|
+| `POST /session` | `{launch}` | `{session}` |
+| `POST /instance/launch` | header `X-TunnelTab-Instance` | `{url}` (used by a second launch) |
+| `GET /state` | | `{vault: none\|locked\|unlocked, version, unlockWaitMs, minPasswordLen}` |
+| `GET /events` | | event stream (see below) |
+| `GET /settings` · `PUT /settings` | `Settings` | settings (+ `restartRequired` if the port changed) |
+| `POST /quit` | | stops tunnels and exits |
+| `POST /vault/create` | `{password}` | 400 `weak_password`, 409 `vault_exists` |
+| `POST /vault/unlock` | `{password}` | 401 `wrong_password`, 429 `too_many_attempts` (+ `retryAfterMs`) |
+| `POST /vault/lock` | | |
+| `POST /vault/password` | `{old, new}` | |
+| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus]}` |
+| `POST /projects` · `PUT`/`DELETE /projects/{id}` | `{name, description}` | project; delete cascades |
+| `POST /servers` · `PUT`/`DELETE /servers/{id}` | `model.Server` | `PublicServer` (never secrets); blank secrets are kept on update |
+| `POST /servers/{id}/move` | `{projectId}` | |
+| `POST /servers/{id}/clear-passphrase` | | |
+| `POST /servers/{id}/test` | | connects once (drives host-key confirmation) |
+| `POST /services` · `PUT`/`DELETE /services/{id}` | `model.Service` | service |
+| `POST /services/{id}/start` | | `{forward, url}` |
+| `POST /services/{id}/stop` | | |
+| `POST /hostkeys/confirm` | `{token, replace}` | stores the pending key |
+
+Status codes: 400 invalid input, 401 not signed in / wrong password, 403
+failed security check, 404 not found, 409 conflict (incl. host-key
+confirmation needed, port in use), 413 too large, 423 vault locked, 429 wait,
+502 SSH problem (`auth_failed`, `ssh_error`).
+
+**Host-key confirmation:** `start` or `test` returns 409 with
+`error: unknown_host_key` (or `host_key_changed`), `address`, `keyType`,
+`fingerprint` and a `token`. The key stays on the server; after the user
+confirms, the dashboard sends `{token}` (plus `replace: true` for a changed
+key) to `/hostkeys/confirm` and retries. Tokens expire after 10 minutes and
+are cleared when the vault locks.
+
+### Events (`GET /api/events`)
+
+Server-Sent Events format, read with `fetch` (so the session header can be
+sent). Each `data:` line is JSON:
+
+| `type` | Fields | Meaning |
+|---|---|---|
+| `tunnel` | `kind` (server/forward), `id`, `serverId`, `state`, `error`, `localPort` | SSH engine state change |
+| `vault` | `state` (locked/unlocked) | lock state changed |
+| `data` | | stored data changed: re-fetch `/api/data` |
+| `resync` | | events were dropped: re-fetch everything |
+
+A `: ping` comment is sent every 20 s. Slow clients get `resync` instead of
+blocking the app.
+
+## Startup and shutdown (`cmd/tunneltab`)
+
+1. Resolve and create the data folder; open the log; load settings.
+2. If `data/instance.json` exists, ask that copy for a new launch link
+   (`/api/instance/launch` with its secret), open it and exit.
+3. Listen on 127.0.0.1:`port` (settings, `--port`); if busy, any free port.
+4. Write `instance.json` (port + random secret), create the server, open the
+   browser at the launch link (`--no-browser` prints it instead).
+5. Run until Quit, Ctrl+C or SIGTERM; then stop all tunnels, end event
+   streams, shut the HTTP server down and delete `instance.json`.
+
+Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`.
 
 ## Where to change what
 
@@ -215,6 +303,8 @@ Quit handling, closing tunnels on exit.
 | Change the build or packaging | `scripts/build.sh`, `scripts/build.ps1`, `packaging/` |
 | Change CI or releases | `.github/workflows/` |
 | Add a command-line flag | `cmd/tunneltab/main.go` |
+| Add an API endpoint | `internal/server/api.go` (`routes` + handler) and a test in `server_test.go`; document it in the API table above |
+| Add an event type | `internal/server/events.go` and the events table above |
 | Change the dashboard look | `web/static/` *(from Phase 4)* |
 | Add a field to servers/services | `internal/model`, then the API in `internal/server`, then `web/static` |
 | Change encryption parameters | `internal/vault/format.go` — `DefaultParams` for new vaults; bounds for reading |

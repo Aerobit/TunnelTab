@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **Phase 2 complete** (SSH engine). Next: Phase 3 — local server and API.
+> Status: **Phase 3 complete** (local server and API). Next: Phase 4 — dashboard UI.
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -131,7 +131,7 @@ All IDs are generated server-side. All fields validated in `internal/model` befo
 | Secrets leaking at runtime | No secrets in command lines, env vars, logs, API responses or error messages. Secrets only returned to the SSH engine, never to the browser. |
 | Unattended PC | Auto-lock after inactivity (default 15 min, configurable). Lock wipes the in-memory key; running tunnels keep running unless "close all on lock" is enabled. |
 | Server impersonation (MITM) | Confirmed host keys stored inside the encrypted vault (a plain `known_hosts` file would reveal which servers you use). First connection shows the fingerprint and asks you to confirm; no credentials are sent before that. Changed key → hard block with explanation and a deliberate "replace key" action. |
-| Malicious website attacking the local server | Bind 127.0.0.1 only; per-launch random token → HttpOnly SameSite=Strict cookie; reject bad `Host` (DNS rebinding) and `Origin` (CSRF / cross-site WebSocket); strict CSP; no CORS. |
+| Malicious website attacking the local server | Bind 127.0.0.1 only; one-time launch link → session token kept by the dashboard and sent as a header (not a cookie: cookies for 127.0.0.1 go to every port, including tunneled apps); reject bad `Host` (DNS rebinding), cross-origin `Origin` and cross-site `Sec-Fetch-Site`; strict CSP; no CORS. |
 | Other devices on the network using tunnels | Forwards bind to 127.0.0.1 only. |
 | Command injection | No shell is ever invoked for SSH. Only the optional "system terminal" launch runs an external program, with arguments passed as an array and validated. |
 | Brute-force on the unlock screen | Delay/backoff after failed attempts (the KDF cost already makes offline guessing slow). |
@@ -159,7 +159,7 @@ Each phase ends with tests passing and docs updated (`ARCHITECTURE.md` grows wit
 | 0 ✅ | **Scaffold** — repo layout, go.mod, build scripts, CI, docs skeletons, CLAUDE.md/AGENTS.md | `build.sh` produces empty binaries for all targets |
 | 1 ✅ | **Config + vault + model** | Create/unlock/change-password/lock round-trip; tamper & wrong-password tests |
 | 2 ✅ | **SSH engine** — auth methods, host-key checks, connection pool, forwards, reconnect | Integration tests against an in-process test SSH server: forward traffic, bad host key blocked, reconnect works |
-| 3 | **Local server + API** — session auth, Host/Origin checks, REST, event stream | Security tests: requests without cookie / wrong Host / wrong Origin rejected |
+| 3 ✅ | **Local server + API** — session auth, Host/Origin checks, REST, event stream | Security tests: requests without a session / wrong Host / wrong Origin rejected |
 | 4 | **Dashboard UI** — port local.browser design; unlock, projects, servers, services, fingerprint prompt, settings | Full manual walkthrough works in Chrome + Firefox |
 | 5 | **Terminal** — xterm.js ↔ PTY over WebSocket; system-terminal launcher | Interactive shell against test server; resize works |
 | 6 | **Hardening** — security review, fuzz validation inputs, log redaction check, race detector | `go test -race ./...` clean; review findings fixed |

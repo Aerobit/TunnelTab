@@ -7,6 +7,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Local web server and JSON API (`internal/server`): one-time launch links,
+  bearer-token sessions, Host/Origin/Sec-Fetch-Site checks, strict security
+  headers, unlock rate limiting, host-key confirmation flow, live event
+  stream, settings, and Quit.
+- Program startup (`cmd/tunneltab`): portable data folder, logging,
+  single instance (a second launch opens the running dashboard),
+  `--no-browser`, `--port`, clean shutdown.
+- `internal/platform`: open the browser, error dialogs on Windows,
+  instance file.
 - SSH engine (`internal/sshx`): one shared connection per server, login by
   password (incl. keyboard-interactive), key file, vault-stored key or
   ssh-agent (Linux socket / Windows OpenSSH agent), host-key confirmation

@@ -35,7 +35,8 @@ source ~/.bashrc && go version
 
 | Task | Command |
 |---|---|
-| Run a dev build | `go run ./cmd/tunneltab` |
+| Run a dev build | `go run ./cmd/tunneltab` (data goes to `./data`) |
+| Run without opening a browser | `go run ./cmd/tunneltab --no-browser` (prints the login link) |
 | Show the version | `go run ./cmd/tunneltab --version` |
 | All tests | `go test ./...` |
 | Tests + race detector (what CI runs) | `go test -race ./...` (needs a C compiler; skip `-race` if you have none) |
@@ -43,6 +44,21 @@ source ~/.bashrc && go version
 | Static checks | `go vet ./...` |
 | Formatting check | `gofmt -l .` (prints nothing when clean) |
 | Format everything | `gofmt -w .` |
+
+## Trying the app from the dev container
+
+The dev container has no browser, but VS Code can forward the dashboard
+port to your PC:
+
+1. In the VS Code terminal: `go run ./cmd/tunneltab --no-browser`
+2. VS Code shows "Your application running on port 47811 is available" —
+   or open the **Ports** panel and forward 47811.
+3. Open the printed link on your PC, replacing `127.0.0.1` with `localhost`
+   if the forwarded address uses it (both are accepted). The link works once
+   and for 2 minutes; run the program again (while it's running) for a new one.
+4. Stop with Ctrl+C or the Quit button.
+
+`data/` is git-ignored, so dev vaults are never committed.
 
 ## Building the portable package
 

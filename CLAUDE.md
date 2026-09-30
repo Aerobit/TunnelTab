@@ -32,10 +32,12 @@ one, stop and ask the user instead.
    backup. Never write `vault.enc` in place.
 4. **Everything listens on 127.0.0.1 only** — the dashboard server and every
    port forward. Never `0.0.0.0`, `::` or an empty host.
-5. **Every HTTP request and WebSocket is authenticated** (session cookie) and
-   checked: `Host` must be the exact loopback address+port (DNS rebinding);
-   state-changing requests and WebSockets must have a same-origin `Origin`
-   (CSRF). No CORS headers, ever.
+5. **Every API request and WebSocket is authenticated** with the bearer
+   session token (never a cookie: cookies for 127.0.0.1 are sent to every
+   port, including tunneled web apps) and checked: `Host` must be
+   `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding); state-changing
+   requests need a same-origin `Origin`; cross-site `Sec-Fetch-Site` is
+   refused. No CORS headers, ever. Never log launch links or tokens.
 6. **Host keys are verified** against the keys confirmed in the vault
    (`model.Data.KnownHosts`, never a plain-text file). Unknown keys need
    explicit user confirmation, and the key stored is exactly the one shown

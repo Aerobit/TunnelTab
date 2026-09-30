@@ -18,6 +18,7 @@ type Paths struct {
 	VaultBackup string // previous vault, kept by every save
 	Settings    string // non-secret preferences
 	LogDir      string // rotated log files
+	Instance    string // running-instance info (port + secret), removed on exit
 }
 
 // PathsFor returns the standard file locations inside dataDir.
@@ -28,6 +29,7 @@ func PathsFor(dataDir string) Paths {
 		VaultBackup: filepath.Join(dataDir, "vault.enc.bak"),
 		Settings:    filepath.Join(dataDir, "settings.json"),
 		LogDir:      filepath.Join(dataDir, "logs"),
+		Instance:    filepath.Join(dataDir, "instance.json"),
 	}
 }
 

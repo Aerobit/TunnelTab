@@ -1,0 +1,4 @@
+body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; margin: 0; }
+main { max-width: 36rem; margin: 4rem auto; padding: 0 1rem; }
+.note { color: #8b949e; }
+button { font: inherit; padding: .4rem .9rem; border-radius: 6px; border: 1px solid #30363d; background: #21262d; color: inherit; cursor: pointer; }
