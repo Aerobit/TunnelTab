@@ -6,6 +6,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Releases are signed: the release workflow publishes `SHA256SUMS.txt.sig`,
+  an Ed25519 signature of `SHA256SUMS.txt` (groundwork for **Update now**).
+
 ### Changed
 - **Terminal copy and paste work like Windows Terminal:** Ctrl+C copies
   when text is selected (otherwise it still stops the running command),

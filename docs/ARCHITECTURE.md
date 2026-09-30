@@ -53,13 +53,14 @@ TunnelTab is one Go executable. When started it:
 | `internal/sshx` | Connection pool, auth, host-key checks, forwards, terminals (PTY), keep-alive, reconnect | Done |
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
 | `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events, terminal WebSocket | Done |
-| `internal/update` | "Check for updates": asks GitHub's releases/latest API when the user clicks (never automatically), compares versions | Done |
+| `internal/update` | "Check for updates": asks GitHub's releases/latest API when the user clicks (never automatically), compares versions. Release signature format and verification (`signature.go`, for "Update now") | Done (Update now: in progress) |
 | `internal/platform` | Open browser, error dialog, instance file | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
 | `web/static` | The dashboard (vanilla JS modules + CSS) | Done |
 | `internal/devtools/fakessh` | Local SSH server + demo web app for trying the dashboard (not shipped) | Done |
 | `tests/e2e` | Browser walkthrough (Playwright) against the real program | Done |
 | `scripts/mkzip` | Build helper: zips the portable folder | Done |
+| `scripts/signsums` | Release tool: creates the signing key, signs/verifies `SHA256SUMS.txt` | Done |
 
 Each package has a `doc.go` describing its job in more detail.
 
@@ -409,6 +410,7 @@ Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`.
 | `scripts/build.sh`, `scripts/build.ps1` | Build both executables and the portable folder, zip and checksum (identical output) |
 | `scripts/mkzip` | Zips the folder (keeps the Linux binary executable) |
 | `scripts/notices` | Writes `THIRD_PARTY_NOTICES.txt` from the modules compiled in |
+| `scripts/signsums` | Signs `SHA256SUMS.txt` in the release workflow; `genkey` / `verify` for the release key (see DEVELOPMENT.md → Release signing key) |
 | `packaging/README.txt` | Copied into the folder (version stamped in) |
 | `packaging/icon.png` | Windows executable icon (rendered from `web/static/icon.svg`) |
 

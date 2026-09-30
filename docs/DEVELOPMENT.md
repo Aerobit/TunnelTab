@@ -160,7 +160,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for what each package does.
 cmd/tunneltab/     entry point
 internal/          application packages (not importable by other modules)
 web/static/        dashboard assets, embedded into the binary
-scripts/           build scripts and the mkzip helper
+scripts/           build scripts, the mkzip helper and the signsums release tool
 packaging/         files copied into the portable folder
 docs/              documentation
 .github/workflows/ CI (ci.yml) and releases (release.yml)
@@ -192,8 +192,45 @@ Follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). In short:
    git push origin v0.1.0
    ```
 3. `.github/workflows/release.yml` runs the tests, builds
-   `tunneltab-0.1.0.zip`, and publishes it with `SHA256SUMS.txt` as a GitHub
-   Release.
+   `tunneltab-0.1.0.zip`, signs `SHA256SUMS.txt` (see below), and publishes
+   the zip, `SHA256SUMS.txt` and `SHA256SUMS.txt.sig` as a GitHub Release.
+
+### Release signing key
+
+"Update now" (planned for 0.2.0) installs only a zip whose SHA-256 is listed
+in a `SHA256SUMS.txt` signed with TunnelTab's release key. The key is an
+Ed25519 key pair:
+
+- the **private key** is the repository secret `TUNNELTAB_SIGNING_KEY`, used
+  only by the release workflow. It is never committed.
+- the **public key** is `ReleasePublicKey` in
+  `internal/update/signature.go`, built into every TunnelTab.
+
+The release workflow refuses to publish if the secret is missing or doesn't
+match `ReleasePublicKey`. The signature covers a fixed context string plus
+the exact bytes of `SHA256SUMS.txt`; `SHA256SUMS.txt.sig` holds it as one
+base64 line (`internal/update.SignSums` / `VerifySums`).
+
+**Creating the key (once):**
+
+1. In the dev container terminal, from the repo folder:
+   ```bash
+   go run ./scripts/signsums genkey ../tunneltab-signing-key.txt
+   ```
+   This writes the private key **outside the repo** and prints the public key.
+2. On GitHub: repository → *Settings* → *Secrets and variables* → *Actions*
+   → *New repository secret*. Name `TUNNELTAB_SIGNING_KEY`, value: the one
+   line in `tunneltab-signing-key.txt`.
+3. Put the printed public key in `ReleasePublicKey` and commit.
+4. Keep a backup of `tunneltab-signing-key.txt` somewhere safe (e.g. a
+   password manager), then delete the file from the workspace.
+
+**If the private key is lost or leaked:** make a new pair as above and
+release a version with the new public key. Existing installs trust only the
+old key, so that one update has to be done by hand (download the zip).
+
+To check a release by hand:
+`go run ./scripts/signsums verify SHA256SUMS.txt` (next to its `.sig`).
 
 ### What the build adds
 

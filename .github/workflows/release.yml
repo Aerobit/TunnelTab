@@ -26,6 +26,16 @@ jobs:
       - name: Build portable package
         run: bash scripts/build.sh "${GITHUB_REF_NAME}"
 
+      - name: Sign checksums
+        # The private key is the TUNNELTAB_SIGNING_KEY repository secret.
+        # Verifying with the key built into the app catches a secret that
+        # doesn't match internal/update.ReleasePublicKey before publishing.
+        env:
+          TUNNELTAB_SIGNING_KEY: ${{ secrets.TUNNELTAB_SIGNING_KEY }}
+        run: |
+          go run ./scripts/signsums sign dist/SHA256SUMS.txt
+          go run ./scripts/signsums verify dist/SHA256SUMS.txt
+
       - name: Release notes from CHANGELOG.md
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -44,5 +54,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/tunneltab-*.zip dist/SHA256SUMS.txt \
+          gh release create "${GITHUB_REF_NAME}" dist/tunneltab-*.zip dist/SHA256SUMS.txt dist/SHA256SUMS.txt.sig \
             --title "TunnelTab ${GITHUB_REF_NAME}" --notes-file dist/RELEASE_NOTES.md

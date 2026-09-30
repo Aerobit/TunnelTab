@@ -66,6 +66,9 @@ it yourself with `.\scripts\build.ps1 x.y.z`.
 1. Move the `Unreleased` entries in `CHANGELOG.md` under
    `## [x.y.z] - YYYY-MM-DD`; commit and push.
 2. `git tag vx.y.z && git push origin vx.y.z`
-3. The *Release* workflow tests, builds, and publishes the zip,
-   `SHA256SUMS.txt` and the changelog section as a GitHub Release.
+3. The *Release* workflow tests, builds, signs the checksums and publishes
+   the zip, `SHA256SUMS.txt`, `SHA256SUMS.txt.sig` and the changelog section
+   as a GitHub Release. It fails if the `TUNNELTAB_SIGNING_KEY` secret is
+   missing or doesn't match `ReleasePublicKey` (DEVELOPMENT.md → Release
+   signing key).
 4. Check the release page and download link.
