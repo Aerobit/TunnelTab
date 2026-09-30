@@ -11,7 +11,7 @@ the roadmap and what phase the project is in.
 go vet ./...                 # static checks
 go test -race ./...          # all tests (must pass before every commit)
 gofmt -l .                   # must print nothing
-bash scripts/build.sh        # portable folder + zip in dist/
+bash scripts/build.sh        # portable folder + zip in dist/ (keep build.ps1 identical)
 go run ./cmd/tunneltab       # run a dev build
 ```
 

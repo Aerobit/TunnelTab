@@ -3,9 +3,9 @@
 **Your servers, one click away.** A portable SSH terminal and web-UI launcher
 for your own VPSs — no install, no accounts, no cloud.
 
-> 🚧 **Status: in development, not yet released.** Tunnels, the dashboard and
-> the in-browser terminal work; hardening and the first release are next
-> (see [PLAN.md](PLAN.md)).
+[![CI](https://github.com/Aerobit/TunnelTab/actions/workflows/ci.yml/badge.svg)](https://github.com/Aerobit/TunnelTab/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Aerobit/TunnelTab?sort=semver)](https://github.com/Aerobit/TunnelTab/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## What it does
 
@@ -17,6 +17,10 @@ for your own VPSs — no install, no accounts, no cloud.
   USB stick and carry on.
 - **Secure by design** — secrets live in a vault encrypted with your master
   password; server fingerprints are verified; everything stays on `127.0.0.1`.
+- **Log in your way** — SSH agent, a key stored in the vault, a key file, or a
+  password.
+- **Stays up** — tunnels reconnect by themselves after network drops or sleep,
+  and auto-lock keeps an unattended PC safe.
 
 ## Screenshots
 
@@ -37,16 +41,20 @@ for your own VPSs — no install, no accounts, no cloud.
 
 ## Quick start
 
+**Needs:** Windows 10/11 or Linux (64-bit) and any modern browser. Nothing to
+install on your PC or your servers.
+
 1. Download the latest `tunneltab-<version>.zip` from
-   [Releases](https://github.com/Aerobit/TunnelTab/releases) and unzip it anywhere.
+   [Releases](https://github.com/Aerobit/TunnelTab/releases/latest) and
+   **extract** it anywhere (Documents, a USB stick…).
 2. Run it:
    - **Windows:** double-click `tunneltab.exe`
-     (if SmartScreen appears: *More info → Run anyway*).
+     (if SmartScreen appears: *More info → Run anyway* — it isn't code-signed).
    - **Linux:** `./tunneltab-linux-amd64`
 3. Your browser opens the dashboard. Create a master password, add a server,
    and click **Terminal ↗** or **Open ↗**.
 
-Full instructions: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+Full instructions, troubleshooting and FAQ: [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
 ## How it works
 
@@ -65,17 +73,27 @@ Credentials are encrypted with a key derived from your master password
 (Argon2id + AES-256-GCM) and never leave the app. The dashboard server only
 listens on `127.0.0.1` and rejects requests from other websites. Read
 [docs/SECURITY.md](docs/SECURITY.md) for the full threat model — including what
-TunnelTab does **not** protect against.
+TunnelTab does **not** protect against — and
+[docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) for the pre-release review.
 
 ## Building from source
+
+You need [Go](https://go.dev/dl/) 1.27 or newer.
 
 ```bash
 bash scripts/build.sh          # Linux/macOS/WSL
 .\scripts\build.ps1            # Windows PowerShell
 ```
 
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Both produce `dist/tunneltab/` and `dist/tunneltab-<version>.zip`. See
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for tests, the browser test and
+how releases are made. Contributions and AI-assisted edits follow
+[CLAUDE.md](CLAUDE.md).
 
 ## License
 
-[MIT](LICENSE). TunnelTab is the successor to the `local.browser` extension.
+[MIT](LICENSE). Bundled third-party software (Go, x/crypto, x/sys,
+coder/websocket, xterm.js) is listed with its licenses in
+`THIRD_PARTY_NOTICES.txt` inside every release.
+
+TunnelTab is the successor to the `local.browser` browser extension.

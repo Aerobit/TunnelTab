@@ -37,9 +37,30 @@ jobs:
       - name: Test (with race detector)
         run: go test -race ./...
 
-      - name: Build portable package
+      - name: Build portable package (bash)
         if: runner.os == 'Linux'
         run: bash scripts/build.sh ci
+
+      - name: Build portable package (PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build.ps1 ci
+
+      - name: Check the portable folder
+        shell: bash
+        run: |
+          for f in tunneltab.exe tunneltab-linux-amd64 README.txt LICENSE.txt THIRD_PARTY_NOTICES.txt; do
+            test -s "dist/tunneltab/$f" || { echo "missing dist/tunneltab/$f"; exit 1; }
+          done
+          test -s dist/SHA256SUMS.txt
+
+      - name: Upload portable zip (for manual testing)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v5
+        with:
+          name: tunneltab-portable-${{ github.sha }}
+          path: dist/tunneltab-ci.zip
+          retention-days: 14
 
   lint:
     name: Static analysis and vulnerabilities

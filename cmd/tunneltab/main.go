@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -46,6 +47,15 @@ func run() int {
 
 	fail := func(msg string, err error) int {
 		platform.ShowError("TunnelTab", fmt.Sprintf("%s:\n\n%v", msg, err))
+		return 1
+	}
+
+	// Double-clicking the .exe inside the ZIP runs a temporary copy; the
+	// vault would be created in a folder Windows deletes later.
+	if *dataFlag == "" && runtime.GOOS == "windows" && config.RunningFromTempFolder() {
+		platform.ShowError("TunnelTab", "TunnelTab is running from a temporary folder, probably because it was "+
+			"opened from inside the ZIP file.\n\nPlease extract the ZIP first (right-click → Extract All…), then "+
+			"start tunneltab.exe from the extracted folder. Otherwise your data would be lost.")
 		return 1
 	}
 

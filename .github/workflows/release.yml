@@ -26,9 +26,23 @@ jobs:
       - name: Build portable package
         run: bash scripts/build.sh "${GITHUB_REF_NAME}"
 
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # The section for this version, without its heading.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > dist/RELEASE_NOTES.md
+          if ! grep -q '[^[:space:]]' dist/RELEASE_NOTES.md; then
+            echo "CHANGELOG.md has no section for $version"; exit 1
+          fi
+          printf '\n---\nDownload **tunneltab-%s.zip**, extract it, and run tunneltab.exe (Windows) or tunneltab-linux-amd64 (Linux). Verify with SHA256SUMS.txt. See the [user guide](https://github.com/Aerobit/TunnelTab/blob/main/docs/USER_GUIDE.md).\n' "$version" >> dist/RELEASE_NOTES.md
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/tunneltab-*.zip \
-            --title "TunnelTab ${GITHUB_REF_NAME}" --generate-notes
+          gh release create "${GITHUB_REF_NAME}" dist/tunneltab-*.zip dist/SHA256SUMS.txt \
+            --title "TunnelTab ${GITHUB_REF_NAME}" --notes-file dist/RELEASE_NOTES.md

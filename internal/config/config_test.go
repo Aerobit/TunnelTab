@@ -210,3 +210,24 @@ func TestOpenLogger(t *testing.T) {
 		t.Error("write after Close should fail")
 	}
 }
+
+func TestIsInside(t *testing.T) {
+	sep := string(filepath.Separator)
+	tmp := filepath.FromSlash("/users/me/appdata/local/temp")
+	cases := map[string]bool{
+		filepath.Join(tmp, "Temp1_tunneltab-0.1.0.zip", "tunneltab"): true, // Explorer's "run from ZIP"
+		filepath.Join(strings.ToUpper(tmp), "x"):                     true, // case-insensitive
+		tmp:                                                          true,
+		filepath.FromSlash("/users/me/apps/tunneltab"):               false,
+		filepath.FromSlash("/users/me/appdata/local/temporary"):      false, // prefix of the name only
+		sep: false,
+	}
+	for dir, want := range cases {
+		if got := isInside(dir, tmp); got != want {
+			t.Errorf("isInside(%q) = %v, want %v", dir, got, want)
+		}
+	}
+	if isInside(tmp, "") {
+		t.Error("empty parent matched")
+	}
+}

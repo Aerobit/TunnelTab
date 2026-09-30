@@ -1,8 +1,5 @@
 # TunnelTab user guide
 
-> 🚧 **Being written alongside the app.** The troubleshooting and FAQ
-> sections arrive with the first release.
-
 ## Contents
 
 1. [Installing](#installing)
@@ -22,17 +19,41 @@
 
 ## Installing
 
+**Requirements:** Windows 10 or 11 (64-bit), or 64-bit Linux, and any modern
+browser (Chrome, Edge, Firefox, Brave…). Nothing else — no OpenSSH, Node.js
+or browser extension.
+
 1. Download `tunneltab-<version>.zip` from the
    [Releases page](https://github.com/Aerobit/TunnelTab/releases).
-2. Unzip it anywhere you like — your Documents folder, a USB stick, etc.
-   You'll get a `tunneltab` folder.
+   *(Optional)* check it against `SHA256SUMS.txt` from the same page:
+   `Get-FileHash tunneltab-<version>.zip` (PowerShell) or
+   `sha256sum -c SHA256SUMS.txt` (Linux).
+2. **Extract** the ZIP anywhere you like — Documents, a USB stick, a synced
+   folder. On Windows: right-click → **Extract All…**. You'll get a
+   `tunneltab` folder containing:
+
+   | File | |
+   |---|---|
+   | `tunneltab.exe` | the Windows program |
+   | `tunneltab-linux-amd64` | the Linux program |
+   | `README.txt` | a short getting-started note |
+   | `LICENSE.txt`, `THIRD_PARTY_NOTICES.txt` | licenses |
+   | `data\` | created on first run: your encrypted vault, settings and logs |
+
 3. Start it:
    - **Windows:** double-click `tunneltab.exe`. If Windows shows
      *"Windows protected your PC"*, click **More info → Run anyway** (the
      program isn't code-signed).
-   - **Linux:** open a terminal in the folder and run `./tunneltab-linux-amd64`.
+   - **Linux:** open a terminal in the folder and run `./tunneltab-linux-amd64`
+     (if it says *permission denied*, run `chmod +x tunneltab-linux-amd64` once).
 
-Nothing is installed on your computer; to remove TunnelTab, delete the folder.
+   Your browser opens the dashboard.
+
+> **Don't run it from inside the ZIP.** Windows lets you double-click the
+> `.exe` inside a ZIP, but then it runs a temporary copy and your data would
+> be lost. TunnelTab detects this and asks you to extract the ZIP first.
+
+Nothing is installed on your computer. To remove TunnelTab, delete the folder.
 
 ## First run: creating your master password
 
@@ -177,8 +198,26 @@ choose another local port, or leave it blank.
 ## Backups and moving to another PC
 
 Everything TunnelTab saves is in the `data` folder inside the `tunneltab`
-folder, encrypted with your master password. To move to another PC, or to back
-up, copy the whole `tunneltab` folder. *(More detail in Phase 7.)*
+folder:
+
+| File | Contents |
+|---|---|
+| `vault.enc` | projects, servers, services, keys, passwords and confirmed fingerprints — encrypted with your master password |
+| `vault.enc.bak` | the previous version of the vault (also encrypted) |
+| `settings.json` | auto-lock, dashboard port and similar preferences (nothing secret) |
+| `logs/` | technical logs — no secrets, no server addresses |
+
+- **To move or back up TunnelTab**, quit it, then copy the whole `tunneltab`
+  folder. Copies are safe to keep in cloud storage or on a USB stick: without
+  your master password the vault is useless.
+- **The same folder works on Windows and Linux** — the data is shared by both
+  programs.
+- **If `vault.enc` is ever damaged**, TunnelTab refuses to open it rather than
+  loading bad data. Quit, rename `vault.enc.bak` to `vault.enc` and start
+  again (you lose only the last change).
+- Keys used by the **Key file** login method are separate files — copy them
+  too, or keep them inside the `tunneltab` folder and use a relative path such
+  as `keys/id_ed25519`.
 
 ## Quitting
 
@@ -190,8 +229,107 @@ again: it notices it's already running and opens the dashboard in a new tab.
 
 ## Troubleshooting
 
-*(Phase 7)*
+**"Not signed in — start TunnelTab again"**  
+Dashboard links work once and only for two minutes. Start TunnelTab again
+(while it's running) to get a fresh link.
+
+**Nothing happens when I start TunnelTab / no browser opens**  
+It may already be running with the dashboard in another window, or your
+system has no default browser. Look at `data/logs/tunneltab.log`. On Linux
+you can also run `./tunneltab-linux-amd64 --no-browser` to print the link.
+
+**"TunnelTab is running from a temporary folder"**  
+You opened it from inside the ZIP. Extract the ZIP first (see
+[Installing](#installing)).
+
+**Windows protected your PC (SmartScreen)**  
+Click **More info → Run anyway**. The program isn't code-signed (signing
+costs money); it's built openly from this repository by GitHub Actions, and
+you can check the download against `SHA256SUMS.txt`.
+
+**"Wrong master password, or the vault file is damaged"**  
+Check Caps Lock and your keyboard layout. After several wrong tries you
+have to wait a few seconds. If you're sure the password is right, see
+*damaged vault* under [Backups](#backups-and-moving-to-another-pc).
+
+**"Login failed: the server rejected the username or credentials"**  
+Check the username and password or key. For keys, make sure the matching
+public key is in `~/.ssh/authorized_keys` on the server.
+
+**"The private key is encrypted: enter its passphrase"**  
+Edit the server and fill in **Key passphrase**.
+
+**"Can't reach ssh-agent" / the agent login fails**  
+Windows: open *Services*, set **OpenSSH Authentication Agent** to
+*Automatic*, start it, then run `ssh-add` in a terminal. Linux: make sure
+`ssh-agent` is running and `SSH_AUTH_SOCK` is set before starting TunnelTab.
+
+**"WARNING: the host key … has changed"**  
+TunnelTab refused to connect because the server's identity changed. If you
+reinstalled or rebuilt the server, that's expected: confirm the new
+fingerprint (tick "I know why"). Otherwise, don't connect — check with your
+VPS provider first.
+
+**"The local port is already in use"**  
+Another program uses that port. Edit the service and pick another *Local
+port*, or leave it blank for an automatic one.
+
+**A service opens but the page doesn't load**  
+The tunnel works but nothing answers on the server at that *Remote host* and
+*Remote port*. Check the app is running (e.g. `docker ps` in a terminal) and
+the port is right. For apps in Docker, the remote host is often `127.0.0.1`
+if the port is published, or the container's name/IP otherwise.
+
+**Tunnels show "Reconnecting…"**  
+The connection to the server dropped (network change, laptop sleep, server
+restart). TunnelTab keeps retrying and recovers by itself.
+
+**Tunnels show "Waiting for unlock"**  
+A connection dropped while TunnelTab was locked. Unlock it and they
+reconnect.
+
+**My terminal closed**  
+Locking TunnelTab (manually or after inactivity) closes all terminals.
+Press **Enter** or **Reconnect** after unlocking. Typing counts as activity,
+so an active terminal keeps TunnelTab unlocked.
+
+**"Could not restrict the data folder to this user" in the log**  
+The folder is on a drive without permissions (FAT32/exFAT USB stick).
+TunnelTab works normally and the vault stays encrypted, but other accounts
+on the same PC could read the folder's files.
 
 ## FAQ
 
-*(Phase 7)*
+**Is this safe?**  
+Your secrets are encrypted with your master password (Argon2id +
+AES-256-GCM) and never leave the program; server identities are checked;
+the dashboard only accepts requests from itself. See [SECURITY.md](SECURITY.md)
+for exactly what it protects against — and what it doesn't.
+
+**Can I use it on several PCs?**  
+Yes. Copy the folder, or keep it on a USB stick or in a synced folder. Don't
+run two copies of the *same* folder at the same time from different PCs
+(e.g. via cloud sync): the last one to save wins.
+
+**Does it need an account, a server component or Tailscale?**  
+No. It talks SSH directly to your servers, like the `ssh` command does.
+
+**Which servers work?**  
+Any server you can reach with SSH: VPSs, home servers, Raspberry Pis, NAS
+boxes. Nothing needs to be installed on the server.
+
+**Why does it open in my browser instead of its own window?**  
+So it doesn't need to bundle a browser engine: the program stays small and
+portable, and you get your browser's tabs, zoom and password-free comfort.
+
+**Can other devices on my network use my tunnels?**  
+No. Tunnels only listen on your own PC (`127.0.0.1`).
+
+**I forgot my master password.**  
+There's no way to recover it — that's what keeps a stolen copy useless.
+Delete the `data` folder and start again; your servers' own passwords and
+keys are unaffected.
+
+**How do I update TunnelTab?**  
+Download the new ZIP, extract it, and copy your old `data` folder into the
+new `tunneltab` folder (or copy the new program files over the old ones).

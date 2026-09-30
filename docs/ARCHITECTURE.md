@@ -4,7 +4,7 @@ How TunnelTab is put together, and where to make changes.
 
 > **Living document.** Sections marked *(planned)* describe the design from
 > [PLAN.md](../PLAN.md) and are replaced with the real details as each phase
-> is built. Current phase: **6 — hardening complete**.
+> is built. Current phase: **7 — packaging complete; first release pending**.
 
 ## Overview
 
@@ -370,11 +370,27 @@ never redrawn by a background refresh.
 
 Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`.
 
+## Packaging (`scripts/`, `packaging/`)
+
+| File | Role |
+|---|---|
+| `scripts/build.sh`, `scripts/build.ps1` | Build both executables and the portable folder, zip and checksum (identical output) |
+| `scripts/mkzip` | Zips the folder (keeps the Linux binary executable) |
+| `scripts/notices` | Writes `THIRD_PARTY_NOTICES.txt` from the modules compiled in |
+| `packaging/README.txt` | Copied into the folder (version stamped in) |
+| `packaging/icon.png` | Windows executable icon (rendered from `web/static/icon.svg`) |
+
+`internal/config.RunningFromTempFolder` stops the Windows program when it's
+started from inside the ZIP (Explorer runs a temporary copy there, and the
+vault would be lost with it).
+
 ## Where to change what
 
 | I want to… | Look in |
 |---|---|
-| Change the build or packaging | `scripts/build.sh`, `scripts/build.ps1`, `packaging/` |
+| Change the build or packaging | `scripts/build.sh` **and** `scripts/build.ps1` (keep them identical), `packaging/` |
+| Change the exe icon or version details | `packaging/icon.png`; the `go-winres` call in both build scripts |
+| Add a Go dependency | also check `go run ./scripts/notices` finds its license |
 | Change CI or releases | `.github/workflows/` |
 | Add a command-line flag | `cmd/tunneltab/main.go` |
 | Add an API endpoint | `internal/server/api.go` (`routes` + handler) and a test in `server_test.go`; document it in the API table above |
