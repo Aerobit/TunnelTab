@@ -293,7 +293,7 @@ export async function serviceDialog(serverId, service) {
 
 // --- Settings ---------------------------------------------------------------
 
-export async function settingsDialog({ knownHosts, minPasswordLen }) {
+export async function settingsDialog({ knownHosts, minPasswordLen, version }) {
   const current = await api("GET", "/settings");
   const lock = select(
     [["0", "Never"], ["5", "5 minutes"], ["15", "15 minutes"], ["30", "30 minutes"], ["60", "1 hour"], ["240", "4 hours"]],
@@ -331,6 +331,39 @@ export async function settingsDialog({ knownHosts, minPasswordLen }) {
     }
   });
 
+  // Updates: checked only when the user clicks (TunnelTab never checks by itself).
+  const updateBtn = h("button", { type: "button", class: "btn secondary" }, "Check for updates");
+  const updateStatus = h("span", { class: "inline-status", role: "status" });
+  updateBtn.addEventListener("click", async () => {
+    updateBtn.disabled = true;
+    updateStatus.className = "inline-status";
+    updateStatus.replaceChildren("Checking…");
+    try {
+      const r = await api("POST", "/updates/check");
+      const releaseLink = (text) =>
+        typeof r.url === "string" && r.url.startsWith("https://github.com/Aerobit/TunnelTab/releases/")
+          ? h("a", { href: r.url, target: "_blank", rel: "noopener noreferrer" }, text)
+          : null;
+      if (r.noRelease) {
+        updateStatus.replaceChildren("No release has been published yet.");
+      } else if (r.newer) {
+        const date = r.publishedAt ? ` (released ${new Date(r.publishedAt).toLocaleDateString()})` : "";
+        updateStatus.classList.add("ok");
+        updateStatus.replaceChildren(`TunnelTab ${r.latest} is available${date}. `, releaseLink("Release notes and download"));
+      } else if (r.devBuild) {
+        updateStatus.replaceChildren(`This is a development build. The latest release is ${r.latest}. `, releaseLink("View it"));
+      } else {
+        updateStatus.classList.add("ok");
+        updateStatus.replaceChildren(`You're up to date (${r.current}).`);
+      }
+    } catch (err) {
+      updateStatus.classList.add("bad");
+      updateStatus.replaceChildren(err.message);
+    } finally {
+      updateBtn.disabled = false;
+    }
+  });
+
   const hostList = h("ul", { class: "host-list" });
   if (knownHosts.length === 0) hostList.appendChild(h("li", { class: "hint" }, "No servers confirmed yet."));
   for (const kh of knownHosts) {
@@ -364,6 +397,9 @@ export async function settingsDialog({ knownHosts, minPasswordLen }) {
       h("h3", {}, "Master password"),
       h("div", { class: "row" }, field("Current", oldPw), field("New", newPw), field("Repeat new", newPw2)),
       h("div", { class: "inline-actions" }, changePw, pwStatus),
+      h("h3", {}, "Updates"),
+      h("p", { class: "hint" }, `You're running TunnelTab ${version}. Checking asks GitHub for the latest release; nothing is downloaded or installed, and TunnelTab never checks on its own.`),
+      h("div", { class: "inline-actions" }, updateBtn, updateStatus),
       h("h3", {}, "Confirmed servers"),
       h("p", { class: "hint" }, "Server fingerprints you have trusted. They are stored inside the encrypted vault."),
       hostList,

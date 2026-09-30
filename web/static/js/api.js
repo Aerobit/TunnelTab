@@ -89,9 +89,11 @@ export async function api(method, path, body) {
 /**
  * Streams live events (Server-Sent Events read with fetch, so the session
  * header can be sent). Reconnects with back-off. onStatus receives true when
- * connected and false while disconnected. Returns a function that stops it.
+ * connected and false while disconnected. query is appended to the URL
+ * (the terminal page uses "?terminal=<id>" to keep its session alive).
+ * Returns a function that stops it.
  */
-export function streamEvents(onEvent, onStatus) {
+export function streamEvents(onEvent, onStatus, query = "") {
   let stopped = false;
   let controller = null;
   let delay = 500;
@@ -100,7 +102,7 @@ export function streamEvents(onEvent, onStatus) {
     while (!stopped) {
       controller = new AbortController();
       try {
-        const res = await fetch("/api/events", {
+        const res = await fetch("/api/events" + query, {
           headers: { Authorization: "Bearer " + session() },
           signal: controller.signal,
         });

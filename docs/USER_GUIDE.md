@@ -84,7 +84,15 @@ Projects group your servers — for example *Personal*, *Client A*,
 *Production*. Use **+ Project** in the top bar; **Edit** on a project renames
 it or deletes it (deleting also deletes its servers and services).
 
-Drag a server onto another project to move it.
+**Reordering.** Every project, server and service has a ⠿ grip on its left:
+
+- **Drag** the grip to move the item; a blue line shows where it will go.
+  Drop a server onto another project (or between that project's servers) to
+  move it there.
+- Or **click the grip and press ↑ / ↓** to move it one place at a time.
+
+Services can be reordered within their server. The order is saved in the
+vault.
 
 ## Adding a server
 
@@ -153,8 +161,9 @@ connection when one is open). Open as many as you like, side by side.
   tab goes blank and says *Locked* — nobody can read it or type into it —
   while your commands (an update, a `docker pull`…) carry on on the server.
   After you unlock, the tab reconnects by itself and shows what happened.
-- **Reloading** the terminal tab reconnects to the same session. A tab you
-  close is ended after about a minute.
+- **Reloading** the terminal tab reconnects to the same session.
+- **Closing** the terminal tab ends its session a few seconds later, like
+  closing a terminal window (programs started in it stop).
 - When the session ends (you typed `exit`, or the connection to the server
   dropped), the top bar says why. Press **Enter** or click **New session**.
 - For jobs that must survive even a dropped connection (hours-long
@@ -198,6 +207,11 @@ choose another local port, or leave it blank.
 - **Close all tunnels when TunnelTab locks** — off by default.
 - **Dashboard port** — default 47811; applies after restarting TunnelTab.
 - **Change master password** — enter the current one and the new one twice.
+- **Updates** — shows your version. **Check for updates** asks GitHub for
+  the latest release and, if there's a newer one, links to its release notes
+  and download. Nothing is downloaded or installed, and TunnelTab never
+  checks by itself — only when you click. See
+  [How do I update](#faq) for the steps.
 - **Confirmed servers** — every fingerprint you've trusted. **Forget**
   removes one, so the next connection asks you to confirm again.
 
@@ -302,7 +316,7 @@ terminal keeps TunnelTab unlocked.
 
 **My terminal session ended**  
 The connection to the server dropped (network change, server restart), or
-the tab was closed for more than a minute. Programs started in it were
+the terminal tab was closed. Programs started in it were
 stopped by the server; use `tmux` or `screen` for jobs that must survive
 that. Press **Enter** for a new session.
 
@@ -324,6 +338,12 @@ Yes. Copy the folder, or keep it on a USB stick or in a synced folder. Don't
 run two copies of the *same* folder at the same time from different PCs
 (e.g. via cloud sync): the last one to save wins.
 
+**Does TunnelTab connect to anything besides my servers?**  
+Only when you click **Check for updates** in Settings: it then asks GitHub
+for the latest release. That's an ordinary web request (GitHub sees your IP
+address, nothing about your servers). Otherwise it contacts only your own
+servers.
+
 **Does it need an account, a server component or Tailscale?**  
 No. It talks SSH directly to your servers, like the `ssh` command does.
 
@@ -343,6 +363,19 @@ There's no way to recover it — that's what keeps a stolen copy useless.
 Delete the `data` folder and start again; your servers' own passwords and
 keys are unaffected.
 
-**How do I update TunnelTab?**  
-Download the new ZIP, extract it, and copy your old `data` folder into the
-new `tunneltab` folder (or copy the new program files over the old ones).
+**How do I update TunnelTab without losing my servers?**  
+Everything you saved is in the `data` folder; the program files can be
+swapped freely.
+
+1. **Quit** TunnelTab (Quit button).
+2. Back up the `data` folder (copy it anywhere — it's encrypted).
+3. Extract the new ZIP somewhere temporary.
+4. Copy the new `tunneltab.exe`, `tunneltab-linux-amd64` and `.txt` files
+   into your existing `tunneltab` folder, replacing the old ones. Leave
+   `data` alone (the ZIP doesn't contain one, so nothing overwrites it).
+5. Start TunnelTab and unlock with the same master password.
+
+(Or copy your old `data` folder into the new `tunneltab` folder and use
+that.) If a new version changes the vault format, it upgrades it
+automatically and the changelog says so. If anything looks wrong, quit and
+put your backup `data` folder back.

@@ -50,9 +50,13 @@ one, stop and ask the user instead.
    keep running); re-attaching needs the vault unlocked.
 8. **IDs are generated server-side** and all input is validated in
    `internal/model` before use.
-9. **No network access except SSH to the user's servers.** The web UI loads
-   nothing from the internet: all assets (including xterm.js) are vendored in
-   `web/static/` and embedded. Strict CSP, no inline scripts.
+9. **No network access except SSH to the user's servers** — with one
+   exception: "Check for updates" (`internal/update`) asks GitHub's release
+   API, and only when the user clicks it; never add automatic checks. It
+   only reports versions and links to TunnelTab's release pages; it never
+   downloads or runs anything. The web UI loads nothing from the internet:
+   all assets (including xterm.js) are vendored in `web/static/` and
+   embedded. Strict CSP, no inline scripts.
 10. **Portable mode:** all data lives in the data folder (default `data/` next
     to the executable). Never write to the user's home directory, the registry
     or system locations.

@@ -22,8 +22,14 @@ import (
 // importantly — while TunnelTab is locked. Locking detaches every page (so
 // nothing can be seen or typed) but leaves the shell and its programs running
 // on the server; unlocking lets the pages re-attach, and the recent output is
-// replayed. A detached session that no page re-attaches to within
-// terminalDetachGrace (counted only while unlocked) is closed.
+// replayed.
+//
+// A terminal page also keeps an event stream open (GET /api/events?terminal=
+// <id>) for as long as the tab exists — locked, hidden or not. Browsers keep
+// such connections alive in background tabs (unlike timers). When the tab is
+// closed, both connections drop, and the session is closed terminalDetachGrace
+// later (long enough for a reload to re-attach first). Closing the tab ends
+// the session, like closing a terminal window.
 //
 // 1. POST /api/terminals {serverId, cols, rows} opens the shell and returns
 //    {terminalId, ticket, serverName}. POST /api/terminals/{id}/attach returns
@@ -51,7 +57,7 @@ const (
 var (
 	terminalTicketTTL   = 30 * time.Second // how long a WebSocket ticket is valid
 	terminalTouchEvery  = 10 * time.Second // how often typing postpones auto-lock
-	terminalDetachGrace = time.Minute      // how long a detached session waits (while unlocked)
+	terminalDetachGrace = 10 * time.Second // how long a session with no page waits before closing
 	terminalReapEvery   = 5 * time.Second
 )
 
@@ -70,11 +76,12 @@ type termSession struct {
 	id, serverID, serverName string
 	shell                    *sshx.Shell
 
-	mu         sync.Mutex
-	scroll     []byte          // the last terminalScrollback bytes of output
-	conn       *websocket.Conn // the attached page, nil while detached
-	detachedAt time.Time
-	ended      bool
+	mu       sync.Mutex
+	scroll   []byte          // the last terminalScrollback bytes of output
+	conn     *websocket.Conn // the attached page, nil while detached
+	watchers int             // open event streams from this session's page
+	lastSeen time.Time       // when a page last detached or stopped watching
+	ended    bool
 }
 
 func newTerminals() terminals {
@@ -109,7 +116,7 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		s.writeSSHError(w, err)
 		return
 	}
-	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, detachedAt: s.now()}
+	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, lastSeen: s.now()}
 	s.terms.mu.Lock()
 	s.terms.sessions[t.id] = t
 	s.terms.mu.Unlock()
@@ -276,7 +283,7 @@ func (t *termSession) output(p []byte) {
 	if t.conn != nil {
 		if err := writeTimeout(t.conn, websocket.MessageBinary, p); err != nil {
 			t.conn.CloseNow()
-			t.conn, t.detachedAt = nil, time.Now()
+			t.conn, t.lastSeen = nil, time.Now()
 		}
 	}
 }
@@ -306,7 +313,7 @@ func (t *termSession) detach(c *websocket.Conn, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.conn == c {
-		t.conn, t.detachedAt = nil, now
+		t.conn, t.lastSeen = nil, now
 		closeAsync(c, "")
 	}
 }
@@ -320,7 +327,7 @@ func (t *termSession) hide(now time.Time) {
 		closeAsync(t.conn, "TunnelTab is locked")
 		t.conn = nil
 	}
-	t.detachedAt = now
+	t.lastSeen = now
 }
 
 // end reports the exit to the attached page and marks the session ended.
@@ -371,22 +378,27 @@ func (s *Server) hideTerminals() {
 	}
 }
 
-// terminalsUnlocked restarts the detach grace period after unlocking, so
-// pages have time to re-attach.
-func (s *Server) terminalsUnlocked() {
-	now := s.now()
-	for _, t := range s.sessionsSnapshot() {
+// watchTerminal records that a page's event stream for session id is open,
+// and returns a function to call when it closes. Unknown IDs are ignored.
+func (s *Server) watchTerminal(id string) func() {
+	t := s.terminal(id)
+	if t == nil {
+		return func() {}
+	}
+	t.mu.Lock()
+	t.watchers++
+	t.mu.Unlock()
+	return func() {
 		t.mu.Lock()
-		if t.conn == nil {
-			t.detachedAt = now
-		}
+		t.watchers--
+		t.lastSeen = s.now()
 		t.mu.Unlock()
 	}
 }
 
-// reapTerminals closes sessions left detached for longer than the grace
-// period (only while unlocked: nobody can re-attach while locked) and drops
-// expired tickets, until stop is closed.
+// reapTerminals closes sessions whose page is gone (no WebSocket and no
+// event stream) for longer than the grace period — whether or not the vault
+// is locked — and drops expired tickets, until stop is closed.
 func (s *Server) reapTerminals(stop <-chan struct{}) {
 	tick := time.NewTicker(terminalReapEvery)
 	defer tick.Stop()
@@ -409,12 +421,9 @@ func (s *Server) reapTerminalsOnce() {
 		}
 	}
 	s.terms.mu.Unlock()
-	if s.vaultState() != "unlocked" {
-		return
-	}
 	for _, t := range s.sessionsSnapshot() {
 		t.mu.Lock()
-		abandoned := t.conn == nil && !t.ended && now.Sub(t.detachedAt) > terminalDetachGrace
+		abandoned := t.conn == nil && t.watchers == 0 && !t.ended && now.Sub(t.lastSeen) > terminalDetachGrace
 		t.mu.Unlock()
 		if abandoned {
 			s.log.Info("closing abandoned terminal", "server", t.serverID)

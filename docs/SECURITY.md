@@ -39,6 +39,7 @@ private reporting instead: the repository's **Security** tab →
 | Command injection | SSH runs inside the app; no local shell is ever used. |
 | An open terminal on an unattended PC | Locking (manually or automatically) disconnects every terminal page and blanks it: nothing can be read or typed until you unlock. The shells keep running on the server so work in progress isn't lost. |
 | Someone else attaching to your terminal | A terminal is connected with a one-time ticket that expires after 30 seconds, only from the dashboard's own origin; unused tickets close their shell. |
+| Unwanted network traffic / tracking | TunnelTab contacts only your servers — except **Check for updates** in Settings, which asks GitHub's public release API when (and only when) you click it. It sends nothing about you or your servers, never downloads or runs anything, and only ever links to TunnelTab's own release pages. |
 | Supply-chain / CDN compromise of the UI | All web assets, including xterm.js, are bundled in the executable; nothing is loaded from the internet. The terminal page allows inline *styles* (xterm.js needs them) but never inline scripts. |
 
 ### Not protected against

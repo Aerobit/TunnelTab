@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -698,5 +699,57 @@ func TestBrokerDropsSlowSubscribers(t *testing.T) {
 	b.close()
 	if _, ok := <-ch; ok {
 		t.Fatal("channel not closed")
+	}
+}
+
+func TestOrderEndpoints(t *testing.T) {
+	h := ready(t)
+	p1 := id(h.mustCall("POST", "/api/projects", map[string]string{"name": "One"}, 201))
+	p2 := id(h.mustCall("POST", "/api/projects", map[string]string{"name": "Two"}, 201))
+	srv := func(project, name string) string {
+		return id(h.mustCall("POST", "/api/servers", map[string]any{"projectId": project, "name": name, "host": "h", "port": 22,
+			"username": "u", "auth": map[string]string{"type": "agent"}}, 201))
+	}
+	a, b, c := srv(p1, "a"), srv(p1, "b"), srv(p2, "c")
+	svc := func(name string) string {
+		return id(h.mustCall("POST", "/api/services", map[string]any{"serverId": a, "label": name, "remotePort": 80}, 201))
+	}
+	x, y := svc("x"), svc("y")
+
+	h.mustCall("PUT", "/api/projects/order", map[string]any{"ids": []string{p2, p1}}, 204)
+	h.mustCall("PUT", "/api/projects/"+p1+"/servers/order", map[string]any{"ids": []string{b, c, a}}, 204) // c moves in
+	h.mustCall("PUT", "/api/servers/"+a+"/services/order", map[string]any{"ids": []string{y, x}}, 204)
+	h.mustCall("PUT", "/api/projects/order", map[string]any{"ids": []string{p1}}, 400) // incomplete
+	h.mustCall("PUT", "/api/servers/"+model.NewID()+"/services/order", map[string]any{"ids": []string{}}, 404)
+
+	d := h.mustCall("GET", "/api/data", nil, 200)["data"].(map[string]any)
+	order := func(list []any, key string, filter func(map[string]any) bool) string {
+		type item struct {
+			id    string
+			order float64
+		}
+		var items []item
+		for _, v := range list {
+			m := v.(map[string]any)
+			if filter(m) {
+				items = append(items, item{m[key].(string), m["order"].(float64)})
+			}
+		}
+		sort.Slice(items, func(i, j int) bool { return items[i].order < items[j].order })
+		var out []string
+		for _, it := range items {
+			out = append(out, it.id)
+		}
+		return strings.Join(out, ",")
+	}
+	all := func(map[string]any) bool { return true }
+	if got := order(d["projects"].([]any), "id", all); got != p2+","+p1 {
+		t.Errorf("projects %s", got)
+	}
+	if got := order(d["servers"].([]any), "id", func(m map[string]any) bool { return m["projectId"] == p1 }); got != b+","+c+","+a {
+		t.Errorf("servers %s", got)
+	}
+	if got := order(d["services"].([]any), "id", all); got != y+","+x {
+		t.Errorf("services %s", got)
 	}
 }

@@ -82,6 +82,19 @@ function rememberSession(id) {
   terminalId = id;
   // Kept in the address so a reload re-attaches to the same session.
   history.replaceState(null, "", `#${encodeURIComponent(serverId)}${id ? "/" + encodeURIComponent(id) : ""}`);
+  watchEvents();
+}
+
+// The event stream tells us when TunnelTab unlocks, and — because it names
+// our session — keeps the session alive for as long as this tab is open,
+// even while locked or in the background. Closing the tab ends the session.
+let stopEvents = null;
+function watchEvents() {
+  stopEvents?.();
+  stopEvents = streamEvents((ev) => {
+    const unlocked = (ev.type === "vault" && ev.state === "unlocked") || ev.type === "resync";
+    if (unlocked && state === "locked") terminalId ? attachSession() : openSession();
+  }, () => {}, terminalId ? `?terminal=${encodeURIComponent(terminalId)}` : "");
 }
 
 /** Opens a new shell on the server. */
@@ -190,11 +203,6 @@ function connect({ ticket, serverName }) {
   };
 }
 
-// Re-attach when TunnelTab is unlocked (or when the event stream reconnects).
-streamEvents((ev) => {
-  const unlocked = (ev.type === "vault" && ev.state === "unlocked") || ev.type === "resync";
-  if (unlocked && state === "locked") terminalId ? attachSession() : openSession();
-}, () => {});
 
 // After the session ends, Enter starts a new one.
 term.onKey(({ domEvent }) => {
@@ -206,6 +214,7 @@ reconnectBtn.addEventListener("click", () => {
   else attachSession();
 });
 
+watchEvents();
 if (!serverId) {
   setStatus("ended", "No server", "Open terminals from the TunnelTab dashboard.");
   reconnectBtn.hidden = true;

@@ -12,7 +12,8 @@ for your own VPSs — no install, no accounts, no cloud.
 - **SSH terminal in your browser** — click a server, get a shell in a new tab.
 - **Web UI quick launch** — click *Open* on a service (n8n, Portainer, Grafana…);
   TunnelTab starts an SSH tunnel and opens the page for you.
-- **Organised by project** — group servers and their services; drag to rearrange.
+- **Organised by project** — group servers and their services; drag (or use
+  the keyboard) to reorder them.
 - **Portable** — one folder for Windows and Linux. Copy it to another PC or a
   USB stick and carry on.
 - **Secure by design** — secrets live in a vault encrypted with your master

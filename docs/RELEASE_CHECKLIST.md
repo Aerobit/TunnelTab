@@ -45,7 +45,12 @@ it yourself with `.\scripts\build.ps1 x.y.z`.
       Lock: the terminal tab goes blank and says *Locked*; tunnels keep
       working. Unlock: the terminal reconnects by itself and the command's
       output continued while locked.
-- [ ] Reload a terminal tab: it reconnects to the same session.
+- [ ] Reload a terminal tab: it reconnects to the same session. Close it:
+      the session ends within ~15 s (a long command in it stops).
+- [ ] Reorder a service and a server by dragging the ⠿ grip, and with
+      ↑/↓ on a focused grip; drag a server into another project.
+- [ ] Settings → **Check for updates** reports the right thing (after the
+      release: "up to date").
 - [ ] Disconnect the network briefly (or sleep the PC): tunnels show
       *Reconnecting…* and recover.
 - [ ] Quit: tunnels stop, the process exits, `data/instance.json` is gone.

@@ -43,15 +43,25 @@ function start(cmd, args, opts) {
   const tmp = require("fs").mkdtempSync(path.join(os.tmpdir(), "tunneltab-e2e-"));
   const exe = process.platform === "win32" ? ".exe" : "";
   for (const [out, pkg] of [["tunneltab", "./cmd/tunneltab"], ["fakessh", "./internal/devtools/fakessh"]]) {
-    execFileSync("go", ["build", "-o", path.join(tmp, out + exe), pkg], { cwd: repo, stdio: "inherit" });
+    execFileSync("go", ["build", "-ldflags", "-X main.version=0.1.0", "-o", path.join(tmp, out + exe), pkg], { cwd: repo, stdio: "inherit" });
   }
   const fake = start(path.join(tmp, "fakessh" + exe), [], {});
   const [, host, sshPort] = await fake.waitFor(/Host:\s+(\S+)\n\s+SSH port:\s+(\d+)/);
   const [, fpExpected] = await fake.waitFor(/Fingerprint to expect: (\S+)/);
   const [, webPort] = await fake.waitFor(/remote port (\d+)/);
 
+  let updateRequests = 0;
+  const fakeGitHub = require("http").createServer((req, res) => {
+    updateRequests++;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ tag_name: "v99.0.0", html_url: "https://github.com/Aerobit/TunnelTab/releases/tag/v99.0.0",
+      published_at: "2026-10-15T10:00:00Z", draft: false, prerelease: false }));
+  });
+  await new Promise((r) => fakeGitHub.listen(0, "127.0.0.1", r));
+  const updateURL = `http://127.0.0.1:${fakeGitHub.address().port}/latest`;
+
   const dataDir = path.join(tmp, "data");
-  const app = start(path.join(tmp, "tunneltab" + exe), ["--no-browser", "--port", "47900", "--data", dataDir]);
+  const app = start(path.join(tmp, "tunneltab" + exe), ["--no-browser", "--port", "47900", "--data", dataDir, "--update-url", updateURL]);
   const [url] = await app.waitFor(/http:\/\/127\.0\.0\.1:47900\/\?launch=\S+/);
 
   const browser = await chromium.launch();
@@ -191,9 +201,15 @@ function start(cmd, args, opts) {
   await page.getByLabel("Repeat new").fill("a brand new passphrase");
   await page.getByRole("button", { name: "Change master password" }).click();
   await page.locator(".inline-status.ok").waitFor();
+  assert.strictEqual(updateRequests, 0, "contacted the release server before being asked");
+  await page.getByRole("button", { name: "Check for updates" }).click();
+  await page.getByText("TunnelTab 99.0.0 is available").waitFor();
+  const notes = page.getByRole("link", { name: "Release notes and download" });
+  assert.strictEqual(await notes.getAttribute("href"), "https://github.com/Aerobit/TunnelTab/releases/tag/v99.0.0");
+  assert.strictEqual(updateRequests, 1);
   await shot("06-settings");
   await page.getByRole("button", { name: "Close" }).click();
-  step("settings lists the confirmed fingerprint; master password changed in-dialog");
+  step("settings: fingerprint listed, master password changed, update check only on click");
 
   // 7. Lock / unlock while a long job runs in the terminal; the tunnel and the
   //    job keep running.
@@ -240,6 +256,25 @@ function start(cmd, args, opts) {
   await termPage.close();
   step("reload re-attaches to the same session; exit code shown");
 
+  const [closing] = await Promise.all([
+    context.waitForEvent("page"),
+    page.getByRole("button", { name: "Terminal ↗" }).click(),
+  ]);
+  await closing.locator("#term-status", { hasText: "Connected" }).waitFor();
+  const closingId = decodeURIComponent(closing.url().split("#")[1].split("/")[1]);
+  await closing.close();
+  const sessionGone = async () => page.evaluate(async (id) => {
+    const r = await fetch(`/api/terminals/${encodeURIComponent(id)}/attach`, {
+      method: "POST", headers: { Authorization: "Bearer " + localStorage.getItem("tunneltab.session") } });
+    return r.status === 404;
+  }, closingId);
+  const closedAt = Date.now();
+  while (!(await sessionGone())) {
+    assert.ok(Date.now() - closedAt < 30000, "closing the terminal tab didn't end its session");
+    await page.waitForTimeout(500);
+  }
+  step(`closing a terminal tab ends its session (after ${Math.round((Date.now() - closedAt) / 1000)} s)`);
+
   // 8. Reload keeps the session.
   await page.reload();
   await page.getByRole("heading", { name: "My VPSs" }).waitFor();
@@ -255,8 +290,58 @@ function start(cmd, args, opts) {
   await page.locator(".pill.active").waitFor();
   step("edit server keeps the saved password, and a rename keeps the tunnel running");
 
+  // Reordering. Add a second service, a second server and a second project.
+  await page.evaluate(async () => {
+    const token = localStorage.getItem("tunneltab.session");
+    const call = async (method, p, body) => {
+      const r = await fetch("/api" + p, { method, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(p + ": " + (await r.text()));
+      return r.json();
+    };
+    const data = (await (await fetch("/api/data", { headers: { Authorization: "Bearer " + token } })).json()).data;
+    const server = data.servers[0];
+    await call("POST", "/services", { serverId: server.id, label: "Second app", remotePort: 81 });
+    await call("POST", "/servers", { projectId: server.projectId, name: "Backup box", host: "backup.example.com", port: 22, username: "u", auth: { type: "agent" } });
+    await call("POST", "/projects", { name: "Archive" });
+  });
+  await page.getByRole("heading", { name: "Archive" }).waitFor();
+  const labels = (sel) => page.locator(sel).allInnerTexts();
+  const serviceNames = () => labels(".service .service-info strong");
+  const serverNames = () => labels(".project >> nth=0 >> .server-info strong");
+  assert.deepStrictEqual(await serviceNames(), ["Demo app", "Second app"]);
+
+  // Keyboard: focus a grip and press ↑.
+  await page.getByRole("button", { name: "Move service Second app" }).focus();
+  await page.keyboard.press("ArrowUp");
+  await page.waitForFunction(() => document.querySelector(".service strong")?.textContent === "Second app");
+  assert.deepStrictEqual(await serviceNames(), ["Second app", "Demo app"]);
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Move service Second app",
+    "focus not kept on the moved item");
+
+  // Drag and drop: drag "Second app" below "Demo app".
+  await page.getByRole("button", { name: "Move service Second app" })
+    .dragTo(page.locator(".service", { hasText: "Demo app" }), { targetPosition: { x: 40, y: 30 } });
+  await page.waitForFunction(() => document.querySelector(".service strong")?.textContent === "Demo app");
+  assert.deepStrictEqual(await serviceNames(), ["Demo app", "Second app"]);
+
+  // Servers: keyboard, then drag one into the other project.
+  assert.deepStrictEqual(await serverNames(), ["Demo VPS (renamed)", "Backup box"]);
+  await page.getByRole("button", { name: "Move server Backup box" }).focus();
+  await page.keyboard.press("ArrowUp");
+  await page.waitForFunction(() => document.querySelector(".server-info strong")?.textContent === "Backup box");
+  await page.getByRole("button", { name: "Move server Backup box" })
+    .dragTo(page.locator(".project", { hasText: "Archive" }).getByRole("heading", { name: "Archive" }));
+  await page.locator(".project", { hasText: "Archive" }).getByText("Backup box").waitFor();
+  assert.deepStrictEqual(await serverNames(), ["Demo VPS (renamed)"]);
+
+  await page.reload();
+  await page.getByRole("heading", { name: "Archive" }).waitFor();
+  assert.deepStrictEqual(await serviceNames(), ["Demo app", "Second app"]);
+  await page.locator(".project", { hasText: "Archive" }).getByText("Backup box").waitFor();
+  step("reorder services and servers by keyboard and drag-and-drop; move a server to another project; order kept");
+
   // 10. Stop the tunnel, then quit.
-  await page.getByRole("button", { name: "Stop" }).click();
+  await page.locator(".service", { hasText: "Demo app" }).getByRole("button", { name: "Stop" }).click();
   await page.locator(".pill.active").waitFor({ state: "detached", timeout: 10000 });
   step("tunnel stopped");
   await page.getByRole("button", { name: "Quit" }).click();

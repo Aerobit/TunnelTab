@@ -38,6 +38,7 @@ func run() int {
 	dataFlag := flag.String("data", "", "data folder (default: \"data\" next to the executable)")
 	portFlag := flag.Int("port", 0, "dashboard port on 127.0.0.1 (default: from settings, 47811)")
 	noBrowser := flag.Bool("no-browser", false, "print the dashboard link instead of opening a browser")
+	updateURL := flag.String("update-url", "", "release API used by \"Check for updates\" (for testing; default: GitHub)")
 	flag.Parse()
 
 	if *showVersion {
@@ -128,6 +129,7 @@ func run() int {
 		Version:        version,
 		InstanceSecret: inst.Secret,
 		OnQuit:         stop,
+		UpdateURL:      *updateURL,
 	})
 	if err != nil {
 		return fail("Can't open the vault", err)

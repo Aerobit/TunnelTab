@@ -294,38 +294,140 @@ function renderDashboard() {
   replace(root, header, banner, h("main", { class: "dashboard" }, main),
     h("footer", { class: "footer" }, `TunnelTab ${state.version}`));
   window.scrollTo(0, scroll);
+  if (focusGripAfterRender) {
+    root.querySelector(`[data-grip="${CSS.escape(focusGripAfterRender)}"]`)?.focus();
+    focusGripAfterRender = null;
+  }
+}
+
+// --- Reordering (drag the ⠿ grip, or focus it and press ↑/↓) ---------------
+
+const DRAG_PROJECT = "application/x-tunneltab-project";
+const DRAG_SERVER = "application/x-tunneltab-server";
+// Services can only be reordered within their own server, so the server ID
+// is part of the type (the only thing readable while dragging).
+const dragService = (serverId) => `application/x-tunneltab-service-${serverId}`;
+
+let focusGripAfterRender = null;
+
+const idsInOrder = (items) => [...items].sort(byOrder).map((x) => x.id);
+
+/** Returns list with id moved to just before/after target (or to the end). */
+function placed(list, id, target, after) {
+  const out = list.filter((x) => x !== id);
+  let i = target ? out.indexOf(target) : -1;
+  i = i < 0 ? out.length : i + (after ? 1 : 0);
+  out.splice(i, 0, id);
+  return out;
+}
+
+/** Moves id one place up (-1) or down (+1) in list. */
+function nudged(list, id, delta) {
+  const i = list.indexOf(id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= list.length) return null;
+  const out = [...list];
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
+}
+
+async function saveOrder(path, ids, focusId) {
+  focusGripAfterRender = focusId || null;
+  try {
+    await api("PUT", path, { ids }); // the "data" event re-renders
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+function grip(label, row, type, id, onKeyMove) {
+  const g = h("button", {
+    type: "button", class: "grip", draggable: "true", dataset: { grip: id },
+    title: "Drag to reorder (or focus and press ↑/↓)", "aria-label": label,
+  }, "⠿");
+  g.addEventListener("dragstart", (e) => {
+    e.stopPropagation();
+    e.dataTransfer.setData(type, id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setDragImage(row, 20, 20);
+    row.classList.add("dragging");
+  });
+  g.addEventListener("dragend", () => row.classList.remove("dragging"));
+  g.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    onKeyMove(e.key === "ArrowUp" ? -1 : 1);
+  });
+  return g;
+}
+
+/** Makes el a drop target for type; onDrop(draggedId, after) on drop. */
+function dropTarget(el, type, onDrop) {
+  const position = (e) => {
+    const r = el.getBoundingClientRect();
+    return e.clientY > r.top + r.height / 2;
+  };
+  const clear = () => el.classList.remove("drop-before", "drop-after");
+  el.addEventListener("dragover", (e) => {
+    if (!e.dataTransfer.types.includes(type)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const after = position(e);
+    el.classList.toggle("drop-before", !after);
+    el.classList.toggle("drop-after", after);
+  });
+  el.addEventListener("dragleave", (e) => {
+    if (!el.contains(e.relatedTarget)) clear();
+  });
+  el.addEventListener("drop", (e) => {
+    if (!e.dataTransfer.types.includes(type)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const after = position(e);
+    clear();
+    const id = e.dataTransfer.getData(type);
+    if (id) onDrop(id, after);
+  });
 }
 
 function renderProject(p) {
   const servers = state.data.servers.filter((s) => s.projectId === p.id).sort(byOrder);
-  const card = h("section", { class: "project card", dataset: { projectId: p.id } },
+  const serverIds = servers.map((s) => s.id);
+  const card = h("section", { class: "project card", dataset: { projectId: p.id } });
+  replace(card,
     h("div", { class: "project-head" },
-      h("div", {},
-        h("h2", {}, p.name),
-        p.description ? h("p", { class: "desc" }, p.description) : null),
+      h("div", { class: "title-row" },
+        grip(`Move project ${p.name}`, card, DRAG_PROJECT, p.id, (delta) => {
+          const ids = nudged(idsInOrder(state.data.projects), p.id, delta);
+          if (ids) saveOrder("/projects/order", ids, p.id);
+        }),
+        h("div", {},
+          h("h2", {}, p.name),
+          p.description ? h("p", { class: "desc" }, p.description) : null)),
       h("div", { class: "actions" },
         h("button", { class: "chip", onclick: () => projectDialog(p) }, "Edit"),
         h("button", { class: "chip add", onclick: () => serverDialog(p.id) }, "+ Server"))),
     servers.length ? servers.map(renderServer) : h("p", { class: "hint" }, "No servers yet. Add one with “+ Server”."));
 
-  // Drop a server here to move it to this project.
+  // Reorder projects by dropping one onto another.
+  dropTarget(card, DRAG_PROJECT, (id, after) => {
+    if (id !== p.id) saveOrder("/projects/order", placed(idsInOrder(state.data.projects), id, p.id, after), id);
+  });
+  // Dropping a server on the project (not on one of its servers) puts it last.
   card.addEventListener("dragover", (e) => {
-    if (!e.dataTransfer.types.includes("application/x-tunneltab-server")) return;
+    if (!e.dataTransfer.types.includes(DRAG_SERVER)) return;
     e.preventDefault();
     card.classList.add("drag-over");
   });
-  card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
-  card.addEventListener("drop", async (e) => {
+  card.addEventListener("dragleave", (e) => {
+    if (!card.contains(e.relatedTarget)) card.classList.remove("drag-over");
+  });
+  card.addEventListener("drop", (e) => {
     card.classList.remove("drag-over");
-    const serverId = e.dataTransfer.getData("application/x-tunneltab-server");
-    const server = state.data.servers.find((s) => s.id === serverId);
-    if (!server || server.projectId === p.id) return;
+    const id = e.dataTransfer.getData(DRAG_SERVER);
+    if (!id) return;
     e.preventDefault();
-    try {
-      await api("POST", `/servers/${serverId}/move`, { projectId: p.id });
-    } catch (err) {
-      toast(err.message, "error");
-    }
+    saveOrder(`/projects/${p.id}/servers/order`, placed(serverIds, id, null, true), id);
   });
   return card;
 }
@@ -340,8 +442,14 @@ const AUTH_TEXT = { agent: "SSH agent", keyVault: "Stored key", keyFile: "Key fi
 function renderServer(s) {
   const status = state.servers.get(s.id);
   const services = state.data.services.filter((x) => x.serverId === s.id).sort(byOrder);
-  const el = h("div", { class: "server", draggable: "true" },
+  const siblings = () => idsInOrder(state.data.servers.filter((x) => x.projectId === s.projectId));
+  const el = h("div", { class: "server", dataset: { serverId: s.id } });
+  replace(el,
     h("div", { class: "server-head" },
+      grip(`Move server ${s.name}`, el, DRAG_SERVER, s.id, (delta) => {
+        const ids = nudged(siblings(), s.id, delta);
+        if (ids) saveOrder(`/projects/${s.projectId}/servers/order`, ids, s.id);
+      }),
       h("span", { class: ["dot", status?.state || "idle"], title: status ? STATE_TEXT[status.state] : "Not connected" }),
       h("div", { class: "server-info" },
         h("strong", {}, s.name),
@@ -357,12 +465,11 @@ function renderServer(s) {
       ? h("ul", { class: "services" }, services.map(renderService))
       : h("p", { class: "hint" }, "No services. Add a web app running on this server with “+ Service”."));
 
-  el.addEventListener("dragstart", (e) => {
-    e.dataTransfer.setData("application/x-tunneltab-server", s.id);
-    e.dataTransfer.effectAllowed = "move";
-    el.classList.add("dragging");
+  // Dropping a server onto this one places it before/after (moving it into
+  // this project if it came from another).
+  dropTarget(el, DRAG_SERVER, (id, after) => {
+    if (id !== s.id) saveOrder(`/projects/${s.projectId}/servers/order`, placed(siblings(), id, s.id, after), id);
   });
-  el.addEventListener("dragend", () => el.classList.remove("dragging"));
   return el;
 }
 
@@ -376,14 +483,21 @@ function renderService(svc) {
   const usable = fwd?.state === "active";
   const localText = fwd ? `localhost:${fwd.localPort}` : svc.localPort ? `localhost:${svc.localPort}` : "auto port";
   const remote = `${svc.remoteHost === "127.0.0.1" ? "" : svc.remoteHost + ":"}${svc.remotePort}`;
+  const siblings = () => idsInOrder(state.data.services.filter((x) => x.serverId === svc.serverId));
+  const orderPath = `/servers/${svc.serverId}/services/order`;
 
   const toggle = h("button", { class: ["chip", running ? "stop" : "start"] }, running ? "Stop" : "Start");
   toggle.addEventListener("click", () => (running ? stopService(svc) : startService(svc, false, toggle)));
   const open = h("button", { class: "chip open", title: "Start the tunnel if needed and open it in a new tab" }, "Open ↗");
   open.addEventListener("click", () => openService(svc, open));
 
-  return h("li", { class: ["service", running && "running", fwd?.state] },
+  const row = h("li", { class: ["service", running && "running", fwd?.state], dataset: { serviceId: svc.id } });
+  replace(row,
     h("div", { class: "service-info" },
+      grip(`Move service ${svc.label}`, row, dragService(svc.serverId), svc.id, (delta) => {
+        const ids = nudged(siblings(), svc.id, delta);
+        if (ids) saveOrder(orderPath, ids, svc.id);
+      }),
       h("strong", {}, svc.label),
       h("span", { class: "mono muted" },
         usable ? h("a", { href: serviceURL(svc, fwd), target: "_blank", rel: "noopener noreferrer" }, localText) : localText,
@@ -393,6 +507,10 @@ function renderService(svc) {
     h("div", { class: "actions" },
       toggle, open,
       h("button", { class: "chip", onclick: () => serviceDialog(svc.serverId, svc) }, "Edit")));
+  dropTarget(row, dragService(svc.serverId), (id, after) => {
+    if (id !== svc.id) saveOrder(orderPath, placed(siblings(), id, svc.id, after), id);
+  });
+  return row;
 }
 
 // --- Actions ----------------------------------------------------------------
@@ -457,7 +575,7 @@ function openTerminal(server) {
 
 async function openSettings() {
   try {
-    await settingsDialog({ knownHosts: state.data?.knownHosts || [], minPasswordLen: state.minPasswordLen });
+    await settingsDialog({ knownHosts: state.data?.knownHosts || [], minPasswordLen: state.minPasswordLen, version: state.version });
   } catch (err) {
     toast(err.message, "error");
   }

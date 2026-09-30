@@ -53,6 +53,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/sshx` | Connection pool, auth, host-key checks, forwards, terminals (PTY), keep-alive, reconnect | Done |
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
 | `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events, terminal WebSocket | Done |
+| `internal/update` | "Check for updates": asks GitHub's releases/latest API when the user clicks (never automatically), compares versions | Done |
 | `internal/platform` | Open browser, error dialog, instance file | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
 | `web/static` | The dashboard (vanilla JS modules + CSS) | Done |
@@ -265,6 +266,10 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `POST /services/{id}/stop` | | |
 | `POST /hostkeys/confirm` | `{token, replace}` | stores the pending key |
 | `POST /hostkeys/forget` | `{host}` | removes a confirmed key (asks again next time) |
+| `PUT /projects/order` | `{ids}` | new order of all projects |
+| `PUT /projects/{id}/servers/order` | `{ids}` | new order of the project's servers; servers from other projects in the list are moved in |
+| `PUT /servers/{id}/services/order` | `{ids}` | new order of the server's services |
+| `POST /updates/check` | | `{current, latest, newer, devBuild, url, publishedAt}` or `{noRelease}` — contacts GitHub, only on request |
 | `POST /terminals` | `{serverId, cols, rows}` | opens a shell; `{terminalId, ticket, serverName}` (see Terminals) |
 | `POST /terminals/{id}/attach` | | `{ticket, …}` to re-attach to a running session; 423 while locked, 404 once ended |
 | `DELETE /terminals/{id}` | | ends a session |
@@ -326,10 +331,13 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   keep going. Attaching is refused while locked. After unlock the page
   re-attaches by itself (it watches the event stream) and the output is
   replayed. The page also blanks its screen while locked.
-- **Abandoned sessions:** a detached session is closed after 60 s
-  (`terminalDetachGrace`), counted only while unlocked (the grace restarts
-  at unlock). That covers closed tabs; reloads and network blips re-attach
-  well within it. `DELETE /api/terminals/{id}` ends one explicitly.
+- **Closing the tab ends the session.** The page keeps its event stream
+  open with `?terminal=<id>` for as long as the tab exists (locked, hidden
+  or not — browsers don't throttle open connections in background tabs,
+  unlike timers), which counts as a *watcher*. A session with no attached
+  page and no watcher is closed 10 s later (`terminalDetachGrace`, checked
+  every 5 s), whether or not the vault is locked — long enough for a reload
+  to re-attach. `DELETE /api/terminals/{id}` ends one explicitly.
 - **Other messages:** browser → app `{"type":"resize","cols":…,"rows":…}`;
   app → browser `{"type":"exit","code":…,"message":…}` when the shell ends.
 - **Page** (`web/static/terminal.html`, `js/terminal.js`, `terminal.css`):
@@ -362,6 +370,13 @@ dashboard. The dashboard renders from `GET /api/data`; events update tunnel
 states in place (`tunnel`), trigger a re-fetch (`data`, `resync`) or switch
 to the unlock screen (`vault`). Screens the user may be typing into are
 never redrawn by a background refresh.
+
+**Reordering** (`app.js`): each row has a ⠿ `grip` button that is the drag
+source (HTML5 drag and drop; types `application/x-tunneltab-project`,
+`…-server`, and `…-service-<serverId>` so services only drop within their
+server) and also moves the item with ↑/↓. `dropTarget` shows a line
+before/after the hovered row; the new complete order is sent to the order
+endpoints, and focus returns to the moved item's grip after re-rendering.
 
 **Rules** (the CSP enforces the first):
 - No inline `<script>`, no `on…=` attributes, no `style=` attributes
@@ -407,6 +422,7 @@ vault would be lost with it).
 | Add a Go dependency | also check `go run ./scripts/notices` finds its license |
 | Change CI or releases | `.github/workflows/` |
 | Add a command-line flag | `cmd/tunneltab/main.go` |
+| Change how "Check for updates" works | `internal/update` (GitHub API, version comparison), `web/static/js/forms.js` (Settings) |
 | Add an API endpoint | `internal/server/api.go` (`routes` + handler) and a test in `server_test.go`; document it in the API table above |
 | Add an event type | `internal/server/events.go` and the events table above |
 | Change the dashboard look | `web/static/app.css` |

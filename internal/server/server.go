@@ -44,6 +44,7 @@ type Config struct {
 	VaultOptions   vault.Options // Argon2id costs (tests use cheap ones)
 	InstanceSecret string        // authenticates a second launch (see platform.Instance)
 	OnQuit         func()        // called after the Quit request is answered
+	UpdateURL      string        // releases/latest API for "Check for updates" (default: GitHub)
 
 	// Timing overrides for tests (zero = defaults).
 	UnlockBaseDelay time.Duration

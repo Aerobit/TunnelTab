@@ -296,3 +296,37 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent-str
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* --- Reordering -------------------------------------------------------- */
+
+.grip {
+  flex: none;
+  width: 22px; height: 22px;
+  padding: 0;
+  font-size: 15px; line-height: 1;
+  color: #6e7681;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: grab;
+}
+.grip:hover, .grip:focus-visible { color: var(--text); background: rgba(255, 255, 255, .08); }
+.grip:active { cursor: grabbing; }
+.title-row { display: flex; align-items: flex-start; gap: 6px; }
+.title-row .grip { margin-top: 1px; }
+.server, .service { position: relative; }
+.server { cursor: default; }
+.dragging { opacity: .45; }
+.drop-before::before, .drop-after::after {
+  content: "";
+  position: absolute; left: 0; right: 0;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.drop-before::before { top: -6px; }
+.drop-after::after { bottom: -6px; }
+.project { position: relative; }
+.project.drop-before::before { top: -10px; }
+.project.drop-after::after { bottom: -10px; }

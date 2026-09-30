@@ -115,6 +115,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, ": connected\n\n")
 	flusher.Flush()
 
+	// A terminal page passes its session ID: while this stream is open, the
+	// session is kept even when no page is attached (e.g. while locked).
+	if id := r.URL.Query().Get("terminal"); id != "" {
+		defer s.watchTerminal(id)()
+	}
 	ch := s.events.subscribe()
 	defer s.events.unsubscribe(ch)
 	hb := time.NewTicker(heartbeatInterval)

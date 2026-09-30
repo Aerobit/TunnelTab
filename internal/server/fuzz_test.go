@@ -90,6 +90,9 @@ var fuzzEndpoints = []struct{ method, path string }{
 	{"POST", "/api/hostkeys/forget"},
 	{"POST", "/api/terminals"},
 	{"POST", "/api/session"},
+	{"PUT", "/api/projects/order"},
+	{"PUT", "/api/projects/{project}/servers/order"},
+	{"PUT", "/api/servers/00000000-0000-4000-8000-000000000000/services/order"},
 }
 
 func launchTokenOf(u string) string {

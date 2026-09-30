@@ -286,33 +286,67 @@ func TestTerminalExplicitClose(t *testing.T) {
 	h.mustCall("DELETE", "/api/terminals/"+id, nil, 404)
 }
 
-func TestAbandonedTerminalsAreClosedOnlyWhileUnlocked(t *testing.T) {
+func TestTerminalClosesWhenItsTabIsGone(t *testing.T) {
 	h := ready(t)
 	serverID := trustedServer(t, h)
 	now := time.Now()
 	h.srv.now = func() time.Time { return now }
-	_, c := openTerminal(t, h, serverID)
-	c.CloseNow() // tab closed: detached
+	id, c := openTerminal(t, h, serverID)
+	stopWatching := h.srv.watchTerminal(id) // the tab's event stream
+	c.CloseNow()                            // WebSocket gone (e.g. locked)
 	waitDetached(t, h)
 
-	// Locked: never reaped, however long it waits.
+	// The tab is still open: kept, even while locked and long past the grace.
 	h.mustCall("POST", "/api/vault/lock", nil, 200)
 	now = now.Add(10 * terminalDetachGrace)
 	h.srv.reapTerminalsOnce()
 	if h.srv.mgr.ShellCount() != 1 {
-		t.Fatal("a detached terminal was closed while locked")
+		t.Fatal("closed a terminal whose tab is still open")
 	}
 
-	// Unlocking restarts the grace period…
-	h.mustCall("POST", "/api/vault/unlock", map[string]string{"password": masterPW}, 200)
+	// The tab is closed: the session ends after the grace, even while locked.
+	stopWatching()
 	h.srv.reapTerminalsOnce()
 	if h.srv.mgr.ShellCount() != 1 {
-		t.Fatal("closed right after unlocking, before pages could re-attach")
+		t.Fatal("closed before the grace period (a reload would lose the session)")
 	}
-	// …after which an abandoned terminal is closed.
 	now = now.Add(terminalDetachGrace + time.Second)
 	h.srv.reapTerminalsOnce()
 	waitShells(t, h, 0)
+}
+
+func TestEventStreamKeepsTerminalWatched(t *testing.T) {
+	h := ready(t)
+	serverID := trustedServer(t, h)
+	id, _ := openTerminal(t, h, serverID)
+	watchers := func() int {
+		s := h.srv.terminal(id)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.watchers
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, "GET", h.base+"/api/events?terminal="+id, nil)
+	req.Header.Set("Authorization", "Bearer "+h.session)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for watchers() != want {
+			if time.Now().After(deadline) {
+				t.Fatalf("watchers %d, want %d", watchers(), want)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	waitFor(1)
+	cancel() // the tab closes
+	resp.Body.Close()
+	waitFor(0)
 }
 
 // readText returns the next control (text) message, skipping output.

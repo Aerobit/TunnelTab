@@ -54,7 +54,9 @@ fixed, and which risks are accepted. The threat model itself is in
 
 | Change | Reason |
 |---|---|
-| Locking detaches and blanks terminal pages instead of closing the shells | Closing killed running work (e.g. a `docker pull`) found in manual testing. Pages still can't read or type while locked, and re-attaching needs the vault unlocked; a detached session is closed if no page returns within a minute of unlocking. |
+| "Check for updates" button (Settings) | Requested feature. Contacts GitHub only when clicked (tested: no request otherwise); response size-limited; links restricted to TunnelTab's release pages; nothing downloaded or executed. |
+| Terminal sessions end ~10 s after their tab closes | A closed tab must not leave a shell running. The page's open event stream marks it as present (browsers don't throttle open connections in background tabs the way they throttle timers). |
+| Locking detaches and blanks terminal pages instead of closing the shells | Closing killed running work (e.g. a `docker pull`) found in manual testing. Pages still can't read or type while locked, and re-attaching needs the vault unlocked; a session whose tab is closed ends about 10 s later. |
 
 ## Accepted risks
 

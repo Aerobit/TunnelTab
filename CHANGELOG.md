@@ -31,7 +31,11 @@ servers. Successor to the `local.browser` browser extension.
 - **In-browser terminal** — "Terminal" opens a real SSH shell in a new tab
   (xterm.js): resize, copy/paste, exit status. Sessions survive locking
   (the tab is blanked; programs keep running) and page reloads, and
-  re-attach with their recent output.
+  re-attach with their recent output. Closing the tab ends the session.
+- **Reordering** — drag projects, servers and services by their ⠿ grip (or
+  focus it and press ↑/↓); drop a server into another project to move it.
+- **Check for updates** — a button in Settings asks GitHub for the latest
+  release and links to it. Manual only: TunnelTab never checks by itself.
 - **Packaging** — Windows icon and version details, license notices,
   SHA-256 checksums, and a warning when started from inside the ZIP.
 - **Documentation** — user guide with troubleshooting and FAQ, architecture,

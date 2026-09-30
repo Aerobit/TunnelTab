@@ -28,6 +28,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("GET /api/state", s.handleState)
 	a("GET /api/events", s.handleEvents)
 	a("POST /api/quit", s.handleQuit)
+	a("POST /api/updates/check", s.handleCheckUpdates)
 	a("GET /api/settings", s.handleGetSettings)
 	a("PUT /api/settings", s.handlePutSettings)
 
@@ -52,6 +53,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("POST /api/services/{id}/start", s.handleStartService)
 	a("POST /api/services/{id}/stop", s.handleStopService)
 	a("POST /api/hostkeys/confirm", s.handleConfirmHostKey)
+	a("PUT /api/projects/order", s.handleOrderProjects)
+	a("PUT /api/projects/{id}/servers/order", s.handleOrderServers)
+	a("PUT /api/servers/{id}/services/order", s.handleOrderServices)
 	a("POST /api/hostkeys/forget", s.handleForgetHostKey)
 	a("POST /api/terminals", s.handleOpenTerminal)
 	a("POST /api/terminals/{id}/attach", s.handleAttachTerminal)
@@ -293,7 +297,6 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 	s.unlockSucceeded()
 	s.log.Info("vault unlocked")
 	s.mgr.Resume()
-	s.terminalsUnlocked()
 	go s.autoStart()
 	s.events.publish(vaultEvent{Type: "vault", State: "unlocked"})
 	writeJSON(w, http.StatusOK, map[string]string{"vault": "unlocked"})
@@ -551,6 +554,39 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mgr.StopForward(id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Ordering ---------------------------------------------------------------
+
+type orderRequest struct {
+	IDs []string `json:"ids"`
+}
+
+func (s *Server) handleOrderProjects(w http.ResponseWriter, r *http.Request) {
+	s.handleOrder(w, r, func(d *model.Data, ids []string) error { return d.ReorderProjects(ids) })
+}
+
+// handleOrderServers also moves servers from other projects that are listed.
+func (s *Server) handleOrderServers(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s.handleOrder(w, r, func(d *model.Data, ids []string) error { return d.ReorderServers(id, ids) })
+}
+
+func (s *Server) handleOrderServices(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s.handleOrder(w, r, func(d *model.Data, ids []string) error { return d.ReorderServices(id, ids) })
+}
+
+func (s *Server) handleOrder(w http.ResponseWriter, r *http.Request, fn func(d *model.Data, ids []string) error) {
+	var req orderRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := s.update(func(d *model.Data) error { return fn(d, req.IDs) }); err != nil {
+		s.writeDataError(w, err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
