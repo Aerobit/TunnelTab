@@ -342,7 +342,10 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   app → browser `{"type":"exit","code":…,"message":…}` when the shell ends.
 - **Page** (`web/static/terminal.html`, `js/terminal.js`, `terminal.css`):
   xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon;
-  Ctrl+Shift+C copies, Ctrl+Shift+V pastes; re-attaches after a reload,
+  copy/paste like Windows Terminal (Ctrl+C copies a selection, otherwise
+  interrupts; Ctrl+V pastes; right-click copies a selection; the key
+  handler calls preventDefault so Ctrl+Shift+C doesn't open Firefox's
+  Inspector); re-attaches after a reload,
   lock or blip; *New session* (or Enter) after the shell ends.
 - **CSP exception:** xterm.js creates `<style>` elements, so
   `/terminal.html` alone gets `style-src 'self' 'unsafe-inline'`. Scripts

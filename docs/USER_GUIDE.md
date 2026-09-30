@@ -153,9 +153,13 @@ Click **Terminal ↗** on a server. A new browser tab opens with a shell on
 that server, logged in the same way as its tunnels (and reusing the same
 connection when one is open). Open as many as you like, side by side.
 
-- **Copy:** select text, then **Ctrl+Shift+C**. **Paste:** **Ctrl+Shift+V**
-  (or right-click → Paste). Plain **Ctrl+C** stops the running command, as
-  in any terminal.
+- **Copy:** select text with the mouse, then press **Ctrl+C** or
+  right-click. *Copied* appears briefly at the top. (**Ctrl+Shift+C** and
+  **Ctrl+Insert** work too.)
+- **Paste:** **Ctrl+V**, or right-click with nothing selected → **Paste**.
+  (**Ctrl+Shift+V** and **Shift+Insert** work too.)
+- With **nothing selected, Ctrl+C stops the running command**, as in any
+  terminal. This works like Windows Terminal.
 - The terminal resizes with the window.
 - **Locking TunnelTab hides terminals but keeps them running.** The terminal
   tab goes blank and says *Locked* — nobody can read it or type into it —

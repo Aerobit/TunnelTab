@@ -184,6 +184,44 @@ function start(cmd, args, opts) {
   await termPage.screenshot({ path: `${OUT}/07-terminal.png` });
   step("terminal opens in a new tab and runs commands");
 
+  // 5c. Copy and paste: Ctrl+C copies a selection (and doesn't interrupt),
+  //     without one it interrupts; right-click copies; Ctrl+V pastes.
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const clipboard = () => termPage.evaluate(() => navigator.clipboard.readText());
+  const interrupts = async () => ((await termText()).match(/\^C/g) || []).length;
+  // xterm.js covers the text with an overlay, so click by position.
+  const wordAt = async (word) => {
+    const box = await termPage.locator(".xterm-rows > div", { hasText: new RegExp("^" + word) }).first().boundingBox();
+    return [box.x + 12, box.y + box.height / 2];
+  };
+  const selectWord = async (word) => termPage.mouse.dblclick(...(await wordAt(word)));
+  await termPage.keyboard.type("echo copyme42");
+  await termPage.keyboard.press("Enter");
+  await waitTerm("copyme42\n");
+  await selectWord("copyme42");
+  await termPage.keyboard.press("Control+C");
+  await termPage.locator("#term-toast", { hasText: "Copied" }).waitFor();
+  assert.strictEqual(await clipboard(), "copyme42");
+  assert.strictEqual(await interrupts(), 0, "Ctrl+C with a selection interrupted the shell");
+  await termPage.keyboard.press("Control+C");
+  await waitTerm("^C");
+  step("Ctrl+C copies a selection, and interrupts without one");
+
+  await termPage.keyboard.type("echo rightclick7");
+  await termPage.keyboard.press("Enter");
+  await waitTerm("rightclick7\n");
+  await selectWord("rightclick7");
+  await termPage.mouse.click(...(await wordAt("rightclick7")), { button: "right" });
+  for (let i = 0; i < 40 && (await clipboard()) !== "rightclick7"; i++) await termPage.waitForTimeout(50);
+  assert.strictEqual(await clipboard(), "rightclick7", "right-click didn't copy the selection");
+
+  await termPage.evaluate(() => navigator.clipboard.writeText("echo pasted99"));
+  await termPage.locator(".xterm-helper-textarea").focus();
+  await termPage.keyboard.press("Control+V");
+  await termPage.keyboard.press("Enter");
+  await waitTerm("pasted99\n");
+  step("right-click copies; Ctrl+V pastes");
+
   // 6. Settings shows the confirmed server.
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("heading", { name: "Settings" }).waitFor();

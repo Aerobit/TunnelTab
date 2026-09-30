@@ -6,6 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Terminal copy and paste work like Windows Terminal:** Ctrl+C copies
+  when text is selected (otherwise it still stops the running command),
+  Ctrl+V pastes, and right-click copies the selection. A short *Copied*
+  message confirms it.
+
+### Fixed
+- Ctrl+Shift+C in a terminal no longer opens Firefox's Inspector.
+
 ## [0.1.0] - 2026-09-30
 
 First release: a portable SSH terminal and web-UI launcher for your own

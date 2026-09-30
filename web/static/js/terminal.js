@@ -39,16 +39,51 @@ term.loadAddon(fit);
 term.open(document.getElementById("terminal"));
 fit.fit();
 
-// Ctrl+Shift+C copies the selection. Ctrl+Shift+V is left to the browser,
-// which pastes into the terminal. Plain Ctrl+C still sends an interrupt.
+// Copy and paste work like Windows Terminal:
+// - Ctrl+C copies when text is selected; otherwise it stops the running
+//   command as usual. Ctrl+Shift+C and Ctrl+Insert copy too.
+// - Ctrl+V, Ctrl+Shift+V and Shift+Insert paste. The browser does the
+//   pasting (xterm.js just mustn't send the key), so reading the clipboard
+//   needs no permission.
+// - Right-click copies the selection; with nothing selected it shows the
+//   browser's menu, which has Paste.
+// preventDefault matters: without it Firefox opens its Inspector on
+// Ctrl+Shift+C.
+const toastEl = document.getElementById("term-toast");
+let toastTimer = null;
+function toast(text) {
+  toastEl.textContent = text;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toastEl.hidden = true), 1200);
+}
+
+function copySelection() {
+  const text = term.getSelection();
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(
+    () => { term.clearSelection(); toast("Copied"); },
+    () => toast("Couldn't copy"),
+  );
+}
+
 term.attachCustomKeyEventHandler((e) => {
-  if (e.type === "keydown" && e.ctrlKey && e.shiftKey && e.code === "KeyC") {
-    const text = term.getSelection();
-    if (text) navigator.clipboard?.writeText(text).catch(() => {});
+  if (e.type !== "keydown") return true;
+  const ctrl = e.ctrlKey && !e.altKey && !e.metaKey; // AltGr is Ctrl+Alt on Windows
+  const copy = ctrl && ((e.code === "KeyC" && (e.shiftKey || term.hasSelection())) || (e.code === "Insert" && !e.shiftKey));
+  if (copy) {
+    e.preventDefault();
+    copySelection();
     return false;
   }
-  if (e.type === "keydown" && e.ctrlKey && e.shiftKey && e.code === "KeyV") return false;
-  return true;
+  const paste = (ctrl && e.code === "KeyV") || (e.shiftKey && !e.ctrlKey && !e.altKey && e.code === "Insert");
+  return !paste;
+});
+
+view.addEventListener("contextmenu", (e) => {
+  if (!term.hasSelection()) return;
+  e.preventDefault();
+  copySelection();
 });
 
 // state: "connecting" | "connected" | "locked" | "disconnected" | "ended"
