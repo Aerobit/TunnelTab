@@ -265,7 +265,9 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `POST /services/{id}/stop` | | |
 | `POST /hostkeys/confirm` | `{token, replace}` | stores the pending key |
 | `POST /hostkeys/forget` | `{host}` | removes a confirmed key (asks again next time) |
-| `POST /terminals` | `{serverId, cols, rows}` | opens a shell; `{ticket, serverName}` (see Terminals) |
+| `POST /terminals` | `{serverId, cols, rows}` | opens a shell; `{terminalId, ticket, serverName}` (see Terminals) |
+| `POST /terminals/{id}/attach` | | `{ticket, …}` to re-attach to a running session; 423 while locked, 404 once ended |
+| `DELETE /terminals/{id}` | | ends a session |
 | `GET /terminals/connect?ticket=…` | WebSocket | terminal stream; authenticated by the one-time ticket, not the session header |
 
 Status codes: 400 invalid input, 401 not signed in / wrong password, 403
@@ -298,12 +300,13 @@ blocking the app.
 ## Terminals
 
 ```
-dashboard: "Terminal ↗" ──opens──▶ terminal.html#<serverId> (new tab, same origin)
+dashboard: "Terminal ↗" ──opens──▶ terminal.html#<serverId>  (new tab, same origin)
 terminal.js: POST /api/terminals {serverId, cols, rows}
              ──▶ Manager.OpenShell (host-key/login errors come back as API errors)
-             ◀── {ticket, serverName}           (one-time, 30 s)
-             WebSocket /api/terminals/connect?ticket=… (Origin checked)
+             ◀── {terminalId, ticket, serverName}   → address becomes #<serverId>/<terminalId>
+             WebSocket /api/terminals/connect?ticket=…  (one-time, 30 s; Origin checked)
              ⇄ binary frames = terminal bytes; text frames = JSON control
+re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSocket again
 ```
 
 - **Engine** (`internal/sshx/shell.go`): `OpenShell` requests an
@@ -312,16 +315,27 @@ terminal.js: POST /api/terminals {serverId, cols, rows}
   `Resize`, `Close`, `Done`, `ExitStatus` → `(code, nil)` for a normal exit,
   `(-1, ErrShellClosed)` when TunnelTab closed it, `(-1, err)` when the
   connection dropped. Max 32 terminals.
-- **Server** (`internal/server/terminal.go`): tickets are stored hashed,
-  used once, and an unused ticket's shell is closed after 30 s. WebSocket
-  control messages: browser → app `{"type":"resize","cols":…,"rows":…}`;
-  app → browser `{"type":"exit","code":…,"message":…}` just before closing.
-- **Locking closes every terminal** (tunnels only close if the setting says
-  so): an open shell is too sensitive to leave on an unattended PC.
+- **Sessions** (`internal/server/terminal.go`): a `termSession` owns the
+  shell and lives independently of any page. `runTerminal` reads the shell's
+  output, keeps the last 512 KiB for replay, and forwards it to the attached
+  page. A page **attaches** over a WebSocket (a new page takes over from an
+  old one) and receives `{"type":"attached"}` followed by the replay.
+- **Locking detaches, it doesn't close.** `hideTerminals` sends
+  `{"type":"locked"}` and disconnects every page, so nothing can be seen or
+  typed; the shells — and programs running in them, like a `docker pull` —
+  keep going. Attaching is refused while locked. After unlock the page
+  re-attaches by itself (it watches the event stream) and the output is
+  replayed. The page also blanks its screen while locked.
+- **Abandoned sessions:** a detached session is closed after 60 s
+  (`terminalDetachGrace`), counted only while unlocked (the grace restarts
+  at unlock). That covers closed tabs; reloads and network blips re-attach
+  well within it. `DELETE /api/terminals/{id}` ends one explicitly.
+- **Other messages:** browser → app `{"type":"resize","cols":…,"rows":…}`;
+  app → browser `{"type":"exit","code":…,"message":…}` when the shell ends.
 - **Page** (`web/static/terminal.html`, `js/terminal.js`, `terminal.css`):
   xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon;
-  Ctrl+Shift+C copies, Ctrl+Shift+V pastes, Enter or *Reconnect* after the
-  session ends.
+  Ctrl+Shift+C copies, Ctrl+Shift+V pastes; re-attaches after a reload,
+  lock or blip; *New session* (or Enter) after the shell ends.
 - **CSP exception:** xterm.js creates `<style>` elements, so
   `/terminal.html` alone gets `style-src 'self' 'unsafe-inline'`. Scripts
   stay `'self'`-only everywhere; terminal output is drawn as text, never HTML.

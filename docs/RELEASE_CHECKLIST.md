@@ -41,7 +41,11 @@ it yourself with `.\scripts\build.ps1 x.y.z`.
 **Everyday behaviour**
 - [ ] Close the tab, start the exe again: a new dashboard tab opens (no
       second copy starts).
-- [ ] Lock: terminals close, tunnels keep working; unlock: everything is back.
+- [ ] Start a long command in a terminal (e.g. `ping -c 60 1.1.1.1`), then
+      Lock: the terminal tab goes blank and says *Locked*; tunnels keep
+      working. Unlock: the terminal reconnects by itself and the command's
+      output continued while locked.
+- [ ] Reload a terminal tab: it reconnects to the same session.
 - [ ] Disconnect the network briefly (or sleep the PC): tunnels show
       *Reconnecting…* and recover.
 - [ ] Quit: tunnels stop, the process exits, `data/instance.json` is gone.

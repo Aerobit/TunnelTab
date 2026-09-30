@@ -39,6 +39,7 @@ kbd {
   padding: 6px 0 0 8px;
 }
 .term-view .xterm { height: 100%; }
+.term-view.hidden-while-locked { visibility: hidden; }
 
 @media (max-width: 640px) {
   .term-keys { display: none; }

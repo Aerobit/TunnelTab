@@ -150,7 +150,7 @@ func (s *Shell) end(code int, err error) {
 	})
 }
 
-// CloseShells ends every open terminal. Called when the vault locks.
+// CloseShells ends every open terminal (used when shutting down).
 func (m *Manager) CloseShells() {
 	m.mu.Lock()
 	list := make([]*Shell, 0, len(m.shells))

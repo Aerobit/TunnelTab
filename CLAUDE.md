@@ -46,7 +46,8 @@ one, stop and ask the user instead.
 7. **No local shell is invoked.** SSH is done in-process with
    `golang.org/x/crypto/ssh`. The only external program launched is the
    browser opener (`internal/platform`), with arguments passed as a slice.
-   Terminals are closed whenever the vault locks.
+   When the vault locks, terminal pages are detached and blanked (the shells
+   keep running); re-attaching needs the vault unlocked.
 8. **IDs are generated server-side** and all input is validated in
    `internal/model` before use.
 9. **No network access except SSH to the user's servers.** The web UI loads

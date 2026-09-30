@@ -142,9 +142,8 @@ func TestTerminalTicketChecks(t *testing.T) {
 	h := ready(t)
 	serverID := trustedServer(t, h)
 
-	// No Origin (not a browser) and a foreign Origin are refused, and a
-	// refused attempt doesn't use up... nothing: the ticket is only taken
-	// after the Origin checks pass.
+	// No Origin (not a browser) and a foreign Origin are refused before the
+	// ticket is used up.
 	ticket := openTicket(t, h, serverID)
 	if _, resp, err := dialTerminal(h, ticket, ""); err == nil || resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("no Origin: %v %v", resp, err)
@@ -165,36 +164,192 @@ func TestTerminalTicketChecks(t *testing.T) {
 	if _, resp, err := dialTerminal(h, "made-up", h.base); err == nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("made-up ticket: %v %v", resp, err)
 	}
-	waitShells(t, h, 0) // closing the socket closed the shell
 
-	// An unused ticket expires and its shell is closed.
-	old := terminalTicketTTL
-	terminalTicketTTL = 50 * time.Millisecond
-	defer func() { terminalTicketTTL = old }()
+	// An expired ticket is refused.
+	now := time.Now()
+	h.srv.now = func() time.Time { return now }
 	stale := openTicket(t, h, serverID)
-	waitShells(t, h, 0)
+	now = now.Add(terminalTicketTTL + time.Second)
 	if _, resp, err := dialTerminal(h, stale, h.base); err == nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expired ticket: %v %v", resp, err)
 	}
 }
 
-func TestTerminalClosesOnLock(t *testing.T) {
-	h := ready(t)
-	serverID := trustedServer(t, h)
-	c, _, err := dialTerminal(h, openTicket(t, h, serverID), h.base)
+// openTerminal opens a session through the API and returns its ID and a
+// connected WebSocket that has seen the prompt.
+func openTerminal(t *testing.T, h *harness, serverID string) (string, *websocket.Conn) {
+	t.Helper()
+	m := h.mustCall("POST", "/api/terminals", map[string]any{"serverId": serverID, "cols": 80, "rows": 24}, 200)
+	c, _, err := dialTerminal(h, m["ticket"].(string), h.base)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.CloseNow()
+	t.Cleanup(func() { c.CloseNow() })
 	readUntil(t, c, "$ ")
+	return m["terminalId"].(string), c
+}
 
+// attachTerminal re-attaches to a session and returns the connection and
+// the replayed output.
+func attachTerminal(t *testing.T, h *harness, id, want string) *websocket.Conn {
+	t.Helper()
+	m := h.mustCall("POST", "/api/terminals/"+id+"/attach", nil, 200)
+	c, _, err := dialTerminal(h, m["ticket"].(string), h.base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.CloseNow() })
+	control := readUntil(t, c, want)
+	if len(control) == 0 || control[0] != `{"type":"attached"}` {
+		t.Fatalf("expected an attached message first, got %v", control)
+	}
+	return c
+}
+
+func TestTerminalSurvivesLock(t *testing.T) {
+	h := ready(t)
+	serverID := trustedServer(t, h)
+	id, c := openTerminal(t, h, serverID)
+	ctx := context.Background()
+	c.Write(ctx, websocket.MessageBinary, []byte("echo started before lock\r"))
+	readUntil(t, c, "started before lock\r\n")
+
+	// Start a long job (like "docker pull"), then lock while it runs.
+	c.Write(ctx, websocket.MessageBinary, []byte("count 8\r"))
+	readUntil(t, c, "tick 1\r\n")
+
+	// Locking hides the terminal but keeps the shell (and the job) running.
 	h.mustCall("POST", "/api/vault/lock", nil, 200)
-	exit := readExit(t, c)
-	if exit["message"] != "TunnelTab was locked" {
+	if msg := readText(t, c); msg != `{"type":"locked"}` {
+		t.Fatalf("expected a locked message, got %s", msg)
+	}
+	if h.srv.mgr.ShellCount() != 1 {
+		t.Fatalf("%d shells after lock, want 1 (still running)", h.srv.mgr.ShellCount())
+	}
+	h.mustCall("POST", "/api/terminals/"+id+"/attach", nil, http.StatusLocked)
+	time.Sleep(2 * time.Second) // the job finishes while locked
+
+	// After unlocking, the same shell is re-attached and everything the job
+	// printed — including while locked — is replayed.
+	h.mustCall("POST", "/api/vault/unlock", map[string]string{"password": masterPW}, 200)
+	c2 := attachTerminal(t, h, id, "tick 8\r\n")
+	c2.Write(ctx, websocket.MessageBinary, []byte("echo same shell after unlock\r"))
+	readUntil(t, c2, "same shell after unlock\r\n")
+	if h.srv.mgr.ShellCount() != 1 {
+		t.Fatalf("%d shells, want the same single one", h.srv.mgr.ShellCount())
+	}
+}
+
+func TestTerminalReattachAfterReload(t *testing.T) {
+	h := ready(t)
+	serverID := trustedServer(t, h)
+	id, c := openTerminal(t, h, serverID)
+	c.Write(context.Background(), websocket.MessageBinary, []byte("echo before reload\r"))
+	readUntil(t, c, "before reload\r\n")
+	c.CloseNow() // the page reloads or the network blips
+
+	c2 := attachTerminal(t, h, id, "before reload")
+	c2.Write(context.Background(), websocket.MessageBinary, []byte("exit 4\r"))
+	if exit := readExit(t, c2); exit["code"].(float64) != 4 {
 		t.Fatalf("exit %v", exit)
 	}
 	waitShells(t, h, 0)
-	h.mustCall("POST", "/api/terminals", map[string]any{"serverId": serverID, "cols": 80, "rows": 24}, http.StatusLocked)
+	h.mustCall("POST", "/api/terminals/"+id+"/attach", nil, 404)
+}
+
+func TestTerminalSecondTabTakesOver(t *testing.T) {
+	h := ready(t)
+	serverID := trustedServer(t, h)
+	id, first := openTerminal(t, h, serverID)
+	second := attachTerminal(t, h, id, "$ ")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for {
+		if _, _, err := first.Read(ctx); err != nil {
+			break // the first page was disconnected
+		}
+	}
+	second.Write(context.Background(), websocket.MessageBinary, []byte("echo still here\r"))
+	readUntil(t, second, "still here\r\n")
+}
+
+func TestTerminalExplicitClose(t *testing.T) {
+	h := ready(t)
+	serverID := trustedServer(t, h)
+	id, c := openTerminal(t, h, serverID)
+	h.mustCall("DELETE", "/api/terminals/"+id, nil, 204)
+	if exit := readExit(t, c); exit["message"] != "the terminal was closed by TunnelTab" {
+		t.Fatalf("exit %v", exit)
+	}
+	waitShells(t, h, 0)
+	h.mustCall("DELETE", "/api/terminals/"+id, nil, 404)
+}
+
+func TestAbandonedTerminalsAreClosedOnlyWhileUnlocked(t *testing.T) {
+	h := ready(t)
+	serverID := trustedServer(t, h)
+	now := time.Now()
+	h.srv.now = func() time.Time { return now }
+	_, c := openTerminal(t, h, serverID)
+	c.CloseNow() // tab closed: detached
+	waitDetached(t, h)
+
+	// Locked: never reaped, however long it waits.
+	h.mustCall("POST", "/api/vault/lock", nil, 200)
+	now = now.Add(10 * terminalDetachGrace)
+	h.srv.reapTerminalsOnce()
+	if h.srv.mgr.ShellCount() != 1 {
+		t.Fatal("a detached terminal was closed while locked")
+	}
+
+	// Unlocking restarts the grace period…
+	h.mustCall("POST", "/api/vault/unlock", map[string]string{"password": masterPW}, 200)
+	h.srv.reapTerminalsOnce()
+	if h.srv.mgr.ShellCount() != 1 {
+		t.Fatal("closed right after unlocking, before pages could re-attach")
+	}
+	// …after which an abandoned terminal is closed.
+	now = now.Add(terminalDetachGrace + time.Second)
+	h.srv.reapTerminalsOnce()
+	waitShells(t, h, 0)
+}
+
+// readText returns the next control (text) message, skipping output.
+func readText(t *testing.T, c *websocket.Conn) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for {
+		typ, data, err := c.Read(ctx)
+		if err != nil {
+			t.Fatalf("no control message: %v", err)
+		}
+		if typ == websocket.MessageText {
+			return string(data)
+		}
+	}
+}
+
+// waitDetached waits until no page is attached to any terminal.
+func waitDetached(t *testing.T, h *harness) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		attached := false
+		for _, s := range h.srv.sessionsSnapshot() {
+			s.mu.Lock()
+			attached = attached || s.conn != nil
+			s.mu.Unlock()
+		}
+		if !attached {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("terminal still attached")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestTerminalErrors(t *testing.T) {

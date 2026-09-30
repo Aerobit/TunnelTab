@@ -54,6 +54,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("POST /api/hostkeys/confirm", s.handleConfirmHostKey)
 	a("POST /api/hostkeys/forget", s.handleForgetHostKey)
 	a("POST /api/terminals", s.handleOpenTerminal)
+	a("POST /api/terminals/{id}/attach", s.handleAttachTerminal)
+	a("DELETE /api/terminals/{id}", s.handleCloseTerminal)
 	// Authenticated by its one-time ticket instead of the session header.
 	mux.HandleFunc("GET /api/terminals/connect", s.handleConnectTerminal)
 }
@@ -291,6 +293,7 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 	s.unlockSucceeded()
 	s.log.Info("vault unlocked")
 	s.mgr.Resume()
+	s.terminalsUnlocked()
 	go s.autoStart()
 	s.events.publish(vaultEvent{Type: "vault", State: "unlocked"})
 	writeJSON(w, http.StatusOK, map[string]string{"vault": "unlocked"})

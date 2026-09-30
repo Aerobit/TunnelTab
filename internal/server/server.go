@@ -79,7 +79,9 @@ type Server struct {
 	pendingMu   sync.Mutex
 	pendingKeys map[string]pendingKey
 
-	terms terminals
+	terms      terminals
+	stopReaper chan struct{}
+	closeOnce  sync.Once
 }
 
 // New creates a Server. It opens the vault if one exists (locked).
@@ -108,7 +110,8 @@ func New(cfg Config) (*Server, error) {
 		launchTokens: map[[32]byte]time.Time{},
 		sessions:     map[[32]byte]time.Time{},
 		pendingKeys:  map[string]pendingKey{},
-		terms:        terminals{pending: map[[32]byte]*sshx.Shell{}},
+		terms:        newTerminals(),
+		stopReaper:   make(chan struct{}),
 	}
 	s.mgr = sshx.NewManager(sshx.Config{
 		Targets: s.target,
@@ -123,6 +126,7 @@ func New(cfg Config) (*Server, error) {
 		}
 		s.attachVault(v)
 	}
+	go s.reapTerminals(s.stopReaper)
 	return s, nil
 }
 
@@ -140,9 +144,11 @@ func (s *Server) SetAddr(addr net.Addr) {
 
 // Close stops all tunnels, terminals and connections.
 func (s *Server) Close() {
-	s.closePendingTerminals()
-	s.mgr.Close()
-	s.events.close()
+	s.closeOnce.Do(func() {
+		close(s.stopReaper)
+		s.mgr.Close() // ends every shell; their sessions report the exit and go away
+		s.events.close()
+	})
 }
 
 // Manager exposes the SSH engine (used by main for auto-start and tests).
@@ -395,9 +401,9 @@ func (s *Server) onVaultLocked() {
 	if closeTunnels {
 		s.mgr.StopAll()
 	}
-	// Open terminals are live shells on your servers: always close them.
-	s.closePendingTerminals()
-	s.mgr.CloseShells()
+	// Hide terminals: pages are disconnected so nothing can be seen or typed,
+	// but the shells (and whatever runs in them) keep going until unlock.
+	s.hideTerminals()
 	s.pendingMu.Lock()
 	s.pendingKeys = map[string]pendingKey{}
 	s.pendingMu.Unlock()

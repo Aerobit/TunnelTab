@@ -195,11 +195,19 @@ function start(cmd, args, opts) {
   await page.getByRole("button", { name: "Close" }).click();
   step("settings lists the confirmed fingerprint; master password changed in-dialog");
 
-  // 7. Lock / unlock; the tunnel keeps running.
+  // 7. Lock / unlock while a long job runs in the terminal; the tunnel and the
+  //    job keep running.
+  await termPage.keyboard.type("count 10");
+  await termPage.keyboard.press("Enter");
+  await waitTerm("tick 1");
   await page.getByRole("button", { name: "Lock" }).click();
   await page.getByRole("heading", { name: "Unlock TunnelTab" }).waitFor();
-  await termPage.locator("#term-message", { hasText: "TunnelTab was locked" }).waitFor();
+  await termPage.locator("#term-message", { hasText: "Your session keeps running" }).waitFor();
+  assert.ok(!(await termText()).includes("hello from the browser"), "terminal output still readable while locked");
+  assert.ok(!(await termPage.locator("#terminal").isVisible()), "terminal view visible while locked");
   await termPage.screenshot({ path: `${OUT}/08-terminal-locked.png` });
+  await termPage.keyboard.type("typed while locked");
+  await termPage.waitForTimeout(2500); // the job finishes while locked
   await page.getByLabel("Master password").fill("wrong password");
   await page.getByRole("button", { name: "Unlock" }).click();
   await page.getByText("wrong master password").waitFor();
@@ -210,14 +218,27 @@ function start(cmd, args, opts) {
   await page.locator(".pill.active").waitFor();
   step("lock and unlock (rate-limited retry), tunnel still running");
 
-  // Reconnect the terminal after unlocking.
-  await termPage.getByRole("button", { name: "Reconnect" }).click();
+  // The terminal re-attaches by itself; the job's output (including what it
+  // printed while locked) is replayed; nothing typed while locked got through.
   await termPage.locator("#term-status", { hasText: "Connected" }).waitFor();
+  await waitTerm("tick 10");
+  await waitTerm("hello from the browser");
+  assert.ok(!(await termText()).includes("typed while locked"), "keystrokes while locked reached the shell");
+  await termPage.keyboard.type("echo after unlock");
+  await termPage.keyboard.press("Enter");
+  await waitTerm("after unlock\n");
+  step("locking kept the terminal's job running; it re-attached by itself after unlock");
+
+  // Reloading the terminal tab re-attaches to the same session.
+  assert.ok(/#[^/]+\/.+/.test(termPage.url()), "terminal id not kept in the address: " + termPage.url());
+  await termPage.reload();
+  await termPage.locator("#term-status", { hasText: "Connected" }).waitFor();
+  await waitTerm("after unlock");
   await termPage.keyboard.type("exit 7");
   await termPage.keyboard.press("Enter");
   await termPage.locator("#term-message", { hasText: "exited with code 7" }).waitFor();
   await termPage.close();
-  step("locking closed the terminal; it reconnects after unlock; exit code shown");
+  step("reload re-attaches to the same session; exit code shown");
 
   // 8. Reload keeps the session.
   await page.reload();

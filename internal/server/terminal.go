@@ -16,34 +16,72 @@ import (
 
 // Terminals
 //
-// 1. POST /api/terminals {serverId, cols, rows} opens the SSH shell (so
-//    connection and host-key errors come back as normal API errors) and
-//    returns a one-time ticket, valid for 30 seconds.
-// 2. The terminal page connects a WebSocket to
-//    /api/terminals/connect?ticket=<ticket>. Browsers can't send headers on
-//    WebSockets, so the ticket stands in for the session token; the Host
-//    and Origin checks still apply.
+// A terminal session (termSession) owns an SSH shell and lives independently
+// of any browser page. A page *attaches* to it over a WebSocket and can
+// detach and re-attach: after a reload, a brief network blip, or — most
+// importantly — while TunnelTab is locked. Locking detaches every page (so
+// nothing can be seen or typed) but leaves the shell and its programs running
+// on the server; unlocking lets the pages re-attach, and the recent output is
+// replayed. A detached session that no page re-attaches to within
+// terminalDetachGrace (counted only while unlocked) is closed.
+//
+// 1. POST /api/terminals {serverId, cols, rows} opens the shell and returns
+//    {terminalId, ticket, serverName}. POST /api/terminals/{id}/attach returns
+//    a new ticket for an existing session. DELETE /api/terminals/{id} ends it.
+// 2. The page connects a WebSocket to /api/terminals/connect?ticket=<ticket>.
+//    Browsers can't send headers on WebSockets, so the one-time, 30-second
+//    ticket stands in for the session token; the Host and Origin checks
+//    still apply.
 //
 // WebSocket protocol:
 //   - binary messages carry terminal data in both directions;
 //   - text messages are JSON control messages:
 //     browser → app: {"type":"resize","cols":120,"rows":40}
-//     app → browser: {"type":"exit","code":0,"message":"…"} just before closing.
+//     app → browser: {"type":"attached"} then the recent output (binary),
+//                    {"type":"locked"} before detaching because of a lock,
+//                    {"type":"exit","code":0,"message":"…"} when the shell ends.
 
-const terminalReadLimit = 64 * 1024
+const (
+	terminalReadLimit  = 64 * 1024
+	terminalScrollback = 512 * 1024 // output kept for replay on re-attach
+	terminalWriteLimit = 10 * time.Second
+)
 
-// terminalTicketTTL is how long a terminal ticket stays valid, and
-// terminalTouchEvery how often typing in a terminal postpones auto-lock
-// (variables so tests can shorten them).
+// Timings (variables so tests can shorten them).
 var (
-	terminalTicketTTL  = 30 * time.Second
-	terminalTouchEvery = 10 * time.Second
+	terminalTicketTTL   = 30 * time.Second // how long a WebSocket ticket is valid
+	terminalTouchEvery  = 10 * time.Second // how often typing postpones auto-lock
+	terminalDetachGrace = time.Minute      // how long a detached session waits (while unlocked)
+	terminalReapEvery   = 5 * time.Second
 )
 
 type terminals struct {
-	mu      sync.Mutex
-	pending map[[32]byte]*sshx.Shell // ticket hash → shell waiting for its WebSocket
+	mu       sync.Mutex
+	sessions map[string]*termSession // by terminal ID
+	tickets  map[[32]byte]termTicket // ticket hash → terminal
 }
+
+type termTicket struct {
+	id      string
+	expires time.Time
+}
+
+type termSession struct {
+	id, serverID, serverName string
+	shell                    *sshx.Shell
+
+	mu         sync.Mutex
+	scroll     []byte          // the last terminalScrollback bytes of output
+	conn       *websocket.Conn // the attached page, nil while detached
+	detachedAt time.Time
+	ended      bool
+}
+
+func newTerminals() terminals {
+	return terminals{sessions: map[string]*termSession{}, tickets: map[[32]byte]termTicket{}}
+}
+
+// --- API ----------------------------------------------------------------
 
 func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -71,39 +109,36 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		s.writeSSHError(w, err)
 		return
 	}
-
-	ticket := randomToken()
-	h := hashToken(ticket)
+	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, detachedAt: s.now()}
 	s.terms.mu.Lock()
-	s.terms.pending[h] = shell
+	s.terms.sessions[t.id] = t
 	s.terms.mu.Unlock()
-	// Close the shell if the page never connects.
-	time.AfterFunc(terminalTicketTTL, func() {
-		if sh := s.takeTerminal(h); sh != nil {
-			sh.Close()
-		}
-	})
-	writeJSON(w, http.StatusOK, map[string]string{"ticket": ticket, "serverName": name})
+	go s.runTerminal(t)
+
+	writeJSON(w, http.StatusOK, map[string]string{"terminalId": t.id, "ticket": s.terminalTicket(t.id), "serverName": name})
 }
 
-// takeTerminal removes and returns the shell for a ticket (one-time use).
-func (s *Server) takeTerminal(h [32]byte) *sshx.Shell {
-	s.terms.mu.Lock()
-	defer s.terms.mu.Unlock()
-	sh := s.terms.pending[h]
-	delete(s.terms.pending, h)
-	return sh
-}
-
-// closePendingTerminals ends shells whose page hasn't connected yet.
-func (s *Server) closePendingTerminals() {
-	s.terms.mu.Lock()
-	pending := s.terms.pending
-	s.terms.pending = map[[32]byte]*sshx.Shell{}
-	s.terms.mu.Unlock()
-	for _, sh := range pending {
-		sh.Close()
+func (s *Server) handleAttachTerminal(w http.ResponseWriter, r *http.Request) {
+	if s.vaultState() != "unlocked" {
+		writeError(w, http.StatusLocked, "locked", "the vault is locked")
+		return
 	}
+	t := s.terminal(r.PathValue("id"))
+	if t == nil {
+		writeError(w, http.StatusNotFound, "not_found", "this terminal session has ended")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"terminalId": t.id, "ticket": s.terminalTicket(t.id), "serverName": t.serverName})
+}
+
+func (s *Server) handleCloseTerminal(w http.ResponseWriter, r *http.Request) {
+	t := s.terminal(r.PathValue("id"))
+	if t == nil {
+		writeError(w, http.StatusNotFound, "not_found", "this terminal session has ended")
+		return
+	}
+	t.shell.Close()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleConnectTerminal(w http.ResponseWriter, r *http.Request) {
@@ -113,103 +148,277 @@ func (s *Server) handleConnectTerminal(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "bad_origin", "missing Origin header")
 		return
 	}
-	shell := s.takeTerminal(hashToken(r.URL.Query().Get("ticket")))
-	if shell == nil {
+	t := s.redeemTerminalTicket(r.URL.Query().Get("ticket"))
+	if t == nil {
 		writeError(w, http.StatusUnauthorized, "bad_ticket", "this terminal link has expired: open the terminal again")
+		return
+	}
+	if s.vaultState() != "unlocked" {
+		writeError(w, http.StatusLocked, "locked", "the vault is locked")
 		return
 	}
 	// websocket.Accept also verifies that Origin matches Host.
 	c, err := websocket.Accept(w, r, nil)
 	if err != nil {
-		shell.Close()
 		return
 	}
 	c.SetReadLimit(terminalReadLimit)
-	s.log.Info("terminal connected", "server", shell.ServerID())
-	s.pumpTerminal(r.Context(), c, shell)
+	if !t.attach(c) {
+		c.Close(websocket.StatusNormalClosure, "session ended")
+		return
+	}
+	s.log.Info("terminal attached", "server", t.serverID)
+	s.readTerminalInput(r.Context(), t, c)
 }
 
-// pumpTerminal copies data between the WebSocket and the shell until either
-// side ends.
-func (s *Server) pumpTerminal(ctx context.Context, c *websocket.Conn, shell *sshx.Shell) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	defer shell.Close()
+// --- Sessions -----------------------------------------------------------
 
-	// Shell → browser.
-	outputDone := make(chan struct{})
-	go func() {
-		defer close(outputDone)
-		buf := make([]byte, 32*1024)
-		for {
-			n, err := shell.Read(buf)
-			if n > 0 {
-				if werr := c.Write(ctx, websocket.MessageBinary, buf[:n]); werr != nil {
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
+func (s *Server) terminal(id string) *termSession {
+	s.terms.mu.Lock()
+	defer s.terms.mu.Unlock()
+	return s.terms.sessions[id]
+}
 
-	// Browser → shell. Typing counts as activity, so auto-lock doesn't close
-	// a terminal that is in use.
-	inputDone := make(chan struct{})
-	go func() {
-		defer close(inputDone)
-		var lastTouch time.Time
-		for {
-			typ, data, err := c.Read(ctx)
-			if err != nil {
-				return
-			}
-			if time.Since(lastTouch) >= terminalTouchEvery {
-				if v := s.currentVault(); v != nil {
-					v.Touch()
-				}
-				lastTouch = time.Now()
-			}
-			if typ == websocket.MessageBinary {
-				if _, err := shell.Write(data); err != nil {
-					return
-				}
-				continue
-			}
-			var msg struct {
-				Type string `json:"type"`
-				Cols int    `json:"cols"`
-				Rows int    `json:"rows"`
-			}
-			if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" {
-				shell.Resize(msg.Cols, msg.Rows)
-			}
-		}
-	}()
+func (s *Server) terminalTicket(id string) string {
+	ticket := randomToken()
+	s.terms.mu.Lock()
+	s.terms.tickets[hashToken(ticket)] = termTicket{id: id, expires: s.now().Add(terminalTicketTTL)}
+	s.terms.mu.Unlock()
+	return ticket
+}
 
-	select {
-	case <-inputDone: // browser closed the page or the socket
-		c.Close(websocket.StatusNormalClosure, "")
-		return
-	case <-shell.Done():
+// redeemTerminalTicket returns the session for a ticket (one-time use).
+func (s *Server) redeemTerminalTicket(ticket string) *termSession {
+	h := hashToken(ticket)
+	s.terms.mu.Lock()
+	defer s.terms.mu.Unlock()
+	tk, ok := s.terms.tickets[h]
+	delete(s.terms.tickets, h)
+	if !ok || s.now().After(tk.expires) {
+		return nil
 	}
-	<-outputDone // flush the last output before reporting the exit
-	code, err := shell.ExitStatus()
+	return s.terms.sessions[tk.id]
+}
+
+// runTerminal forwards the shell's output to the attached page (and keeps it
+// for replay) until the shell ends, then tells the page why and forgets the
+// session.
+func (s *Server) runTerminal(t *termSession) {
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := t.shell.Read(buf)
+		if n > 0 {
+			t.output(buf[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
+	<-t.shell.Done()
+	code, err := t.shell.ExitStatus()
 	msg := ""
 	switch {
-	case errors.Is(err, sshx.ErrShellClosed) && s.vaultState() == "locked":
-		msg = "TunnelTab was locked"
 	case errors.Is(err, sshx.ErrShellClosed):
 		msg = "the terminal was closed by TunnelTab"
 	case err != nil:
 		msg = "the connection to the server was lost"
 	}
 	exit, _ := json.Marshal(map[string]any{"type": "exit", "code": code, "message": msg})
-	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancelWrite()
-	if werr := c.Write(writeCtx, websocket.MessageText, exit); werr != nil && !errors.Is(werr, context.Canceled) {
-		s.log.Debug("terminal exit message not delivered", "error", werr)
+
+	s.terms.mu.Lock()
+	delete(s.terms.sessions, t.id)
+	s.terms.mu.Unlock()
+	t.end(exit)
+}
+
+// readTerminalInput passes the page's keystrokes and resizes to the shell
+// until the page goes away; the session then stays detached (not closed).
+// Typing counts as activity, so auto-lock doesn't lock a terminal in use.
+func (s *Server) readTerminalInput(ctx context.Context, t *termSession, c *websocket.Conn) {
+	defer t.detach(c, s.now())
+	var lastTouch time.Time
+	for {
+		typ, data, err := c.Read(ctx)
+		if err != nil {
+			return
+		}
+		if time.Since(lastTouch) >= terminalTouchEvery {
+			if v := s.currentVault(); v != nil {
+				v.Touch()
+			}
+			lastTouch = time.Now()
+		}
+		if typ == websocket.MessageBinary {
+			if _, err := t.shell.Write(data); err != nil {
+				return
+			}
+			continue
+		}
+		var msg struct {
+			Type string `json:"type"`
+			Cols int    `json:"cols"`
+			Rows int    `json:"rows"`
+		}
+		if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" {
+			t.shell.Resize(msg.Cols, msg.Rows)
+		}
 	}
-	c.Close(websocket.StatusNormalClosure, "session ended")
+}
+
+// output records terminal output and sends it to the attached page.
+func (t *termSession) output(p []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.scroll = append(t.scroll, p...)
+	if over := len(t.scroll) - terminalScrollback; over > 0 {
+		t.scroll = append([]byte(nil), t.scroll[over:]...)
+	}
+	if t.conn != nil {
+		if err := writeTimeout(t.conn, websocket.MessageBinary, p); err != nil {
+			t.conn.CloseNow()
+			t.conn, t.detachedAt = nil, time.Now()
+		}
+	}
+}
+
+// attach connects a page, replacing any page already attached, and replays
+// the recent output. It reports false if the session has already ended.
+func (t *termSession) attach(c *websocket.Conn) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.ended {
+		return false
+	}
+	if t.conn != nil {
+		closeAsync(t.conn, "opened in another tab")
+	}
+	t.conn = c
+	if writeTimeout(c, websocket.MessageText, []byte(`{"type":"attached"}`)) != nil ||
+		(len(t.scroll) > 0 && writeTimeout(c, websocket.MessageBinary, t.scroll) != nil) {
+		c.CloseNow()
+		t.conn = nil
+	}
+	return true
+}
+
+// detach disconnects c if it is still the attached page.
+func (t *termSession) detach(c *websocket.Conn, now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.conn == c {
+		t.conn, t.detachedAt = nil, now
+		closeAsync(c, "")
+	}
+}
+
+// hide detaches the page because TunnelTab locked, telling it why.
+func (t *termSession) hide(now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.conn != nil {
+		writeTimeout(t.conn, websocket.MessageText, []byte(`{"type":"locked"}`))
+		closeAsync(t.conn, "TunnelTab is locked")
+		t.conn = nil
+	}
+	t.detachedAt = now
+}
+
+// end reports the exit to the attached page and marks the session ended.
+func (t *termSession) end(exit []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.ended = true
+	if t.conn != nil {
+		writeTimeout(t.conn, websocket.MessageText, exit)
+		closeAsync(t.conn, "session ended")
+		t.conn = nil
+	}
+}
+
+// closeAsync closes a page's WebSocket without waiting for the page to
+// answer the close handshake (which can take seconds, or never come).
+func closeAsync(c *websocket.Conn, reason string) {
+	go c.Close(websocket.StatusNormalClosure, reason)
+}
+
+func writeTimeout(c *websocket.Conn, typ websocket.MessageType, p []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), terminalWriteLimit)
+	defer cancel()
+	return c.Write(ctx, typ, p)
+}
+
+// --- Lock, unlock and clean-up ------------------------------------------
+
+func (s *Server) sessionsSnapshot() []*termSession {
+	s.terms.mu.Lock()
+	defer s.terms.mu.Unlock()
+	list := make([]*termSession, 0, len(s.terms.sessions))
+	for _, t := range s.terms.sessions {
+		list = append(list, t)
+	}
+	return list
+}
+
+// hideTerminals detaches every page when the vault locks. The shells keep
+// running; pending tickets are cancelled.
+func (s *Server) hideTerminals() {
+	s.terms.mu.Lock()
+	s.terms.tickets = map[[32]byte]termTicket{}
+	s.terms.mu.Unlock()
+	now := s.now()
+	for _, t := range s.sessionsSnapshot() {
+		t.hide(now)
+	}
+}
+
+// terminalsUnlocked restarts the detach grace period after unlocking, so
+// pages have time to re-attach.
+func (s *Server) terminalsUnlocked() {
+	now := s.now()
+	for _, t := range s.sessionsSnapshot() {
+		t.mu.Lock()
+		if t.conn == nil {
+			t.detachedAt = now
+		}
+		t.mu.Unlock()
+	}
+}
+
+// reapTerminals closes sessions left detached for longer than the grace
+// period (only while unlocked: nobody can re-attach while locked) and drops
+// expired tickets, until stop is closed.
+func (s *Server) reapTerminals(stop <-chan struct{}) {
+	tick := time.NewTicker(terminalReapEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-tick.C:
+			s.reapTerminalsOnce()
+		}
+	}
+}
+
+func (s *Server) reapTerminalsOnce() {
+	now := s.now()
+	s.terms.mu.Lock()
+	for h, tk := range s.terms.tickets {
+		if now.After(tk.expires) {
+			delete(s.terms.tickets, h)
+		}
+	}
+	s.terms.mu.Unlock()
+	if s.vaultState() != "unlocked" {
+		return
+	}
+	for _, t := range s.sessionsSnapshot() {
+		t.mu.Lock()
+		abandoned := t.conn == nil && !t.ended && now.Sub(t.detachedAt) > terminalDetachGrace
+		t.mu.Unlock()
+		if abandoned {
+			s.log.Info("closing abandoned terminal", "server", t.serverID)
+			t.shell.Close()
+		}
+	}
 }

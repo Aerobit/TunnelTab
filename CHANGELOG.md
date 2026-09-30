@@ -29,7 +29,9 @@ servers. Successor to the `local.browser` browser extension.
   opens the app; stable automatic local ports; optional auto-start after
   unlocking.
 - **In-browser terminal** — "Terminal" opens a real SSH shell in a new tab
-  (xterm.js): resize, copy/paste, reconnect, exit status.
+  (xterm.js): resize, copy/paste, exit status. Sessions survive locking
+  (the tab is blanked; programs keep running) and page reloads, and
+  re-attach with their recent output.
 - **Packaging** — Windows icon and version details, license notices,
   SHA-256 checksums, and a warning when started from inside the ZIP.
 - **Documentation** — user guide with troubleshooting and FAQ, architecture,
@@ -42,6 +44,6 @@ servers. Successor to the `local.browser` browser extension.
 - Secrets never reach the browser, logs, command lines or environment
   variables; logs contain no server addresses.
 - The data folder is restricted to your user account; wrong master
-  passwords are rate-limited; locking closes all terminals.
+  passwords are rate-limited; locking blanks and disconnects terminal tabs.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.

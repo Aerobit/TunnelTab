@@ -50,6 +50,12 @@ fixed, and which risks are accepted. The threat model itself is in
 | Host-key confirmation could store a different key than the one shown | The server keeps the exact key; the browser only sends a token (3) |
 | A redundant pop-up message and unclear terminal end reasons | UI fixes (4, 5) |
 
+## Changed after the review
+
+| Change | Reason |
+|---|---|
+| Locking detaches and blanks terminal pages instead of closing the shells | Closing killed running work (e.g. a `docker pull`) found in manual testing. Pages still can't read or type while locked, and re-attaching needs the vault unlocked; a detached session is closed if no page returns within a minute of unlocking. |
+
 ## Accepted risks
 
 | Risk | Why it's accepted |

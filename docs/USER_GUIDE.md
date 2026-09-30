@@ -149,11 +149,17 @@ connection when one is open). Open as many as you like, side by side.
   (or right-click → Paste). Plain **Ctrl+C** stops the running command, as
   in any terminal.
 - The terminal resizes with the window.
-- When the session ends (you typed `exit`, the connection dropped, or
-  TunnelTab locked), the top bar says why. Press **Enter** or click
-  **Reconnect** to start a new session.
-- **Locking TunnelTab closes all terminals**, so nobody can use an open shell
-  on an unattended PC. Unlock, then reconnect.
+- **Locking TunnelTab hides terminals but keeps them running.** The terminal
+  tab goes blank and says *Locked* — nobody can read it or type into it —
+  while your commands (an update, a `docker pull`…) carry on on the server.
+  After you unlock, the tab reconnects by itself and shows what happened.
+- **Reloading** the terminal tab reconnects to the same session. A tab you
+  close is ended after about a minute.
+- When the session ends (you typed `exit`, or the connection to the server
+  dropped), the top bar says why. Press **Enter** or click **New session**.
+- For jobs that must survive even a dropped connection (hours-long
+  upgrades, big transfers), run them inside `tmux` or `screen` on the server,
+  as with any SSH client.
 
 ## Services and web UI quick launch
 
@@ -288,10 +294,17 @@ restart). TunnelTab keeps retrying and recovers by itself.
 A connection dropped while TunnelTab was locked. Unlock it and they
 reconnect.
 
-**My terminal closed**  
-Locking TunnelTab (manually or after inactivity) closes all terminals.
-Press **Enter** or **Reconnect** after unlocking. Typing counts as activity,
-so an active terminal keeps TunnelTab unlocked.
+**My terminal went blank and says "Locked"**  
+TunnelTab locked (manually or after inactivity). Your session and anything
+running in it keep going; unlock in the dashboard and the terminal comes
+back by itself with its output. Typing counts as activity, so an active
+terminal keeps TunnelTab unlocked.
+
+**My terminal session ended**  
+The connection to the server dropped (network change, server restart), or
+the tab was closed for more than a minute. Programs started in it were
+stopped by the server; use `tmux` or `screen` for jobs that must survive
+that. Press **Enter** for a new session.
 
 **"Could not restrict the data folder to this user" in the log**  
 The folder is on a drive without permissions (FAT32/exFAT USB stick).

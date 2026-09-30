@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -15,6 +16,7 @@ import (
 //
 //	echo <text>   prints <text>
 //	size          prints the terminal size as "<cols>x<rows>"
+//	count <n>     prints "tick 1" … "tick n", one every 200 ms (a long-running job)
 //	exit [code]   ends the session with that exit status (default 0)
 func handleSession(nc ssh.NewChannel, opts Options) {
 	banner, prompt := opts.Banner, opts.Prompt
@@ -86,6 +88,15 @@ func handleSession(nc ssh.NewChannel, opts Options) {
 				switch {
 				case isCanned:
 					fmt.Fprint(ch, strings.ReplaceAll(canned, "\n", "\r\n"))
+				case strings.HasPrefix(cmd, "count "):
+					n := 0
+					fmt.Sscanf(strings.TrimPrefix(cmd, "count "), "%d", &n)
+					for i := 1; i <= n; i++ {
+						time.Sleep(200 * time.Millisecond)
+						if _, err := fmt.Fprintf(ch, "tick %d\r\n", i); err != nil {
+							return
+						}
+					}
 				case cmd == "size":
 					mu.Lock()
 					fmt.Fprintf(ch, "%dx%d\r\n", cols, rows)
