@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-30
+
 First release: a portable SSH terminal and web-UI launcher for your own
 servers. Successor to the `local.browser` browser extension.
 
@@ -51,3 +53,6 @@ servers. Successor to the `local.browser` browser extension.
   passwords are rate-limited; locking blanks and disconnects terminal tabs.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
+
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.1.0

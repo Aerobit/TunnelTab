@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **Phase 7 complete** (packaging, docs). Next: manual Windows check (docs/RELEASE_CHECKLIST.md), then tag v0.1.0.
+> Status: **v0.1.0 released** (2026-09-30). All phases complete; later ideas are listed under Out of scope.
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal

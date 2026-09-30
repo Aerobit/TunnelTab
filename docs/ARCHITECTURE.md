@@ -4,7 +4,7 @@ How TunnelTab is put together, and where to make changes.
 
 > **Living document.** Sections marked *(planned)* describe the design from
 > [PLAN.md](../PLAN.md) and are replaced with the real details as each phase
-> is built. Current phase: **7 — packaging complete; first release pending**.
+> is built. Current state: **v0.1.0 released**; the sections below describe it.
 
 ## Overview
 
