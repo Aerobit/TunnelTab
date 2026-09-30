@@ -1,0 +1,19 @@
+# Build output
+/dist/
+
+# User data — never commit (vault, known_hosts, settings, logs)
+/data/
+**/data/vault.enc*
+**/data/known_hosts
+
+# Local test artefacts
+*.test
+*.out
+coverage.*
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

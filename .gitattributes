@@ -1,0 +1,6 @@
+# Normalise line endings so scripts work after cloning on Windows or Linux.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.exe binary
+*.png binary
+*.woff2 binary

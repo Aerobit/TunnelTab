@@ -1,0 +1,64 @@
+# Security
+
+TunnelTab holds the keys to your servers, so security is its most important
+feature. This document explains what it protects against, how, and — just as
+importantly — what it does **not** protect against.
+
+> The design below is final; implementation status is tracked in
+> [PLAN.md](../PLAN.md). Exact parameters are confirmed here as each part is
+> built.
+
+## Reporting a vulnerability
+
+Please **don't open a public issue** for security problems. Use GitHub's
+private reporting instead: the repository's **Security** tab →
+**Report a vulnerability**.
+
+## Threat model
+
+### Protected against
+
+| Threat | Protection |
+|---|---|
+| Someone copies the folder or steals the USB stick | All projects, servers and secrets are in `vault.enc`, encrypted with a key derived from your master password. The key is never stored. Without the password the file is useless. |
+| Guessing the master password offline | Argon2id key derivation (memory-hard, tuned to roughly 0.5–1 s per guess on a normal PC). |
+| Tampering with the vault file | AES-256-GCM detects any change; a tampered or corrupted vault refuses to open rather than loading bad data. |
+| Leaving the PC unlocked | Auto-lock after inactivity (default 15 minutes) wipes the key from memory. |
+| Secrets leaking at runtime | Secrets are never sent to the browser and never appear in logs, error messages, command lines or environment variables. |
+| Connecting to an impostor server (MITM) | Host keys are checked against `data/known_hosts`. New servers show their fingerprint for you to confirm; a changed key is blocked. |
+| Malicious websites attacking the local dashboard | The server listens on `127.0.0.1` only, requires a per-launch session cookie, rejects wrong `Host` headers (DNS rebinding) and cross-site `Origin` headers (CSRF), sends no CORS headers, and uses a strict Content Security Policy. |
+| Other devices on your network using your tunnels | Tunnels listen on `127.0.0.1` only. |
+| Command injection | SSH runs inside the app; no shell is ever used. |
+| Supply-chain / CDN compromise of the UI | All web assets are bundled in the executable; nothing is loaded from the internet. |
+
+### Not protected against
+
+- **Malware already running as your user** on the PC. It can read memory,
+  capture keystrokes (including the master password) or use open tunnels.
+- **A weak master password.** Argon2id slows guessing down; it can't make
+  `password123` safe. Use a long passphrase.
+- **A compromised server.** TunnelTab secures the connection, not what's on
+  the other end.
+- **Other local users on a shared PC reaching your tunnels.** Tunnels bind to
+  `127.0.0.1`, which other accounts on the *same* machine can connect to while
+  a tunnel is open. TunnelTab is designed for single-user PCs.
+- **Forgotten master password.** There is no recovery by design; keep a backup
+  of your SSH keys elsewhere.
+
+## Cryptography *(parameters confirmed in Phase 1)*
+
+| Purpose | Choice |
+|---|---|
+| Key derivation | Argon2id (`golang.org/x/crypto/argon2`), random 16-byte salt, parameters stored in the vault header so they can be raised later |
+| Encryption | AES-256-GCM, random 12-byte nonce per save |
+| Randomness | `crypto/rand` |
+| SSH | `golang.org/x/crypto/ssh`, modern algorithms only |
+
+## Recommendations for users
+
+- Prefer **SSH keys** (or ssh-agent) over passwords.
+- Use a **long, unique master password**.
+- Keep a **backup** of the portable folder (the vault is useless without the
+  password, so backups are safe to store).
+- Verify a new server's **fingerprint** against your VPS provider's console
+  the first time you connect.
