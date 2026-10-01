@@ -363,7 +363,7 @@ the executable as-is.
 | `index.html` | Page shell; loads `app.css` and `js/app.js` |
 | `js/api.js` | Sign-in (launch link → session in localStorage), `api()` fetch wrapper (`ApiError` with `code`), event stream reader with reconnect |
 | `js/dom.js` | `h(tag, attrs, …children)` element builder — text is always inserted as text nodes, never `innerHTML` |
-| `js/dialogs.js` | Native `<dialog>` modals (`openDialog`, `confirmDialog`), form `field`/`checkbox`, toasts |
+| `js/dialogs.js` | Native `<dialog>` modals (`openDialog`, `confirmDialog`), form `field`/`checkbox`, `tabs` (Settings), toasts |
 | `js/forms.js` | Project/server/service/settings dialogs; `withHostKeys(fn)` runs a connecting call and handles fingerprint confirmation |
 | `js/app.js` | Screens (signed out, setup, unlock, dashboard), state, rendering, live events, actions |
 | `terminal.html`, `js/terminal.js`, `terminal.css` | The terminal page (see Terminals) |
@@ -439,6 +439,7 @@ from that server).
 | `scripts/signsums` | Signs `SHA256SUMS.txt` in the release workflow; `genkey` / `verify` for the release key (see DEVELOPMENT.md → Release signing key) |
 | `packaging/README.txt` | Copied into the folder (version stamped in) |
 | `packaging/icon.png` | Windows executable icon (rendered from `web/static/icon.svg`) |
+| `web/static/icon.svg`, `logo.svg` | Browser-tab icon (with its dark square) and the transparent logo shown inside the pages |
 
 `internal/config.RunningFromTempFolder` stops the Windows program when it's
 started from inside the ZIP (Explorer runs a temporary copy there, and the

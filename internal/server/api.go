@@ -288,7 +288,7 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 		s.unlockFailed()
 		s.log.Warn("wrong master password")
 		writeJSON(w, http.StatusUnauthorized, map[string]any{
-			"error": "wrong_password", "message": err.Error(), "retryAfterMs": s.unlockWait().Milliseconds(),
+			"error": "wrong_password", "message": "Wrong master password. Check Caps Lock and your keyboard layout.", "retryAfterMs": s.unlockWait().Milliseconds(),
 		})
 		return
 	case err != nil:
@@ -333,7 +333,7 @@ func (s *Server) handleVaultPassword(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, vault.ErrWrongPassword):
 		s.unlockFailed()
 		writeJSON(w, http.StatusUnauthorized, map[string]any{
-			"error": "wrong_password", "message": "the current master password is wrong", "retryAfterMs": s.unlockWait().Milliseconds(),
+			"error": "wrong_password", "message": "The current master password is wrong.", "retryAfterMs": s.unlockWait().Milliseconds(),
 		})
 	case errors.Is(err, vault.ErrWeakPassword):
 		writeError(w, http.StatusBadRequest, "weak_password", err.Error())

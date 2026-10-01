@@ -3,7 +3,7 @@
 
 import { api, ApiError } from "./api.js";
 import { h } from "./dom.js";
-import { checkbox, confirmDialog, field, openDialog, toast } from "./dialogs.js";
+import { checkbox, confirmDialog, field, openDialog, tabs, toast } from "./dialogs.js";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -293,7 +293,7 @@ export async function serviceDialog(serverId, service) {
 
 // --- Settings ---------------------------------------------------------------
 
-export async function settingsDialog({ knownHosts, minPasswordLen, version, runningTunnels = 0, onRestarting }) {
+export async function settingsDialog({ knownHosts, minPasswordLen, version, runningTunnels = 0, onRestarting, onChecked, initialTab }) {
   const current = await api("GET", "/settings");
   const lock = select(
     [["0", "Never"], ["5", "5 minutes"], ["15", "15 minutes"], ["30", "30 minutes"], ["60", "1 hour"], ["240", "4 hours"]],
@@ -341,6 +341,7 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
     updateStatus.replaceChildren("Checking…");
     try {
       const r = await api("POST", "/updates/check");
+      onChecked?.(r.newer ? r.latest : null);
       const releaseLink = (text) =>
         typeof r.url === "string" && r.url.startsWith("https://github.com/Aerobit/TunnelTab/releases/")
           ? h("a", { href: r.url, target: "_blank", rel: "noopener noreferrer" }, text)
@@ -415,22 +416,28 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
   await openDialog({
     title: "Settings",
     wide: true,
-    body: [
-      h("h3", {}, "Security"),
-      field("Lock after inactivity", lock),
-      closeOnLock.el,
-      h("h3", {}, "Dashboard"),
-      field("Dashboard port", port, "Takes effect the next time TunnelTab starts."),
-      h("h3", {}, "Master password"),
-      h("div", { class: "row" }, field("Current", oldPw), field("New", newPw), field("Repeat new", newPw2)),
-      h("div", { class: "inline-actions" }, changePw, pwStatus),
-      h("h3", {}, "Updates"),
-      h("p", { class: "hint" }, `You're running TunnelTab ${version}. Checking asks GitHub for the latest release. An update is downloaded only when you click Update now, and installed only if it's signed by TunnelTab. TunnelTab never checks on its own.`),
-      h("div", { class: "inline-actions" }, updateBtn, updateStatus),
-      h("h3", {}, "Confirmed servers"),
-      h("p", { class: "hint" }, "Server fingerprints you have trusted. They are stored inside the encrypted vault."),
-      hostList,
-    ],
+    body: tabs([
+      { label: "General", content: [
+        h("h3", {}, "Security"),
+        field("Lock after inactivity", lock),
+        closeOnLock.el,
+        h("h3", {}, "Dashboard"),
+        field("Dashboard port", port, "Takes effect the next time TunnelTab starts."),
+      ] },
+      { label: "Password", content: [
+        h("p", { class: "hint" }, "Changes the password that unlocks TunnelTab. It can't be recovered, so keep it safe."),
+        h("div", { class: "row" }, field("Current", oldPw), field("New", newPw), field("Repeat new", newPw2)),
+        h("div", { class: "inline-actions" }, changePw, pwStatus),
+      ] },
+      { label: "Updates", content: [
+        h("p", { class: "hint" }, `You're running TunnelTab ${version}. Checking asks GitHub for the latest release. An update is downloaded only when you click Update now, and installed only if it's signed by TunnelTab. TunnelTab never checks on its own.`),
+        h("div", { class: "inline-actions" }, updateBtn, updateStatus),
+      ] },
+      { label: "Servers", content: [
+        h("p", { class: "hint" }, "Server fingerprints you have trusted. They are stored inside the encrypted vault."),
+        hostList,
+      ] },
+    ], initialTab),
     actions: [
       { label: "Close" },
       { label: "Save settings", kind: "primary", submit: true,

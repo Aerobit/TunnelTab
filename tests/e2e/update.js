@@ -118,7 +118,8 @@ process.on("exit", () => {
     await page.getByText("Add your first project").waitFor();
   };
   const clickUpdateNow = async (page) => {
-    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: /Settings/ }).click();
+    await page.getByRole("tab", { name: "Updates" }).click();
     await page.getByRole("button", { name: "Check for updates" }).click();
     await page.getByRole("button", { name: "Update now" }).click();
     await page.getByRole("button", { name: "Update now" }).last().click(); // the confirmation
@@ -136,7 +137,8 @@ process.on("exit", () => {
 
   // 2. Update to a good, signed 0.2.0.
   current = makeRelease("0.2.0", newBuild);
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: /Settings/ }).click();
+  await page.getByRole("tab", { name: "Updates" }).click();
   await page.getByRole("button", { name: "Check for updates" }).click();
   await page.getByText("TunnelTab 0.2.0 is available").waitFor();
   await page.getByRole("button", { name: "Update now" }).scrollIntoViewIfNeeded();

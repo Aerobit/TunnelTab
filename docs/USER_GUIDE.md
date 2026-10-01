@@ -108,8 +108,8 @@ On a project, click **+ Server** and fill in:
 
 When you save, TunnelTab connects once to check everything. The first time,
 it shows the server's fingerprint for you to confirm (see below). A green
-dot next to a server means it's connected; **Test** checks it again at any
-time.
+dot next to a server means it's connected. The **⋯** button on a server
+has **Test connection** (checks it again at any time) and **Edit server**.
 
 ## Choosing how to log in: keys, agent or password
 
@@ -205,18 +205,21 @@ choose another local port, or leave it blank.
 
 ## Settings
 
-**Settings** (top bar):
+**Settings** (top bar) has four tabs:
 
-- **Lock after inactivity** — Never, 5 min … 4 hours (default 15 min).
-- **Close all tunnels when TunnelTab locks** — off by default.
-- **Dashboard port** — default 47811; applies after restarting TunnelTab.
-- **Change master password** — enter the current one and the new one twice.
+- **General**
+  - **Lock after inactivity** — Never, 5 min … 4 hours (default 15 min).
+  - **Close all tunnels when TunnelTab locks** — off by default.
+  - **Dashboard port** — default 47811; applies after restarting TunnelTab.
+- **Password** — change the master password: enter the current one and the
+  new one twice.
 - **Updates** — shows your version. **Check for updates** asks GitHub for
   the latest release and, if there's a newer one, links to its release notes
-  and offers **Update now**. TunnelTab never checks or downloads by itself —
-  only when you click. See [How do I update](#faq).
-- **Confirmed servers** — every fingerprint you've trusted. **Forget**
-  removes one, so the next connection asks you to confirm again.
+  and offers **Update now**. A blue dot on **Settings** then reminds you
+  while this dashboard tab stays open. TunnelTab never checks or downloads
+  by itself — only when you click. See [How do I update](#faq).
+- **Servers** — every fingerprint you've trusted. **Forget** removes one, so
+  the next connection asks you to confirm again.
 
 ## Backups and moving to another PC
 
@@ -270,7 +273,7 @@ Click **More info → Run anyway**. The program isn't code-signed (signing
 costs money); it's built openly from this repository by GitHub Actions, and
 you can check the download against `SHA256SUMS.txt`.
 
-**"Wrong master password, or the vault file is damaged"**  
+**"Wrong master password"**  
 Check Caps Lock and your keyboard layout. After several wrong tries you
 have to wait a few seconds. If you're sure the password is right, see
 *damaged vault* under [Backups](#backups-and-moving-to-another-pc).

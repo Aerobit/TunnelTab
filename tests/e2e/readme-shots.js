@@ -88,7 +88,8 @@ function start(cmd, args) {
 
   // Fingerprint confirmation (first connection to homelab).
   const homelabRow = page.locator(".server", { hasText: "homelab" });
-  await homelabRow.getByRole("button", { name: "Test" }).click();
+  await homelabRow.getByRole("button", { name: /More actions/ }).click();
+  await page.getByRole("menuitem", { name: "Test connection" }).click();
   await page.getByRole("heading", { name: "Confirm new server" }).waitFor();
   await shot(page, "fingerprint");
   await page.getByRole("button", { name: "Trust and connect" }).click();
@@ -126,7 +127,8 @@ function start(cmd, args) {
   await term.close();
 
   // Settings.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: /Settings/ }).click();
+  await page.getByRole("tab", { name: "Servers" }).click();
   await page.locator(".host-list code").filter({ hasText: "SHA256:" }).waitFor();
   await shot(page, "settings");
   await page.getByRole("button", { name: "Close" }).click();

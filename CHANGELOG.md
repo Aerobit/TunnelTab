@@ -6,6 +6,21 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Server rows are tidier: **Test connection** and **Edit server** moved into
+  a **⋯** menu, next to **Terminal** and **+ Service**.
+- **Settings** is split into tabs: General, Password, Updates, Servers.
+- After **Check for updates** finds a newer version, a blue dot on
+  **Settings** reminds you (it still never checks by itself).
+- The logo inside the app no longer has a dark square behind it.
+- Clearer unlock error: "Wrong master password. Check Caps Lock and your
+  keyboard layout."
+
+### Fixed
+- The "TunnelTab has stopped", "Not signed in" and "Updating" screens are
+  centred in a card like the unlock screen, and the page background no
+  longer shows a darker band at the top or scrolls for no reason.
+
 ## [0.2.0] - 2026-10-01
 
 ### Added

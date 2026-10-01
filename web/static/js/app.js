@@ -19,6 +19,7 @@ const state = {
   forwards: new Map(), // serviceId → ForwardStatus
   servers: new Map(), // serverId → ServerStatus
   connected: true, // event stream
+  updateAvailable: null, // newer version found by the last "Check for updates" (never checked automatically)
 };
 
 let stopEvents = null;
@@ -64,18 +65,23 @@ function screen(title, ...content) {
     title ? h("h1", {}, title) : null, ...content));
 }
 
+/** A screen with just a message: the text sits centred in a card. */
+function messageScreen(title, ...paragraphs) {
+  screen(title, h("div", { class: "card message" }, ...paragraphs));
+}
+
 function logo() {
-  return h("img", { src: "icon.svg", alt: "", width: 28, height: 28 });
+  return h("img", { src: "logo.svg", alt: "", width: 28, height: 28 });
 }
 
 function showMessage(title, message) {
-  screen(title, h("p", {}, message));
+  messageScreen(title, h("p", {}, message));
 }
 
 function showSignedOut() {
   stopEvents?.();
   stopEvents = null;
-  screen("Not signed in",
+  messageScreen("Not signed in",
     h("p", {}, "Start TunnelTab again to open the dashboard."),
     h("p", { class: "hint" }, "For your security, each dashboard link works only once and only for a couple of minutes."));
 }
@@ -83,14 +89,14 @@ function showSignedOut() {
 function showStopped() {
   stopEvents?.();
   stopEvents = null;
-  screen("TunnelTab has stopped", h("p", {}, "All tunnels are closed. You can close this tab."));
+  messageScreen("TunnelTab has stopped", h("p", {}, "All tunnels are closed. You can close this tab."));
 }
 
 function showUpdating(version) {
   stopEvents?.();
   stopEvents = null;
   closeDialogs();
-  screen("Updating TunnelTab",
+  messageScreen("Updating TunnelTab",
     h("p", {}, `TunnelTab ${version} is starting and opens in a new tab. You can close this tab.`),
     h("p", { class: "hint" }, "If it doesn't open within a minute, start TunnelTab again. If the new version can't start, the previous one comes back by itself."));
 }
@@ -284,7 +290,10 @@ function renderDashboard() {
     h("span", { id: "conn", class: ["conn", !state.connected && "offline"], title: "Connection to the TunnelTab program" }),
     h("div", { class: "spacer" }),
     h("button", { class: "btn primary", onclick: () => projectDialog() }, "+ Project"),
-    h("button", { class: "btn secondary", onclick: openSettings }, "Settings"),
+    h("button", {
+      class: "btn secondary", onclick: openSettings,
+      title: state.updateAvailable ? `TunnelTab ${state.updateAvailable} is available` : null,
+    }, "Settings", state.updateAvailable ? [h("span", { class: "update-dot" }), h("span", { class: "sr-only" }, " (update available)")] : null),
     h("button", { class: "btn secondary", onclick: lock, title: "Lock now" }, "Lock"),
     h("button", { class: "btn secondary", onclick: quit, title: "Close all tunnels and stop TunnelTab" }, "Quit"));
 
@@ -466,9 +475,11 @@ function renderServer(s) {
         h("span", { class: "badge" }, AUTH_TEXT[s.auth.type] || s.auth.type)),
       h("div", { class: "actions" },
         h("button", { class: "chip open", onclick: () => openTerminal(s), title: "Open an SSH terminal in a new tab" }, "Terminal ↗"),
-        h("button", { class: "chip", onclick: () => testServer(s), title: "Check the connection and login" }, "Test"),
-        h("button", { class: "chip", onclick: () => serverDialog(s.projectId, s) }, "Edit"),
-        h("button", { class: "chip add", onclick: () => serviceDialog(s.id) }, "+ Service"))),
+        h("button", { class: "chip add", onclick: () => serviceDialog(s.id) }, "+ Service"),
+        moreMenu(`More actions for ${s.name}`, [
+          ["Test connection", () => testServer(s), "Check the connection and login"],
+          ["Edit server", () => serverDialog(s.projectId, s)],
+        ]))),
     status?.error ? h("p", { class: "error-line" }, status.error) : null,
     services.length
       ? h("ul", { class: "services" }, services.map(renderService))
@@ -480,6 +491,56 @@ function renderServer(s) {
     if (id !== s.id) saveOrder(`/projects/${s.projectId}/servers/order`, placed(siblings(), id, s.id, after), id);
   });
   return el;
+}
+
+/**
+ * A "⋯" button with a small menu of [label, action, title?] items.
+ * Arrow keys move between items; Escape, Tab or a click elsewhere closes it.
+ */
+function moreMenu(label, items) {
+  const btn = h("button", {
+    type: "button", class: "chip more", title: label, "aria-label": label,
+    "aria-haspopup": "menu", "aria-expanded": "false",
+  }, "⋯");
+  const menu = h("div", { class: "menu", role: "menu", hidden: true },
+    items.map(([text, action, title]) => h("button", {
+      type: "button", role: "menuitem", title,
+      onclick: () => { close(true); action(); },
+    }, text)));
+  const wrap = h("span", { class: "menu-wrap" }, btn, menu);
+
+  const onOutside = (e) => {
+    if (!wrap.isConnected || !wrap.contains(e.target)) close(false);
+  };
+  function open() {
+    menu.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    document.addEventListener("pointerdown", onOutside);
+    menu.querySelector("button")?.focus();
+  }
+  function close(focusButton) {
+    menu.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    document.removeEventListener("pointerdown", onOutside);
+    if (focusButton) btn.focus();
+  }
+  btn.addEventListener("click", () => (menu.hidden ? open() : close(false)));
+  wrap.addEventListener("keydown", (e) => {
+    if (menu.hidden) return;
+    const buttons = [...menu.querySelectorAll("button")];
+    const i = buttons.indexOf(document.activeElement);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close(true);
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      buttons[(i + step + buttons.length) % buttons.length].focus();
+    } else if (e.key === "Tab") {
+      close(false);
+    }
+  });
+  return wrap;
 }
 
 function serviceURL(svc, fwd) {
@@ -587,6 +648,11 @@ async function openSettings() {
     await settingsDialog({
       knownHosts: state.data?.knownHosts || [], minPasswordLen: state.minPasswordLen, version: state.version,
       runningTunnels: state.forwards.size, onRestarting: showUpdating,
+      initialTab: state.updateAvailable ? "Updates" : undefined,
+      onChecked: (latest) => {
+        state.updateAvailable = latest;
+        renderSoon();
+      },
     });
   } catch (err) {
     toast(err.message, "error");

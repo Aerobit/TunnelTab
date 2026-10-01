@@ -100,6 +100,42 @@ export function field(label, input, hint) {
   return h("div", { class: "field" }, h("label", { for: id }, label), input, hintEl);
 }
 
+/**
+ * Tabs: pages is [{label, content}]; the page labelled `initial` (default:
+ * the first) is shown. Arrow keys, Home and End move between tabs.
+ */
+export function tabs(pages, initial) {
+  const base = "t" + ++fieldCounter;
+  let current = Math.max(0, pages.findIndex((p) => p.label === initial));
+  const buttons = [];
+  const panels = pages.map((p, i) => h("div", {
+    class: "tab-panel", role: "tabpanel", id: `${base}-${i}-panel`, "aria-labelledby": `${base}-${i}`,
+  }, p.content));
+  pages.forEach((p, i) => buttons.push(h("button", {
+    type: "button", class: "tab", role: "tab", id: `${base}-${i}`, "aria-controls": `${base}-${i}-panel`,
+    onclick: () => select(i),
+  }, p.label)));
+  function select(i, focus = false) {
+    current = i;
+    buttons.forEach((b, j) => {
+      b.setAttribute("aria-selected", String(j === i));
+      b.tabIndex = j === i ? 0 : -1;
+      panels[j].hidden = j !== i;
+    });
+    if (focus) buttons[i].focus();
+  }
+  const list = h("div", { class: "tabs", role: "tablist" }, buttons);
+  list.addEventListener("keydown", (e) => {
+    const n = buttons.length;
+    const next = { ArrowRight: current + 1, ArrowLeft: current - 1 + n, Home: 0, End: n - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    select(next % n, true);
+  });
+  select(current);
+  return h("div", { class: "tabbed" }, list, panels);
+}
+
 /** A checkbox with its label to the right. */
 export function checkbox(label, checked, hint) {
   const input = h("input", { type: "checkbox", checked });

@@ -223,11 +223,13 @@ function start(cmd, args, opts) {
   step("right-click copies; Ctrl+V pastes");
 
   // 6. Settings shows the confirmed server.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: /Settings/ }).click();
   await page.getByRole("heading", { name: "Settings" }).waitFor();
+  await page.getByRole("tab", { name: "Servers" }).click();
   await page.locator(".host-list code").filter({ hasText: "SHA256:" }).waitFor();
   const listedFp = await page.locator(".host-list code").first().textContent();
   assert.ok(listedFp.includes(fpExpected), "settings fingerprint " + listedFp);
+  await page.getByRole("tab", { name: "Password" }).click();
   await page.getByLabel("Current").fill("not my password");
   await page.getByLabel("New", { exact: true }).fill("a brand new passphrase");
   await page.getByLabel("Repeat new").fill("a brand new passphrase");
@@ -240,6 +242,7 @@ function start(cmd, args, opts) {
   await page.getByRole("button", { name: "Change master password" }).click();
   await page.locator(".inline-status.ok").waitFor();
   assert.strictEqual(updateRequests, 0, "contacted the release server before being asked");
+  await page.getByRole("tab", { name: "Updates" }).click();
   await page.getByRole("button", { name: "Check for updates" }).click();
   await page.getByText("TunnelTab 99.0.0 is available").waitFor();
   const notes = page.getByRole("link", { name: "Release notes and download" });
@@ -247,7 +250,14 @@ function start(cmd, args, opts) {
   assert.strictEqual(updateRequests, 1);
   await shot("06-settings");
   await page.getByRole("button", { name: "Close" }).click();
-  step("settings: fingerprint listed, master password changed, update check only on click");
+  // The check found 99.0.0: Settings shows a dot and reopens on Updates.
+  await page.locator(".topbar .update-dot").waitFor();
+  await page.locator(".topbar").screenshot({ path: `${OUT}/12-update-dot.png` });
+  await page.getByRole("button", { name: /Settings/ }).click();
+  assert.strictEqual(await page.getByRole("tab", { name: "Updates" }).getAttribute("aria-selected"), "true");
+  assert.strictEqual(updateRequests, 1, "reopening Settings checked again");
+  await page.getByRole("button", { name: "Close" }).click();
+  step("settings: fingerprint listed, master password changed, update check only on click, update dot");
 
   // 7. Lock / unlock while a long job runs in the terminal; the tunnel and the
   //    job keep running.
@@ -319,7 +329,17 @@ function start(cmd, args, opts) {
   step("reload keeps the session");
 
   // 9. Edit server keeping the saved password.
-  await page.locator(".server-head").getByRole("button", { name: "Edit" }).click();
+  // Edit is in the server's "⋯" menu (also reachable by keyboard).
+  const more = page.locator(".server-head").getByRole("button", { name: /More actions/ });
+  await more.click();
+  await page.getByRole("menuitem", { name: "Test connection" }).waitFor();
+  await shot("11-server-menu");
+  await page.keyboard.press("Escape");
+  assert.strictEqual(await more.getAttribute("aria-expanded"), "false");
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
   const pwPlaceholder = await page.getByLabel("Password", { exact: true }).getAttribute("placeholder");
   assert.ok(pwPlaceholder.includes("Saved"), "password placeholder " + pwPlaceholder);
   await page.getByLabel("Name", { exact: true }).fill("Demo VPS (renamed)");
@@ -385,6 +405,7 @@ function start(cmd, args, opts) {
   await page.getByRole("button", { name: "Quit" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Quit" }).click();
   await page.getByRole("heading", { name: "TunnelTab has stopped" }).waitFor();
+  await shot("10-stopped");
   if (app.exitCode === null) await new Promise((r) => app.on("exit", r));
   step("quit stops the program");
 
