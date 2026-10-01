@@ -238,7 +238,7 @@ one last time. From 0.2.0 onward, **Update now** works.
 | U4 ✅ | **UI** — Update now button, confirm dialog listing open terminals/tunnels, progress and errors | `tests/e2e` walkthrough with the fake release server |
 | U5 ✅ | **Docs + security** — update CLAUDE.md invariant ("never downloads or runs anything" → "only on click, only signed releases"), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE (Updates + FAQ), ARCHITECTURE (API `POST /updates/install`), CHANGELOG | Docs match behaviour; security review of the new code done |
 
-## 12. v0.3.0 / v0.4.0 — Dashboard redesign (planned)
+## 12. v0.3.0 / v0.4.0 — Dashboard redesign (released)
 
 The dashboard is one long list today. The redesign uses a **sidebar** with
 an **Overview** home and a **page per server** with tabs, and moves

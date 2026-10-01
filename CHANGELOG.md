@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
 ### Fixed
 - The bottom line of a terminal (often the one with the cursor) was partly
   cut off; 0.3.1's extra padding made it worse. Rows now always fit inside
@@ -147,7 +149,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.0
 [0.3.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.3.0
 [0.2.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.2.1
