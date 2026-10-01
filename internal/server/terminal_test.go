@@ -125,7 +125,7 @@ func TestTerminalSession(t *testing.T) {
 
 	c.Write(ctx, websocket.MessageBinary, []byte("exit 5\r"))
 	exit := readExit(t, c)
-	if exit["code"].(float64) != 5 || exit["message"] != "" {
+	if exit["code"].(float64) != 5 || exit["message"] != "" || exit["lost"] != false {
 		t.Fatalf("exit %v", exit)
 	}
 	waitShells(t, h, 0)
@@ -297,7 +297,7 @@ func TestTerminalExplicitClose(t *testing.T) {
 	serverID := trustedServer(t, h)
 	id, c := openTerminal(t, h, serverID)
 	h.mustCall("DELETE", "/api/terminals/"+id, nil, 204)
-	if exit := readExit(t, c); exit["message"] != "the terminal was closed by TunnelTab" {
+	if exit := readExit(t, c); exit["message"] != "the terminal was closed by TunnelTab" || exit["lost"] != false {
 		t.Fatalf("exit %v", exit)
 	}
 	waitShells(t, h, 0)
@@ -508,4 +508,24 @@ func TestEventStreamWatchesClient(t *testing.T) {
 	cancel()
 	resp.Body.Close()
 	waitUntil(0)
+}
+
+// A dropped connection tells the page so ("lost"), and a new session can be
+// opened once the server is reachable again: the page does that by itself.
+func TestTerminalLostConnection(t *testing.T) {
+	h := ready(t)
+	sshSrv, serverID, _ := sshSetup(t, h)
+	h.srv.currentVault().Update(func(d *model.Data) error {
+		_, err := d.SetHostKey(model.HostKeyAddress(sshSrv.Host, sshSrv.Port), sshSrv.HostKey.PublicKey())
+		return err
+	})
+	_, c := openTerminal(t, h, serverID)
+	sshSrv.DropConnections()
+	if exit := readExit(t, c); exit["lost"] != true || exit["message"] != "the connection to the server was lost" {
+		t.Fatalf("exit %v", exit)
+	}
+	waitShells(t, h, 0)
+	_, c2 := openTerminal(t, h, serverID)
+	c2.Write(context.Background(), websocket.MessageBinary, []byte("echo back again\r"))
+	readUntil(t, c2, "back again\r\n")
 }

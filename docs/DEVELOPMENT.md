@@ -68,6 +68,7 @@ behind it:
 ```bash
 go run ./internal/devtools/fakessh      # prints host, port, username, password
                                         # -port 2222 for a fixed port, -demo for a realistic prompt
+                                        # type drop / down / up + Enter to cut or refuse connections
 go run ./cmd/tunneltab --no-browser     # in a second terminal
 ```
 

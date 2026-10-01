@@ -377,7 +377,9 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   the dashboard's view shows *open in another tab* and **Bring back here**
   re-attaches.
 - **Other messages:** browser → app `{"type":"resize","cols":…,"rows":…}`;
-  app → browser `{"type":"exit","code":…,"message":…}` when the shell ends.
+  app → browser `{"type":"exit","code":…,"message":…,"lost":…}` when the
+  shell ends; `lost` is true when the connection to the server dropped
+  (the view then opens a new session by itself, see below).
 - **View** (`js/termview.js`, `TermView`): one session in an element —
   xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon,
   the WebSocket, a message bar (New session / Reconnect / Bring back here);
@@ -387,7 +389,11 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   interrupts; Ctrl+V pastes; right-click copies a selection; the key
   handler calls preventDefault so Ctrl+Shift+C doesn't open Firefox's
   Inspector); re-attaches after a reload,
-  lock or blip; *New session* (or Enter) after the shell ends.
+  lock or blip; *New session* (or Enter) after the shell ends. After a lost
+  connection it opens a new session by itself, retrying with back-off
+  (1 s doubling to 15 s) while the server is unreachable, and keeps the old
+  output on screen (modes such as full screen are reset, without moving the
+  cursor).
 - **CSP exception:** xterm.js creates `<style>` elements (it has no nonce
   support), so the two pages that show terminals — `/terminal.html` and the
   dashboard (`/`, `/index.html`) — get `style-src 'self' 'unsafe-inline'`.

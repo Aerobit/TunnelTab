@@ -228,8 +228,13 @@ same connection when one is open).
 - A popped-out terminal tab reconnects to the same session when reloaded.
   Closing it leaves the terminal running in the dashboard (**Bring back
   here**), as long as the dashboard tab is open.
-- When a session ends (you typed `exit`, or the connection to the server
-  dropped), a bar above it says why. Press **Enter** or click **New session**.
+- **If the connection to the server drops, the terminal reconnects by
+  itself.** It says *Reconnecting…*, keeps trying until the server can be
+  reached, then opens a new session below the old output, ready to type in.
+  (Enter or **Reconnect** tries again straight away.) The commands that
+  were running in the old session are gone; see the next point.
+- When a session ends (you typed `exit`), a bar above it says why. Press
+  **Enter** or click **New session**.
 - For jobs that must survive even a dropped connection (hours-long
   upgrades, big transfers), run them inside `tmux` or `screen` on the server,
   as with any SSH client.

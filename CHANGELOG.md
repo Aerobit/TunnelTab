@@ -6,6 +6,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- When the connection to a server dropped and came back, a terminal stayed
+  ended until you pressed Enter. It now reconnects by itself: it opens a new
+  session as soon as the server can be reached again, below the old output,
+  and you can type straight away.
+
 ## [0.4.2] - 2026-10-01
 
 ### Fixed

@@ -52,7 +52,9 @@ import (
 //     browser → app: {"type":"resize","cols":120,"rows":40}
 //     app → browser: {"type":"attached"} then the recent output (binary),
 //                    {"type":"locked"} before detaching because of a lock,
-//                    {"type":"exit","code":0,"message":"…"} when the shell ends.
+//                    {"type":"exit","code":0,"message":"…","lost":false} when
+//                    the shell ends ("lost":true if the connection to the
+//                    server dropped: the page then opens a new session).
 
 const (
 	terminalReadLimit  = 64 * 1024
@@ -248,14 +250,14 @@ func (s *Server) runTerminal(t *termSession) {
 	}
 	<-t.shell.Done()
 	code, err := t.shell.ExitStatus()
-	msg := ""
+	msg, lost := "", false
 	switch {
 	case errors.Is(err, sshx.ErrShellClosed):
 		msg = "the terminal was closed by TunnelTab"
 	case err != nil:
-		msg = "the connection to the server was lost"
+		msg, lost = "the connection to the server was lost", true
 	}
-	exit, _ := json.Marshal(map[string]any{"type": "exit", "code": code, "message": msg})
+	exit, _ := json.Marshal(map[string]any{"type": "exit", "code": code, "message": msg, "lost": lost})
 
 	s.terms.mu.Lock()
 	delete(s.terms.sessions, t.id)

@@ -9,9 +9,14 @@
 //
 // It prints the host, port, username and password to enter in TunnelTab,
 // and the remote port of the demo web app to add as a service.
+//
+// To try what happens when the connection drops, type a command and Enter:
+// "drop" cuts every SSH connection (a short blip), "down" also refuses new
+// ones (the server is unreachable) until "up".
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"html"
@@ -19,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -59,7 +65,26 @@ func main() {
 	fmt.Printf("  Host:      %s\n  SSH port:  %d\n  Username:  demo\n  Log in:    Password = demo-password\n", srv.Host, srv.Port)
 	fmt.Printf("  Fingerprint to expect: %s\n", ssh.FingerprintSHA256(srv.HostKey.PublicKey()))
 	fmt.Printf("Then add a service with remote port %d (a demo web page).\n", web.Addr().(*net.TCPAddr).Port)
+	fmt.Println(`Type "drop", "down" or "up" and Enter to cut or refuse connections.`)
 	fmt.Println("Press Ctrl+C to stop.")
+
+	go func() {
+		in := bufio.NewScanner(os.Stdin)
+		for in.Scan() {
+			switch strings.TrimSpace(in.Text()) {
+			case "drop":
+				srv.DropConnections()
+				fmt.Println("Dropped all connections.")
+			case "down":
+				srv.SetRefusing(true)
+				srv.DropConnections()
+				fmt.Println("Down: dropped all connections, refusing new ones.")
+			case "up":
+				srv.SetRefusing(false)
+				fmt.Println("Up: accepting connections again.")
+			}
+		}
+	}()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)

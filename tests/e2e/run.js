@@ -23,7 +23,7 @@ require("fs").mkdirSync(OUT, { recursive: true });
 const children = [];
 process.on("exit", () => children.forEach((c) => { try { c.kill("SIGINT"); } catch {} }));
 function start(cmd, args, opts) {
-  const p = spawn(cmd, args, { ...opts, stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn(cmd, args, { ...opts, stdio: ["pipe", "pipe", "pipe"] });
   children.push(p);
   const lines = [];
   const waiters = [];
@@ -381,8 +381,31 @@ function start(cmd, args, opts) {
   await page.getByRole("tab", { name: /Terminal 1/ }).waitFor();
   assert.strictEqual(await page.getByRole("tab", { name: /Terminal \d/ }).count(), 1, "the exited terminal is still listed");
   await waitPane(0, "second terminal");
-  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   step("reload keeps the session and brings this tab's terminal back");
+
+  // 8b. The connection to the server drops and stays down for a while: the
+  //     terminal opens a new session by itself once it's back, below the old
+  //     output, and takes typing without pressing Enter first.
+  fake.stdin.write("down\n");
+  await waitPane(0, "connection to the server lost");
+  await page.locator(".termview-msg", { hasText: "Reconnecting" }).waitFor();
+  await page.waitForTimeout(3000);
+  fake.stdin.write("up\n");
+  for (let n = 0; ; n++) {
+    const text = await paneText(0);
+    if (text.lastIndexOf("Welcome to the fake shell") > text.indexOf("connection to the server lost")) break;
+    if (n > 600) throw new Error("the terminal didn't reconnect:\n" + text);
+    await page.waitForTimeout(50);
+  }
+  const after = await paneText(0);
+  assert.ok(after.includes("second terminal"), "the old output was cleared:\n" + after);
+  assert.ok(await page.locator(".termview-msg").first().isHidden(), "the reconnect message is still shown");
+  await page.locator(".term-pane").nth(0).click();
+  await page.keyboard.type("echo typed after the drop");
+  await page.keyboard.press("Enter");
+  await waitPane(0, "typed after the drop\n");
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
+  step("a dropped connection reopens the terminal by itself; typing works straight away");
 
   // 9. Edit server keeping the saved password.
   // Edit is in the server's "⋯" menu (also reachable by keyboard).
@@ -459,7 +482,8 @@ function start(cmd, args, opts) {
   await page.getByRole("heading", { name: "Overview", level: 1 }).waitFor();
   assert.strictEqual(await page.locator(".tile", { hasText: "Tunnels running" }).locator(".tile-value").innerText(), "1");
   await page.locator(".box", { hasText: "Running now" }).getByText("Demo app").waitFor();
-  await page.locator(".box", { hasText: "Recent activity" }).getByText("Demo app: tunnel started").first().waitFor();
+  // (the connection drop in 8b is among the latest entries)
+  await page.locator(".box", { hasText: "Recent activity" }).getByText("Reconnected").first().waitFor();
   await page.locator("table").getByRole("link", { name: "Demo VPS (renamed)" }).waitFor();
   await shot("13-overview");
 
