@@ -23,6 +23,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/Aerobit/TunnelTab/internal/health"
 	"github.com/Aerobit/TunnelTab/internal/sshx/sshtest"
 )
 
@@ -43,6 +44,8 @@ func main() {
 	}))
 
 	opts := sshtest.Options{User: "demo", Password: "demo-password", Addr: fmt.Sprintf("127.0.0.1:%d", *port)}
+	// Answers the opt-in server health check like a small Ubuntu VPS.
+	opts.Exec = map[string]string{health.Command: demoHealth}
 	if *demo {
 		opts.Banner = demoBanner
 		opts.Prompt = "\x1b[1;32mdemo@homelab\x1b[0m:\x1b[1;34m~\x1b[0m$ "
@@ -81,3 +84,21 @@ grafana     Up 23 days    127.0.0.1:3000->3000/tcp
 postgres    Up 23 days    5432/tcp
 `,
 }
+
+// demoHealth is what health.Command prints on a small Ubuntu VPS.
+const demoHealth = `@@loadavg
+0.42 0.38 0.31 1/234 5678
+@@meminfo
+MemTotal:        4028488 kB
+MemFree:          512340 kB
+MemAvailable:    1587652 kB
+@@uptime
+1987654.32 3456789.01
+@@nproc
+2
+@@df
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+tmpfs               402852      1104    401748       1% /run
+/dev/sda1         81106868  22020096  59070388      28% /
+/dev/sdb1        960303848 421527552 538776296      44% /srv/data
+`

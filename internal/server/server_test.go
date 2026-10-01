@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Aerobit/TunnelTab/internal/config"
+	"github.com/Aerobit/TunnelTab/internal/health"
 	"github.com/Aerobit/TunnelTab/internal/model"
 	"github.com/Aerobit/TunnelTab/internal/sshx/sshtest"
 	"github.com/Aerobit/TunnelTab/internal/vault"
@@ -446,7 +447,8 @@ func TestQuit(t *testing.T) {
 // service pointing at an HTTP backend. The host key is not yet confirmed.
 func sshSetup(t *testing.T, h *harness) (sshSrv *sshtest.Server, serverID, serviceID string) {
 	t.Helper()
-	sshSrv = sshtest.Start(t, sshtest.Options{User: "tester", Password: sshPassword})
+	sshSrv = sshtest.Start(t, sshtest.Options{User: "tester", Password: sshPassword,
+		Exec: map[string]string{health.Command: healthOutput}})
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "hello from "+r.URL.Path)
 	}))
@@ -798,5 +800,85 @@ func TestTrafficAPI(t *testing.T) {
 			t.Fatalf("no traffic counted: %v", list)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// healthOutput is what health.Command prints on a small Linux VPS.
+const healthOutput = "@@loadavg\n0.42 0.38 0.31 1/234 5678\n@@meminfo\nMemTotal: 4028488 kB\nMemAvailable: 1587652 kB\n" +
+	"@@uptime\n1987654.32 3456789.01\n@@nproc\n2\n@@df\nFilesystem 1024-blocks Used Available Capacity Mounted on\n" +
+	"/dev/sda1 81106868 22020096 59070388 28% /\n"
+
+func TestServerHealth(t *testing.T) {
+	h := ready(t)
+	sshSrv, serverID, serviceID := sshSetup(t, h)
+	h.srv.currentVault().Update(func(d *model.Data) error {
+		_, err := d.SetHostKey(model.HostKeyAddress(sshSrv.Host, sshSrv.Port), sshSrv.HostKey.PublicKey())
+		return err
+	})
+	dashboard := h.srv.events.subscribe() // a dashboard is open
+	defer h.srv.events.unsubscribe(dashboard)
+	readings := func() map[string]any { return h.mustCall("GET", "/api/data", nil, 200)["health"].(map[string]any) }
+	waitFor := func(what string, ok func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !ok() {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s", what)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+
+	// Off by default: nothing is read, even while connected.
+	h.mustCall("POST", "/api/services/"+serviceID+"/start", nil, 200)
+	h.srv.checkAllHealth()
+	time.Sleep(200 * time.Millisecond)
+	if len(readings()) != 0 {
+		t.Fatal("health read while switched off")
+	}
+
+	// On: read right away, over the existing connection.
+	logins := sshSrv.Logins()
+	h.mustCall("PUT", "/api/servers/"+serverID+"/health", map[string]bool{"enabled": true}, 204)
+	waitFor("a reading", func() bool {
+		r, ok := readings()[serverID].(map[string]any)
+		return ok && r["health"] != nil && r["health"].(map[string]any)["memTotalKB"] == float64(4028488)
+	})
+	if sshSrv.Logins() != logins {
+		t.Fatal("the health check opened a new connection")
+	}
+
+	// Off: dropped at once, and not read again.
+	h.mustCall("PUT", "/api/servers/"+serverID+"/health", map[string]bool{"enabled": false}, 204)
+	if len(readings()) != 0 {
+		t.Fatal("reading kept after switching off")
+	}
+	h.srv.checkAllHealth()
+	time.Sleep(200 * time.Millisecond)
+	if len(readings()) != 0 {
+		t.Fatal("read again after switching off")
+	}
+
+	// Not connected: switching on never connects.
+	h.mustCall("POST", "/api/services/"+serviceID+"/stop", nil, 204)
+	waitFor("disconnect", func() bool { return len(h.srv.mgr.Servers()) == 0 })
+	logins = sshSrv.Logins()
+	h.mustCall("PUT", "/api/servers/"+serverID+"/health", map[string]bool{"enabled": true}, 204)
+	h.srv.checkAllHealth()
+	time.Sleep(300 * time.Millisecond)
+	if sshSrv.Logins() != logins || len(readings()) != 0 {
+		t.Fatal("the health check connected to a server that wasn't connected")
+	}
+	// Connecting again (for a tunnel) reads it right away.
+	h.mustCall("POST", "/api/services/"+serviceID+"/start", nil, 200)
+	waitFor("a reading after reconnecting", func() bool { _, ok := readings()[serverID]; return ok })
+
+	// No dashboard open: nothing is read.
+	h.srv.events.unsubscribe(dashboard)
+	h.srv.setHealth(serverID, nil)
+	h.srv.checkAllHealth()
+	time.Sleep(300 * time.Millisecond)
+	if len(h.srv.healthReadings()) != 0 {
+		t.Fatal("read with no dashboard open")
 	}
 }

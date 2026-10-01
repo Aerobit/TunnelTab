@@ -293,7 +293,7 @@ export async function serviceDialog(serverId, service) {
 
 // --- Settings ---------------------------------------------------------------
 
-export async function settingsDialog({ knownHosts, minPasswordLen, version, runningTunnels = 0, onRestarting, onChecked, initialTab }) {
+export async function settingsDialog({ knownHosts, minPasswordLen, version, runningTunnels = 0, onRestarting, onChecked, initialTab, servers = [], projects = [] }) {
   const current = await api("GET", "/settings");
   const lock = select(
     [["0", "Never"], ["5", "5 minutes"], ["15", "15 minutes"], ["30", "30 minutes"], ["60", "1 hour"], ["240", "4 hours"]],
@@ -437,6 +437,7 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
         h("p", { class: "hint" }, "Server fingerprints you have trusted. They are stored inside the encrypted vault."),
         hostList,
       ] },
+      { label: "Server health", content: renderHealthSettings(servers, projects) },
     ], initialTab),
     actions: [
       { label: "Close" },
@@ -449,4 +450,41 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
         } },
     ],
   });
+}
+
+/** Settings → Server health: a switch per server (off by default). */
+function renderHealthSettings(servers, projects) {
+  const status = h("span", { class: "inline-status", role: "status" });
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
+  const list = h("ul", { class: "host-list" },
+    servers.length
+      ? servers.map((srv) => {
+        const box = checkbox(srv.name, srv.healthEnabled);
+        box.input.addEventListener("change", async () => {
+          box.input.disabled = true;
+          status.className = "inline-status";
+          status.textContent = "";
+          try {
+            await api("PUT", `/servers/${encodeURIComponent(srv.id)}/health`, { enabled: box.input.checked });
+            status.classList.add("ok");
+            status.textContent = `${srv.name}: health ${box.input.checked ? "on" : "off"}.`;
+          } catch (err) {
+            box.input.checked = !box.input.checked;
+            status.classList.add("bad");
+            status.textContent = err.message;
+          } finally {
+            box.input.disabled = false;
+          }
+        });
+        return h("li", {}, box.el, h("span", { class: "muted" }, projectName.get(srv.projectId) || ""));
+      })
+      : h("li", { class: "hint" }, "No servers yet."));
+  return [
+    h("p", { class: "hint" }, "Switched on, TunnelTab reads a server's CPU load, memory, disk use and uptime every 30 seconds — only while that server is already connected (for a service or a terminal) and this dashboard is open. It never connects just for this. Off by default; switch it off again at any time."),
+    h("p", { class: "hint" }, "It runs one fixed, read-only command (Linux servers): ",
+      h("code", {}, "cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k"),
+      ". The readings stay in memory and are never saved."),
+    list,
+    status,
+  ];
 }

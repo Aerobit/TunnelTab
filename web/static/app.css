@@ -560,3 +560,17 @@ a.chip { text-decoration: none; display: inline-block; }
 .chart-axis { display: flex; justify-content: space-between; font-size: 11px; margin-top: -4px; }
 .notes-preview { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px; max-height: 12em; overflow: auto; }
 .notes-input { font: inherit; font-size: 13.5px; line-height: 1.5; resize: vertical; min-height: 220px; }
+
+/* --- Server health ------------------------------------------------------------ */
+
+.health-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 8px 12px; align-items: center; font-size: 13px; }
+.health-meter { width: 100%; height: 8px; appearance: none; border: 0; border-radius: 4px; background: #21262d; }
+.health-meter::-webkit-meter-bar { height: 8px; border: 0; border-radius: 4px; background: #21262d; }
+.health-meter::-webkit-meter-optimum-value { border-radius: 4px; background: var(--accent); }
+.health-meter::-webkit-meter-suboptimum-value { border-radius: 4px; background: var(--warning); }
+.health-meter::-webkit-meter-even-less-good-value { border-radius: 4px; background: var(--error); }
+.health-meter::-moz-meter-bar { border-radius: 4px; background: var(--accent); }
+.health-meter:-moz-meter-sub-optimum::-moz-meter-bar { background: var(--warning); }
+.health-meter:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--error); }
+.health-figure { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.host-list li .field.check { margin: 0; flex: 1; }

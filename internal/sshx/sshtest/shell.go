@@ -3,6 +3,7 @@ package sshtest
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +35,8 @@ func handleSession(nc ssh.NewChannel, opts Options) {
 
 	var mu sync.Mutex
 	cols, rows := 0, 0
+	execCmd := "" // set by an "exec" request
+	hasExec := false
 	started := make(chan struct{})
 	var once sync.Once
 
@@ -59,6 +62,14 @@ func handleSession(nc ssh.NewChannel, opts Options) {
 			case "shell":
 				ok = true
 				once.Do(func() { close(started) })
+			case "exec":
+				if cmd, _, good := readString(req.Payload); good {
+					mu.Lock()
+					execCmd, hasExec = string(cmd), true
+					mu.Unlock()
+					ok = true
+					once.Do(func() { close(started) })
+				}
 			case "env":
 				ok = true
 			}
@@ -69,6 +80,26 @@ func handleSession(nc ssh.NewChannel, opts Options) {
 		once.Do(func() { close(started) })
 	}()
 	<-started
+
+	// A one-off command (exec): its canned output from opts.Exec, then the
+	// exit status; unknown commands fail with status 127.
+	mu.Lock()
+	cmd, isExec := execCmd, hasExec
+	mu.Unlock()
+	if isExec {
+		out, known := opts.Exec[cmd]
+		code := uint32(0)
+		if known {
+			io.WriteString(ch, out)
+		} else {
+			io.WriteString(ch.Stderr(), "fake-shell: command not found\n")
+			code = 127
+		}
+		status := make([]byte, 4)
+		binary.BigEndian.PutUint32(status, code)
+		ch.SendRequest("exit-status", false, status)
+		return
+	}
 
 	fmt.Fprint(ch, strings.ReplaceAll(banner, "\n", "\r\n")+"\r\n"+prompt)
 	var line []byte

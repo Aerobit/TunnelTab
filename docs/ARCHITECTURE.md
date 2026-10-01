@@ -53,6 +53,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/sshx` | Connection pool, auth, host-key checks, forwards, terminals (PTY), keep-alive (and ping from it), reconnect, per-tunnel traffic counters (`traffic.go`) | Done |
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
 | `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events, terminal WebSocket | Done |
+| `internal/health` | Opt-in server health: the one fixed command TunnelTab runs on a server by itself (`Command`) and its strict parser (`Parse`, fuzzed) | Done |
 | `internal/update` | Updates, only when the user clicks: "Check for updates" (GitHub releases/latest API, version comparison) and "Update now" (download, signature + checksum verification, unpack, install with `.old` backups, rollback, cleanup). Release signature format in `signature.go` | Done |
 | `internal/platform` | Open browser, error dialog, instance file | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
@@ -258,11 +259,12 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `POST /vault/unlock` | `{password}` | 401 `wrong_password`, 429 `too_many_attempts` (+ `retryAfterMs`) |
 | `POST /vault/lock` | | |
 | `POST /vault/password` | `{old, new}` | |
-| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached}], activity: [activity entry]}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects`, `reason` (`sshx.ErrorKind`) and `pingMs` (last keep-alive round trip; the first keep-alive goes out right after connecting) |
+| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached, client}], activity: [activity entry], health: {serverId: reading}}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects`, `reason` (`sshx.ErrorKind`) and `pingMs` (last keep-alive round trip; the first keep-alive goes out right after connecting) |
 | `POST /projects` · `PUT`/`DELETE /projects/{id}` | `{name, description}` | project; delete cascades |
 | `POST /servers` · `PUT`/`DELETE /servers/{id}` | `model.Server` | `PublicServer` (never secrets); blank secrets are kept on update |
 | `POST /servers/{id}/move` | `{projectId}` | |
 | `PUT /servers/{id}/notes` | `{notes}` | 204; free text (≤ 10 000 characters, line breaks allowed), stored in the vault; `PublicServer` includes `notes` |
+| `PUT /servers/{id}/health` | `{enabled}` | 204; switches the opt-in health check on (checked at once if connected) or off (reading dropped at once); stored in the vault, `PublicServer.healthEnabled` |
 | `POST /servers/{id}/clear-passphrase` | | |
 | `POST /servers/{id}/test` | | connects once (drives host-key confirmation) |
 | `POST /services` · `PUT`/`DELETE /services/{id}` | `model.Service` | service |
@@ -301,6 +303,7 @@ sent). Each `data:` line is JSON:
 |---|---|---|
 | `tunnel` | `kind` (server/forward), `id`, `serverId`, `state`, `error`, `localPort`, and for servers `since`, `reconnects`, `reason` | SSH engine state change |
 | `activity` | `at`, `kind` (server/forward/terminal), `id`, `serverId`, `state`, `error`, `reconnects`, `reason` | a line for "Recent activity" (see below) |
+| `health` | `serverId`, `reading` (`{health?, error?, at}`, or null when switched off or disconnected) | a server health reading |
 | `vault` | `state` (locked/unlocked) | lock state changed |
 | `data` | | stored data changed: re-fetch `/api/data` |
 | `resync` | | events were dropped: re-fetch everything |
@@ -313,6 +316,17 @@ tunnel and terminal events worth showing (connected, reconnecting, failed,
 stopped; tunnel started/stopped/failed; terminal opened/ended), with a
 repeated state recorded once. IDs and states only; the dashboard looks the
 names up. Kept in memory only, never written to disk or the log file.
+
+**Server health** (`internal/server/health.go`, `internal/health`): opt-in
+per server (`model.Server.HealthEnabled`, off by default). Every 30 s, if a
+dashboard event stream is open and the vault is unlocked, each enabled
+server is checked: `Manager.RunIfConnected` runs `health.Command` over the
+server's **existing** connection (`ErrNotConnected` otherwise — it never
+dials), 10 s timeout, 64 KiB output limit; `health.Parse` turns the output
+into load, cores, memory, uptime and up to 5 disks. Readings are kept in
+memory, sent as `health` events and in `GET /api/data`; a server that
+disconnects or is switched off loses its reading at once. A server that
+connects is checked right away.
 
 ## Terminals
 

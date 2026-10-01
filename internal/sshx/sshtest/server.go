@@ -33,6 +33,9 @@ type Options struct {
 	Prompt string
 	// Commands maps an exact command line to canned output (demo mode).
 	Commands map[string]string
+	// Exec maps an exact one-off command (an SSH "exec" request) to its
+	// output. Other commands fail with exit status 127.
+	Exec map[string]string
 
 	// Addr to listen on (default 127.0.0.1:0, a random port).
 	Addr string

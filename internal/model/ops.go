@@ -106,7 +106,7 @@ func (d *Data) UpdateServer(in Server) (Server, error) {
 	}
 	old := d.Servers[i]
 	s := normalizeServer(in)
-	s.ID, s.ProjectID, s.Order, s.Notes = old.ID, old.ProjectID, old.Order, old.Notes
+	s.ID, s.ProjectID, s.Order, s.Notes, s.HealthEnabled = old.ID, old.ProjectID, old.Order, old.Notes, old.HealthEnabled
 	if s.Auth.Type == old.Auth.Type {
 		keep := func(newVal *string, oldVal string) {
 			if *newVal == "" {
@@ -377,5 +377,15 @@ func (d *Data) SetServerNotes(serverID, notes string) error {
 		return err
 	}
 	d.Servers[i].Notes = notes
+	return nil
+}
+
+// SetServerHealth turns the opt-in server health check on or off.
+func (d *Data) SetServerHealth(serverID string, on bool) error {
+	i := d.serverIndex(serverID)
+	if i < 0 {
+		return ErrNotFound
+	}
+	d.Servers[i].HealthEnabled = on
 	return nil
 }

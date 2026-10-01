@@ -50,6 +50,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("POST /api/servers/{id}/move", s.handleMoveServer)
 	a("POST /api/servers/{id}/clear-passphrase", s.handleClearPassphrase)
 	a("PUT /api/servers/{id}/notes", s.handleServerNotes)
+	a("PUT /api/servers/{id}/health", s.handleServerHealth)
 	a("POST /api/servers/{id}/test", s.handleTestServer)
 	a("POST /api/services", s.handleAddService)
 	a("PUT /api/services/{id}", s.handleUpdateService)
@@ -395,7 +396,7 @@ func (s *Server) handleData(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"data": pub, "forwards": forwards, "servers": s.mgr.Servers(),
-		"terminals": s.terminalList(), "activity": s.activity.list(),
+		"terminals": s.terminalList(), "activity": s.activity.list(), "health": s.healthReadings(),
 	})
 }
 

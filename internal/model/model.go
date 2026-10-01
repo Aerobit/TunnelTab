@@ -35,6 +35,10 @@ type Server struct {
 	// Notes is free text about the server (Notes tab). Not secret, but like
 	// everything else it is stored only inside the encrypted vault.
 	Notes string `json:"notes,omitempty"`
+	// HealthEnabled turns on the opt-in server health check (off by
+	// default): while the server is connected and the dashboard is open,
+	// TunnelTab runs internal/health.Command on it every 30 s.
+	HealthEnabled bool `json:"healthEnabled,omitempty"`
 }
 
 // AuthType selects how TunnelTab logs in to a server.

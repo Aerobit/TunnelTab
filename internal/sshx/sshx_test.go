@@ -928,3 +928,41 @@ func TestTrafficMeterWindows(t *testing.T) {
 		t.Fatal("unexpected services")
 	}
 }
+
+func TestRunIfConnected(t *testing.T) {
+	e := newEnv()
+	srv := sshtest.Start(t, sshtest.Options{User: user, Password: password, Exec: map[string]string{
+		"health": "load 0.42\n",
+		"big":    strings.Repeat("x", 5000),
+	}})
+	s := e.addServer(srv, model.Auth{Type: model.AuthPassword, Password: password})
+	e.trust(srv.Host, srv.Port, srv.HostKey.PublicKey())
+	host, port := backend(t, "x")
+	m := newManager(t, e, nil)
+
+	// Never opens a connection by itself.
+	if _, err := m.RunIfConnected(s.ID, "health", 1024, time.Second); !errors.Is(err, ErrNotConnected) {
+		t.Fatalf("not connected: %v", err)
+	}
+	if srv.Logins() != 0 {
+		t.Fatal("RunIfConnected logged in")
+	}
+
+	if _, err := m.StartForward(service(s.ID, host, port)); err != nil {
+		t.Fatal(err)
+	}
+	out, err := m.RunIfConnected(s.ID, "health", 1024, 5*time.Second)
+	if err != nil || string(out) != "load 0.42\n" {
+		t.Fatalf("got %q, %v", out, err)
+	}
+	if _, err := m.RunIfConnected(s.ID, "big", 1024, 5*time.Second); !errors.Is(err, ErrOutputTooLarge) {
+		t.Fatalf("too large: %v", err)
+	}
+	// A failing command (exit status 127) isn't an error; its output is empty.
+	if out, err := m.RunIfConnected(s.ID, "nope", 1024, 5*time.Second); err != nil || len(out) != 0 {
+		t.Fatalf("unknown command: %q, %v", out, err)
+	}
+	if srv.Logins() != 1 {
+		t.Fatalf("%d logins, want 1 (the tunnel's)", srv.Logins())
+	}
+}

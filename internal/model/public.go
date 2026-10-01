@@ -21,6 +21,7 @@ type PublicServer struct {
 	Auth      PublicAuth `json:"auth"`
 	Order     int        `json:"order"`
 	Notes     string     `json:"notes,omitempty"`
+	Health    bool       `json:"healthEnabled,omitempty"`
 }
 
 // PublicAuth describes a login method without revealing any secret.
@@ -55,6 +56,7 @@ func (s Server) Public() PublicServer {
 		Auth:      s.Auth.Public(),
 		Order:     s.Order,
 		Notes:     s.Notes,
+		Health:    s.HealthEnabled,
 	}
 }
 

@@ -535,3 +535,20 @@ func TestServerNotes(t *testing.T) {
 		t.Errorf("clearing notes: %v", err)
 	}
 }
+
+func TestServerHealthSetting(t *testing.T) {
+	d, _, s, _ := fixture(t)
+	if got, _ := d.Server(s.ID); got.HealthEnabled {
+		t.Fatal("health is on by default")
+	}
+	if err := d.SetServerHealth(s.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	upd, err := d.UpdateServer(Server{ID: s.ID, Name: "renamed", Host: s.Host, Port: s.Port, Username: s.Username, Auth: Auth{Type: AuthPassword}})
+	if err != nil || !upd.HealthEnabled || !d.Public().Servers[0].Health {
+		t.Fatalf("setting lost on edit or missing from the dashboard view: %+v, %v", upd, err)
+	}
+	if err := d.SetServerHealth("nope", true); err != ErrNotFound {
+		t.Errorf("unknown server: %v", err)
+	}
+}

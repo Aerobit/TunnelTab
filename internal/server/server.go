@@ -94,6 +94,7 @@ type Server struct {
 
 	terms      terminals
 	activity   activityLog // recent events, in memory only
+	health     healthStore // opt-in server health readings, in memory only
 	stopReaper chan struct{}
 	closeOnce  sync.Once
 }
@@ -125,6 +126,7 @@ func New(cfg Config) (*Server, error) {
 		sessions:     map[[32]byte]time.Time{},
 		pendingKeys:  map[string]pendingKey{},
 		terms:        newTerminals(),
+		health:       healthStore{readings: map[string]healthReading{}, running: map[string]bool{}},
 		stopReaper:   make(chan struct{}),
 	}
 	s.mgr = sshx.NewManager(sshx.Config{
@@ -134,6 +136,12 @@ func New(cfg Config) (*Server, error) {
 		OnEvent: func(e sshx.Event) {
 			s.events.publish(tunnelEvent{Type: "tunnel", Event: e})
 			s.recordTunnelActivity(e)
+			if e.Kind == "server" && (e.State == sshx.StateStopped || e.State == sshx.StateFailed) {
+				s.setHealth(e.ID, nil) // disconnected: no stale reading
+			}
+			if e.Kind == "server" && e.State == sshx.StateConnected && e.PingMs == 0 {
+				go s.onServerConnected(e.ID) // a new connection (ping updates come later)
+			}
 		},
 	})
 	if vault.Exists(cfg.Paths.Vault) {
@@ -144,6 +152,7 @@ func New(cfg Config) (*Server, error) {
 		s.attachVault(v)
 	}
 	go s.reapTerminals(s.stopReaper)
+	go s.runHealth(s.stopReaper)
 	return s, nil
 }
 

@@ -175,6 +175,7 @@ OpenSSH, sshpass, Node.js or a browser extension. Details:
 | 🔒 **Auto-lock** | The vault locks after inactivity (15 min by default) and the key is wiped from memory. |
 | 📡 **No phoning home** | TunnelTab contacts only your servers, plus GitHub when *you* click **Check for updates** or **Update now**. |
 | ✍️ **Signed updates** | **Update now** installs a new version only if it's signed with TunnelTab's release key. Your data folder is never touched. |
+| 🩺 **Opt-in server health** | Off by default. Switched on per server, it reads load, memory and disk with one read-only command, only over a connection that is already open. |
 
 Read [SECURITY.md](docs/SECURITY.md) for the full threat model, including
 what TunnelTab does **not** protect against, and

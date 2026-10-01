@@ -12,6 +12,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   the terminal, with room at the bottom.
 
 ### Added
+- **Server health** (opt-in, off by default): CPU load, memory, disk use and
+  uptime on each server's page. Switch it on or off per server in
+  **Settings → Server health** or on the server's page. While on, and only
+  while the server is connected and the dashboard is open, TunnelTab runs
+  one fixed, read-only command on it every 30 seconds. It never connects
+  just for this.
 - **Ping**: each connected server shows its round-trip time (from the
   keep-alive TunnelTab already sends), in the Overview's server table and on
   the server's page.

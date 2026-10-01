@@ -25,6 +25,7 @@ const state = {
   connected: true, // event stream
   updateAvailable: null, // newer version found by the last "Check for updates" (never checked automatically)
   traffic: new Map(), // serviceId → {todayIn, todayOut, lastHour[60]} (counted by the program, in memory)
+  health: new Map(), // serverId → {health?, error?, at} for servers with health switched on
 };
 
 let stopEvents = null;
@@ -233,6 +234,7 @@ async function loadData() {
     state.servers = new Map(res.servers.map((s) => [s.id, s]));
     state.terminals = new Map((res.terminals || []).map((t) => [t.id, t]));
     state.activity = res.activity || [];
+    state.health = new Map(Object.entries(res.health || {}));
     await loadTraffic();
     syncViews(state.terminals.values());
     renderDashboard();
@@ -269,6 +271,11 @@ function onEvent(ev) {
         state.vault = "unlocked";
         loadData();
       }
+      break;
+    case "health":
+      if (ev.reading) state.health.set(ev.serverId, ev.reading);
+      else state.health.delete(ev.serverId);
+      renderSoon();
       break;
     case "activity":
       state.activity.push(ev);
@@ -820,7 +827,66 @@ function renderServerOverview(s, st, services) {
     s.notes
       ? h("p", { class: "notes-preview" }, s.notes)
       : h("p", { class: "hint" }, "Anything worth remembering about this server: backup times, where passwords are, who to call. Stored in the encrypted vault."));
-  return [renderServerOverviewTop(s, rows, services), h("div", { class: "two-col" }, trafficBox, notesBox)];
+  return [
+    renderServerOverviewTop(s, rows, services),
+    h("div", { class: "two-col" }, renderHealthBox(s, st), trafficBox),
+    notesBox,
+  ];
+}
+
+// --- Server health (opt-in) ---------------------------------------------------
+
+async function setHealth(server, enabled) {
+  try {
+    await api("PUT", `/servers/${encodeURIComponent(server.id)}/health`, { enabled });
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+/** A labelled bar: label, a <meter> of used/total, and the figures. */
+function healthMeter(label, used, total, text) {
+  const pct = total > 0 ? Math.round((used / total) * 100) : 0;
+  return [
+    h("span", { class: "muted" }, label),
+    h("meter", { class: "health-meter", min: 0, max: 100, low: 70, high: 90, optimum: 0, value: pct, "aria-label": `${label} ${pct}%` }),
+    h("span", { class: "health-figure" }, text),
+  ];
+}
+
+const kb = (n) => fmtBytes(n * 1024);
+
+function uptimeText(sec) {
+  const days = Math.floor(sec / 86400);
+  if (days >= 2) return `${days} days`;
+  const hours = Math.floor(sec / 3600);
+  return hours >= 1 ? `${hours}h ${Math.floor((sec % 3600) / 60)}m` : `${Math.floor(sec / 60)} min`;
+}
+
+function renderHealthBox(s, st) {
+  const head = h("div", { class: "box-head" }, h("h2", {}, "Health"),
+    s.healthEnabled ? h("button", { class: "chip", onclick: () => setHealth(s, false) }, "Turn off") : null);
+  if (!s.healthEnabled) {
+    return h("section", { class: "box" }, head,
+      h("p", { class: "hint" }, "Off. When on, TunnelTab reads this server's load, memory, disk use and uptime every 30 seconds while it's connected and this dashboard is open. It runs one read-only command; Linux servers only."),
+      h("div", {}, h("button", { class: "btn secondary small", onclick: () => setHealth(s, true) }, "Turn on")));
+  }
+  const reading = state.health.get(s.id);
+  if (!reading) {
+    return h("section", { class: "box" }, head, h("p", { class: "hint" },
+      st?.state === "connected" ? "Reading…" : "Shown while the server is connected (starting a service or a terminal connects)."));
+  }
+  if (reading.error || !reading.health) {
+    return h("section", { class: "box" }, head, h("p", { class: "hint" }, reading.error || "No reading."));
+  }
+  const x = reading.health;
+  const loadPct = x.cores ? x.load1 / x.cores : 0;
+  return h("section", { class: "box" }, head,
+    h("div", { class: "health-grid" },
+      healthMeter("CPU load", Math.min(loadPct, 1) * 100, 100, `${x.load1.toFixed(2)}${x.cores ? ` · ${x.cores} cores` : ""}`),
+      healthMeter("Memory", x.memTotalKB - x.memAvailableKB, x.memTotalKB, `${kb(x.memTotalKB - x.memAvailableKB)} of ${kb(x.memTotalKB)}`),
+      x.disks.map((d) => healthMeter(`Disk ${d.mount}`, d.usedKB, d.usedKB + d.availKB, `${kb(d.usedKB)} of ${kb(d.sizeKB)}`))),
+    h("p", { class: "hint" }, `Server up ${uptimeText(x.uptimeSec)} · load ${x.load1.toFixed(2)} / ${x.load5.toFixed(2)} / ${x.load15.toFixed(2)} · read at ${clock(reading.at)}`));
 }
 
 function renderServerOverviewTop(s, rows, services) {
@@ -1308,6 +1374,7 @@ async function openSettings() {
   try {
     await settingsDialog({
       knownHosts: state.data?.knownHosts || [], minPasswordLen: state.minPasswordLen, version: state.version,
+      servers: state.data?.servers || [], projects: state.data?.projects || [],
       runningTunnels: state.forwards.size, onRestarting: showUpdating,
       initialTab: state.updateAvailable ? "Updates" : undefined,
       onChecked: (latest) => {

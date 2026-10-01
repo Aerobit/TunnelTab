@@ -148,3 +148,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// count reports how many event streams (dashboards and terminal pages) are open.
+func (b *broker) count() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.subs)
+}

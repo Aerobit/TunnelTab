@@ -500,6 +500,26 @@ function start(cmd, args, opts) {
   await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   step("ping (servers table and server page), traffic counted and charted, notes saved in the vault");
 
+  // D4: server health is off by default; on from the server page; off from Settings.
+  await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
+  const healthBox = page.locator(".box", { has: page.getByRole("heading", { name: "Health" }) });
+  await healthBox.getByText("Off. When on").waitFor();
+  await healthBox.getByRole("button", { name: "Turn on" }).click();
+  await healthBox.locator("meter").first().waitFor();
+  await healthBox.getByText("Disk /srv/data").waitFor();
+  await healthBox.getByText("of 3.8 GB").waitFor(); // memory: 2.3 GB of 3.8 GB
+  await shot("16-health");
+  await page.getByRole("button", { name: /Settings/ }).click();
+  await page.getByRole("tab", { name: "Server health" }).click();
+  const healthSwitch = page.getByRole("dialog").getByLabel("Demo VPS (renamed)");
+  assert.ok(await healthSwitch.isChecked(), "Settings doesn't show health as on");
+  await healthSwitch.uncheck();
+  await page.getByRole("dialog").locator(".inline-status.ok", { hasText: "health off" }).waitFor();
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+  await healthBox.getByText("Off. When on").waitFor();
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
+  step("server health: off by default, on from the server page (readings shown), off from Settings");
+
   // 10. Stop the tunnel, then quit.
   await page.locator(".service", { hasText: "Demo app" }).getByRole("button", { name: "Stop" }).click();
   await page.locator(".pill.active").waitFor({ state: "detached", timeout: 10000 });

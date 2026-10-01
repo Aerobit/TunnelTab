@@ -49,6 +49,12 @@ one, stop and ask the user instead.
    own program (`cmd/tunneltab/restart.go`), with arguments passed as a
    slice. When the vault locks, terminal pages are detached and blanked (the shells
    keep running); re-attaching needs the vault unlocked.
+   **On servers**, the only command TunnelTab runs by itself is the opt-in
+   health check: the constant `internal/health.Command` (read-only), only
+   for servers where the user switched it on, only over an existing
+   connection (`Manager.RunIfConnected` never connects), and only while a
+   dashboard is open. Never put user input into it or add other automatic
+   remote commands.
 8. **IDs are generated server-side** and all input is validated in
    `internal/model` before use.
 9. **No network access except SSH to the user's servers** — with one

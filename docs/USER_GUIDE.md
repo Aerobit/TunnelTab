@@ -91,8 +91,9 @@ Each time TunnelTab starts, enter your master password to unlock it.
   activity**; and a table of **all servers** with their status and ping.
 - **A server's page** (click it in the sidebar) has tabs:
   - **Overview**: the connection (connected for how long, ping,
-    reconnects, address, login method), its services, the traffic through
-    its tunnels in the last hour, and your notes.
+    reconnects, address, login method), its services, its **health** (if
+    you switched it on), the traffic through its tunnels in the last hour,
+    and your notes.
   - **Services**: start, stop, open, edit and reorder its web apps.
   - **Terminals**: terminals on this server (see [Opening a terminal](#opening-a-terminal)).
   - **Activity**: what happened with this server since TunnelTab started.
@@ -109,6 +110,19 @@ Traffic is counted on your PC as data passes through each tunnel: today's
 total and a chart of the last hour. Like recent activity, both are kept in
 memory only: they start from zero when TunnelTab starts and are gone when
 it quits. Nothing extra is sent to your servers to measure them.
+
+### Server health
+
+A server's **Health** box shows its CPU load, memory, disk use and uptime.
+It is **off by default**: turn it on with **Turn on** in that box, or in
+**Settings → Server health**, and off again the same way at any time.
+
+While it's on, and only while the server is already connected (for a
+service or a terminal) and the dashboard is open, TunnelTab runs one
+read-only command on the server every 30 seconds:
+`cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k`. It never
+connects to a server just for this, and the readings are never saved. It
+needs a Linux server; on others the box says so.
 
 ## Projects
 
@@ -252,7 +266,7 @@ choose another local port, or leave it blank.
 
 ## Settings
 
-**Settings** (bottom of the sidebar) has four tabs:
+**Settings** (bottom of the sidebar) has five tabs:
 
 - **General**
   - **Lock after inactivity** — Never, 5 min … 4 hours (default 15 min).
@@ -267,6 +281,8 @@ choose another local port, or leave it blank.
   by itself — only when you click. See [How do I update](#faq).
 - **Servers** — every fingerprint you've trusted. **Forget** removes one, so
   the next connection asks you to confirm again.
+- **Server health** — switch the health check on or off for each server
+  (see [Server health](#server-health)).
 
 ## Backups and moving to another PC
 
