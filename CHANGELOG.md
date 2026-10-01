@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-01
+
 ### Changed
 - Server rows are tidier: **Test connection** and **Edit server** moved into
   a **⋯** menu, next to **Terminal** and **+ Service**.
@@ -89,6 +91,7 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.1.0
