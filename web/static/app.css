@@ -508,7 +508,10 @@ a.chip { text-decoration: none; display: inline-block; }
 .termview-screen { flex: 1; min-height: 0; }
 /* The padding goes on .xterm itself: the fit addon subtracts that padding, but
    not the parent's, so padding on .termview-screen pushed rows past the edge. */
-.termview-screen .xterm { height: 100%; padding: 8px 6px 12px 10px; }
+.termview-screen .xterm { height: 100%; padding: 5px; background: #0d1117; }
+/* xterm.css paints the scrolling layer (which covers the padding) black;
+   match the terminal background so the padding doesn't look like a frame. */
+.termview-screen .xterm .xterm-viewport { background-color: #0d1117; }
 .termview-screen.hidden-while-locked { visibility: hidden; }
 
 /* --- Terminals tab ---------------------------------------------------------- */

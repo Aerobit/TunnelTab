@@ -65,7 +65,9 @@ function start(cmd, args, opts) {
   const [url] = await app.waitFor(/http:\/\/127\.0\.0\.1:47900\/\?launch=\S+/);
 
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+  // E2E_ZOOM=1.25 runs the walkthrough as if the browser were zoomed to 125%.
+  const zoom = Number(process.env.E2E_ZOOM) || 1;
+  const context = await browser.newContext({ viewport: { width: Math.round(1200 / zoom), height: Math.round(800 / zoom) }, deviceScaleFactor: zoom });
   const page = await context.newPage();
   const problems = [];
   let touches = 0; // "the user is active" reports (auto-lock)
@@ -195,7 +197,7 @@ function start(cmd, args, opts) {
   const rowsFit = (p, frame) => p.evaluate((sel) => [...document.querySelectorAll(sel)].every((f) => {
     const rows = f.querySelector(".xterm-screen")?.getBoundingClientRect();
     const visible = f.querySelector(".xterm-viewport")?.getBoundingClientRect();
-    return rows && visible && rows.bottom <= visible.bottom - 6;
+    return rows && visible && rows.bottom <= visible.bottom - 3;
   }), frame);
   assert.ok(await rowsFit(page, ".term-pane"), "terminal rows run past the bottom of the pane");
   await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();

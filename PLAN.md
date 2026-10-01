@@ -295,3 +295,51 @@ https://claude.ai/artifact/J8Tm3ZRyoxxjK41uDUoRoz.
 | D2 ✅ | **Built-in terminals** — Terminals tab with terminal tabs, + New terminal, Split, Pop out (session hand-over), lock blanking, close-dashboard-ends-sessions | 0.3.0 | Browser test: open two terminals in-page, split, pop one out, lock/unlock, reload |
 | D3 ✅ | **Ping, traffic, notes** — keep-alive RTT, per-tunnel byte counters (today + last hour chart), server notes in the vault | 0.4.0 | Unit tests (counters, vault round-trip with notes, older vault without notes); browser test |
 | D4 ✅ | **Server health (opt-in)** — Settings → Server health tab with a switch per server (plus one on the server's Overview tab), the fixed read-only command, strict parser, 30 s polling only while connected and the dashboard is open | 0.4.0 | Parser tests with real `/proc` samples and hostile output (huge, malformed); test server answers the command; browser test: off by default, on, off again stops polling; SECURITY.md + SECURITY_REVIEW.md updated |
+
+## 13. Future — Service discovery (idea, not scheduled)
+
+Adding services by hand means knowing each app's port. **Find services**
+would look at a server, list the web apps and ports it finds, and let you
+tick the ones to add — nothing is added without your choice.
+
+### What the user sees
+
+1. On a server's **Services** tab (and in the empty state of a new server):
+   **Find services…**. It asks first: "TunnelTab will run a read-only
+   command on *homelab* to list its open ports and Docker containers."
+2. A list of what was found, for example:
+
+   | Add | Name (editable) | Port | Found as |
+   |---|---|---|---|
+   | ☑ | n8n | 5678 | Docker container `n8n`, published on 127.0.0.1:5678 |
+   | ☑ | Grafana | 3000 | Docker container `grafana` |
+   | ☐ | Portainer | 9443 (https) | Docker container `portainer` |
+   | ☐ | — | 5432 | listening port (PostgreSQL — not a web page) |
+
+   Ports already added as services are shown as *already added* and can't
+   be ticked again. Known apps get their usual name and protocol (n8n,
+   Grafana, Portainer, Home Assistant, Uptime Kuma, Proxmox, …); unknown
+   ports are named after the container or process, or left for you to name.
+3. **Add selected** creates the services in one go (same validation as the
+   service dialog). Nothing starts automatically.
+
+### Decisions (to confirm before building)
+
+| Topic | Proposal |
+|---|---|
+| When it runs | Only when you click **Find services** and confirm — never automatically, never in the background. Unlike server health it may connect to the server (you asked for it). |
+| What runs | One fixed, read-only command — the second (and only other) command TunnelTab would run on a server, next to the opt-in health check. Roughly: `ss -Htln` (listening TCP ports, no root needed) and, if available, `docker ps --format '{{json .}}'` (container names, images, published ports; works when the user may use Docker). No user input in the command; size- and time-limited output, strict parser, fuzzed — like `internal/health`. |
+| Recognising apps | A built-in table of well-known images and ports → name, protocol and path (e.g. `n8nio/n8n` → n8n, http, 5678). Matched by image first, port second. |
+| Checking it's a web page (optional) | For candidates, a single `HEAD /` through a short-lived SSH tunnel to tell web UIs from databases and pick http/https. Only to the server itself, only during the scan you started. Could be a later step. |
+| Listening addresses | Ports on `127.0.0.1` and `0.0.0.0`/`::` are offered (both reachable through the tunnel); ports bound only to other interfaces are shown as such. |
+| Privacy | Nothing leaves the PC; the scan result is shown and then forgotten (only what you add is saved, in the vault). The scan is recorded in Recent activity ("Searched for services"). |
+| Non-Linux / no `ss` | Falls back to `netstat -tln`; if neither works, says so and offers the manual dialog. |
+
+### Build phases (sketch)
+
+| # | Phase | Done when |
+|---|---|---|
+| S1 | **Discovery command + parser** (`internal/discover`): `ss`/`netstat` and `docker ps` output → candidates; known-apps table | Parser tests with real outputs (Ubuntu, Debian, Alpine, no Docker, Docker without permission), hostile/huge output, fuzzing |
+| S2 | **API + UI**: `POST /api/servers/{id}/discover` (on click, connects if needed), results dialog with tick boxes, editable names, *already added* marking, **Add selected** | Browser test against the dev SSH server answering the command; nothing added unless ticked |
+| S3 | **Web check (optional)**: HEAD probe through the tunnel to label web UIs and pick http/https | Tests with HTTP, HTTPS and non-HTTP backends |
+| S4 | **Docs + security**: CLAUDE.md invariant 7 names this command too (on click only), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE | Review done; docs match behaviour |

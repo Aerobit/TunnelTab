@@ -6,6 +6,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Terminals have an even 5 px margin on every side, in the terminal's own
+  colour (it showed as a black frame before).
+
 ## [0.4.0] - 2026-10-01
 
 ### Fixed
