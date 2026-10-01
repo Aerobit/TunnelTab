@@ -21,7 +21,7 @@ A portable SSH terminal and web-UI launcher for your own VPSs.<br>
 
 <br>
 
-<img src="docs/images/dashboard.png" alt="TunnelTab dashboard: projects with servers and their web apps; two tunnels running" width="900">
+<img src="docs/images/dashboard.png" alt="TunnelTab Overview: sidebar with projects and servers; totals, running tunnels, recent activity and all servers" width="900">
 
 </div>
 
@@ -94,6 +94,14 @@ protects an unattended PC.
 ## 📸 Screenshots
 
 <table>
+<tr>
+<td width="50%"><img src="docs/images/server.png" alt="A server's page: connection details and its apps"></td>
+<td width="50%"><img src="docs/images/apps.png" alt="A server's Apps tab: start, stop, open and reorder web apps"></td>
+</tr>
+<tr>
+<td align="center"><b>Server page</b><br><sub>Connection details and apps, in tabs</sub></td>
+<td align="center"><b>Apps</b><br><sub>Start, stop, open and reorder</sub></td>
+</tr>
 <tr>
 <td width="50%"><img src="docs/images/terminal.png" alt="In-browser SSH terminal"></td>
 <td width="50%"><img src="docs/images/fingerprint.png" alt="Confirming a new server's fingerprint"></td>

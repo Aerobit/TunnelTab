@@ -256,7 +256,7 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `POST /vault/unlock` | `{password}` | 401 `wrong_password`, 429 `too_many_attempts` (+ `retryAfterMs`) |
 | `POST /vault/lock` | | |
 | `POST /vault/password` | `{old, new}` | |
-| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus]}` |
+| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached}], activity: [activity entry]}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects` and `reason` (`sshx.ErrorKind`) |
 | `POST /projects` · `PUT`/`DELETE /projects/{id}` | `{name, description}` | project; delete cascades |
 | `POST /servers` · `PUT`/`DELETE /servers/{id}` | `model.Server` | `PublicServer` (never secrets); blank secrets are kept on update |
 | `POST /servers/{id}/move` | `{projectId}` | |
@@ -296,13 +296,20 @@ sent). Each `data:` line is JSON:
 
 | `type` | Fields | Meaning |
 |---|---|---|
-| `tunnel` | `kind` (server/forward), `id`, `serverId`, `state`, `error`, `localPort` | SSH engine state change |
+| `tunnel` | `kind` (server/forward), `id`, `serverId`, `state`, `error`, `localPort`, and for servers `since`, `reconnects`, `reason` | SSH engine state change |
+| `activity` | `at`, `kind` (server/forward/terminal), `id`, `serverId`, `state`, `error`, `reconnects`, `reason` | a line for "Recent activity" (see below) |
 | `vault` | `state` (locked/unlocked) | lock state changed |
 | `data` | | stored data changed: re-fetch `/api/data` |
 | `resync` | | events were dropped: re-fetch everything |
 
 A `: ping` comment is sent every 20 s. Slow clients get `resync` instead of
 blocking the app.
+
+**Activity log** (`internal/server/activity.go`): the last 200 connection,
+tunnel and terminal events worth showing (connected, reconnecting, failed,
+stopped; tunnel started/stopped/failed; terminal opened/ended), with a
+repeated state recorded once. IDs and states only; the dashboard looks the
+names up. Kept in memory only, never written to disk or the log file.
 
 ## Terminals
 
@@ -371,12 +378,17 @@ the executable as-is.
 | `app.css` | All styling (dark GitHub palette from local.browser) |
 
 **Flow:** `start()` signs in → `GET /api/state` → setup, unlock or
-dashboard. The dashboard renders from `GET /api/data`; events update tunnel
+dashboard. The dashboard is a sidebar (projects and servers) plus one
+page chosen by the address: `#/` the Overview (totals, needs attention,
+running now, recent activity, all servers), `#/server/<id>[/apps|/activity]`
+a server page with tabs. `hashchange` re-renders; focus moves to the new
+page's heading. Below 860 px the sidebar becomes a slide-in panel (☰ Menu). The dashboard renders from `GET /api/data`; events update tunnel
 states in place (`tunnel`), trigger a re-fetch (`data`, `resync`) or switch
 to the unlock screen (`vault`). Screens the user may be typing into are
 never redrawn by a background refresh.
 
-**Reordering** (`app.js`): each row has a ⠿ `grip` button that is the drag
+**Reordering** (`app.js`): projects and servers in the sidebar and apps on the
+Apps tab each have a ⠿ `grip` button that is the drag
 source (HTML5 drag and drop; types `application/x-tunneltab-project`,
 `…-server`, and `…-service-<serverId>` so services only drop within their
 server) and also moves the item with ↑/↓. `dropTarget` shows a line

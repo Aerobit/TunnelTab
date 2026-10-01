@@ -70,7 +70,7 @@ confirmed fingerprints — in `data/vault.enc`.
 
 Each time TunnelTab starts, enter your master password to unlock it.
 
-- **Lock** (top bar) locks immediately. TunnelTab also locks by itself after
+- **Lock** (bottom of the sidebar) locks immediately. TunnelTab also locks by itself after
   15 minutes without use (change this in Settings).
 - While locked, running tunnels keep working. If a connection drops while
   locked, it waits and reconnects after you unlock. To close all tunnels on
@@ -78,25 +78,49 @@ Each time TunnelTab starts, enter your master password to unlock it.
 - After several wrong passwords you have to wait a little before trying
   again (up to 30 seconds).
 
+## The dashboard
+
+- **Sidebar** (left): **Overview**, then your projects and their servers. A
+  dot shows each server's connection (green connected, amber reconnecting or
+  waiting, red failed), with a short note such as *2 running*. Settings,
+  Lock and Quit are at the bottom. On a narrow window the sidebar opens from
+  the **☰ Menu** button.
+- **Overview**: how many servers are online, tunnels running and terminals
+  open; anything that **needs attention** (a server reconnecting, for
+  example); everything **running now**, with Stop and Open; **recent
+  activity**; and a table of **all servers**.
+- **A server's page** (click it in the sidebar) has tabs:
+  - **Overview**: the connection (connected for how long, reconnects,
+    address, login method) and its apps.
+  - **Apps**: start, stop, open, edit and reorder its web apps.
+  - **Activity**: what happened with this server since TunnelTab started.
+
+The address bar remembers which page you're on, so reloading the tab (or
+the browser's Back button) brings you back to it. Recent activity is kept in
+memory only and is gone when TunnelTab quits.
+
 ## Projects
 
 Projects group your servers — for example *Personal*, *Client A*,
-*Production*. Use **+ Project** in the top bar; **Edit** on a project renames
-it or deletes it (deleting also deletes its servers and services).
+*Production*. Use **+ Project** at the bottom of the sidebar. The **⋯** button
+next to a project's name has **Add server** and **Edit project** (rename
+or delete it; deleting also deletes its servers and services).
 
-**Reordering.** Every project, server and service has a ⠿ grip on its left:
+**Reordering.** Every project and server in the sidebar, and every app on a
+server's **Apps** tab, has a ⠿ grip on its left:
 
 - **Drag** the grip to move the item; a blue line shows where it will go.
   Drop a server onto another project (or between that project's servers) to
   move it there.
 - Or **click the grip and press ↑ / ↓** to move it one place at a time.
 
-Services can be reordered within their server. The order is saved in the
+Apps can be reordered within their server. The order is saved in the
 vault.
 
 ## Adding a server
 
-On a project, click **+ Server** and fill in:
+Use **Add server** in the project's **⋯** menu (or **+ Add a server** under
+an empty project) and fill in:
 
 | Field | Example |
 |---|---|
@@ -108,8 +132,8 @@ On a project, click **+ Server** and fill in:
 
 When you save, TunnelTab connects once to check everything. The first time,
 it shows the server's fingerprint for you to confirm (see below). A green
-dot next to a server means it's connected. The **⋯** button on a server
-has **Test connection** (checks it again at any time) and **Edit server**.
+dot next to a server means it's connected. The **⋯** button on a server's
+page has **Test connection** (checks it again at any time) and **Edit server**.
 
 ## Choosing how to log in: keys, agent or password
 
@@ -149,7 +173,8 @@ ssh-ed25519 SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s
 
 ## Opening a terminal
 
-Click **Terminal ↗** on a server. A new browser tab opens with a shell on
+Click **Terminal ↗** on a server's page (or in the Overview's server table).
+A new browser tab opens with a shell on
 that server, logged in the same way as its tunnels (and reusing the same
 connection when one is open). Open as many as you like, side by side.
 
@@ -177,7 +202,8 @@ connection when one is open). Open as many as you like, side by side.
 ## Services and web UI quick launch
 
 A **service** is a web app (or any TCP port) running on your server, such as
-n8n, Portainer or Grafana. On a server, click **+ Service**:
+n8n, Portainer or Grafana. On the server's page, open the **Apps** tab and
+click **+ Service**:
 
 | Field | Meaning |
 |---|---|
@@ -205,7 +231,7 @@ choose another local port, or leave it blank.
 
 ## Settings
 
-**Settings** (top bar) has four tabs:
+**Settings** (bottom of the sidebar) has four tabs:
 
 - **General**
   - **Lock after inactivity** — Never, 5 min … 4 hours (default 15 min).

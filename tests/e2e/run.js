@@ -100,7 +100,7 @@ function start(cmd, args, opts) {
   step("project created");
 
   // 3. Server (password login), with fingerprint confirmation.
-  await page.getByRole("button", { name: "+ Server" }).click();
+  await page.getByRole("button", { name: "+ Add a server" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Demo VPS");
   await page.getByLabel("Host", { exact: true }).fill(host);
   await page.getByLabel("SSH port").fill(sshPort);
@@ -116,6 +116,12 @@ function start(cmd, args, opts) {
   await page.getByRole("button", { name: "Trust and connect" }).click();
   await page.getByText("Connected to Demo VPS.").waitFor();
   step("server added, fingerprint confirmed, login works");
+
+  // The server is in the sidebar; its page (in the address) has tabs.
+  await page.locator(".side-server", { hasText: "Demo VPS" }).getByRole("link").click();
+  await page.getByRole("heading", { name: "Demo VPS", level: 1 }).waitFor();
+  assert.ok(page.url().includes("#/server/"), "server page not in the address: " + page.url());
+  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
 
   // 4. Service, then Open through the tunnel.
   await page.getByRole("button", { name: "+ Service" }).click();
@@ -251,8 +257,8 @@ function start(cmd, args, opts) {
   await shot("06-settings");
   await page.getByRole("button", { name: "Close" }).click();
   // The check found 99.0.0: Settings shows a dot and reopens on Updates.
-  await page.locator(".topbar .update-dot").waitFor();
-  await page.locator(".topbar").screenshot({ path: `${OUT}/12-update-dot.png` });
+  await page.locator("#sidebar .update-dot").waitFor();
+  await page.locator(".side-foot").screenshot({ path: `${OUT}/12-update-dot.png` });
   await page.getByRole("button", { name: /Settings/ }).click();
   assert.strictEqual(await page.getByRole("tab", { name: "Updates" }).getAttribute("aria-selected"), "true");
   assert.strictEqual(updateRequests, 1, "reopening Settings checked again");
@@ -330,7 +336,7 @@ function start(cmd, args, opts) {
 
   // 9. Edit server keeping the saved password.
   // Edit is in the server's "⋯" menu (also reachable by keyboard).
-  const more = page.locator(".server-head").getByRole("button", { name: /More actions/ });
+  const more = page.locator(".page-head").getByRole("button", { name: /More actions/ });
   await more.click();
   await page.getByRole("menuitem", { name: "Test connection" }).waitFor();
   await shot("11-server-menu");
@@ -365,7 +371,7 @@ function start(cmd, args, opts) {
   await page.getByRole("heading", { name: "Archive" }).waitFor();
   const labels = (sel) => page.locator(sel).allInnerTexts();
   const serviceNames = () => labels(".service .service-info strong");
-  const serverNames = () => labels(".project >> nth=0 >> .server-info strong");
+  const serverNames = () => labels(".side-project >> nth=0 >> .side-name");
   assert.deepStrictEqual(await serviceNames(), ["Demo app", "Second app"]);
 
   // Keyboard: focus a grip and press ↑.
@@ -386,17 +392,44 @@ function start(cmd, args, opts) {
   assert.deepStrictEqual(await serverNames(), ["Demo VPS (renamed)", "Backup box"]);
   await page.getByRole("button", { name: "Move server Backup box" }).focus();
   await page.keyboard.press("ArrowUp");
-  await page.waitForFunction(() => document.querySelector(".server-info strong")?.textContent === "Backup box");
+  await page.waitForFunction(() => document.querySelector(".side-name")?.textContent === "Backup box");
   await page.getByRole("button", { name: "Move server Backup box" })
-    .dragTo(page.locator(".project", { hasText: "Archive" }).getByRole("heading", { name: "Archive" }));
-  await page.locator(".project", { hasText: "Archive" }).getByText("Backup box").waitFor();
+    .dragTo(page.locator(".side-project", { hasText: "Archive" }).getByRole("heading", { name: "Archive" }));
+  await page.locator(".side-project", { hasText: "Archive" }).getByText("Backup box").waitFor();
   assert.deepStrictEqual(await serverNames(), ["Demo VPS (renamed)"]);
 
   await page.reload();
   await page.getByRole("heading", { name: "Archive" }).waitFor();
   assert.deepStrictEqual(await serviceNames(), ["Demo app", "Second app"]);
-  await page.locator(".project", { hasText: "Archive" }).getByText("Backup box").waitFor();
+  await page.locator(".side-project", { hasText: "Archive" }).getByText("Backup box").waitFor();
   step("reorder services and servers by keyboard and drag-and-drop; move a server to another project; order kept");
+
+  // Overview: totals, running now, recent activity, all servers.
+  await page.locator("#sidebar").getByRole("link", { name: "Overview" }).click();
+  await page.getByRole("heading", { name: "Overview", level: 1 }).waitFor();
+  assert.strictEqual(await page.locator(".tile", { hasText: "Tunnels running" }).locator(".tile-value").innerText(), "1");
+  await page.locator(".box", { hasText: "Running now" }).getByText("Demo app").waitFor();
+  await page.locator(".box", { hasText: "Recent activity" }).getByText("Demo app: tunnel started").first().waitFor();
+  await page.locator("table").getByRole("link", { name: "Demo VPS (renamed)" }).waitFor();
+  await shot("13-overview");
+
+  // Narrow window: the sidebar opens from the Menu button and closes on navigation.
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.locator("#sidebar").waitFor({ state: "hidden", timeout: 3000 }); // slides out
+  await page.getByRole("button", { name: "☰ Menu" }).click();
+  await page.locator("#sidebar").getByRole("link", { name: /Demo VPS/ }).click();
+  await page.getByRole("heading", { name: "Demo VPS (renamed)", level: 1 }).waitFor();
+  await page.locator("#sidebar").waitFor({ state: "hidden", timeout: 3000 }); // closed after navigating
+  await page.setViewportSize({ width: 1200, height: 800 });
+
+  // Server page: Overview tab shows the connection, Activity tab its history; Back works.
+  await page.locator(".kv").getByText("Password").waitFor();
+  await page.locator(".page-tabs").getByRole("link", { name: "Activity" }).click();
+  await page.locator(".activity").getByText("Demo app: tunnel started").first().waitFor();
+  await page.goBack();
+  await page.locator(".kv").waitFor();
+  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
+  step("overview (totals, running now, activity, all servers), narrow-window menu, server tabs, Back button");
 
   // 10. Stop the tunnel, then quit.
   await page.locator(".service", { hasText: "Demo app" }).getByRole("button", { name: "Stop" }).click();

@@ -18,6 +18,9 @@ const state = {
   data: null, // PublicData
   forwards: new Map(), // serviceId → ForwardStatus
   servers: new Map(), // serverId → ServerStatus
+  terminals: new Map(), // terminalId → {id, serverId, openedAt}
+  activity: [], // recent events, oldest first (kept in memory by the program)
+  sidebarOpen: false, // narrow windows: the sidebar is shown over the page
   connected: true, // event stream
   updateAvailable: null, // newer version found by the last "Check for updates" (never checked automatically)
 };
@@ -210,6 +213,8 @@ async function loadData() {
     state.data = res.data;
     state.forwards = new Map(res.forwards.map((f) => [f.serviceId, f]));
     state.servers = new Map(res.servers.map((s) => [s.id, s]));
+    state.terminals = new Map((res.terminals || []).map((t) => [t.id, t]));
+    state.activity = res.activity || [];
     renderDashboard();
   } catch (err) {
     if (err.code === "locked") {
@@ -244,6 +249,15 @@ function onEvent(ev) {
         loadData();
       }
       break;
+    case "activity":
+      state.activity.push(ev);
+      if (state.activity.length > 200) state.activity.shift();
+      if (ev.kind === "terminal") {
+        if (ev.state === "opened") state.terminals.set(ev.id, { id: ev.id, serverId: ev.serverId, openedAt: ev.at });
+        else state.terminals.delete(ev.id);
+      }
+      renderSoon();
+      break;
     case "tunnel":
       if (ev.kind === "forward") {
         if (ev.state === "stopped" || ev.state === "failed") {
@@ -256,7 +270,7 @@ function onEvent(ev) {
         }
       } else if (ev.kind === "server") {
         if (ev.state === "stopped") state.servers.delete(ev.id);
-        else state.servers.set(ev.id, { id: ev.id, state: ev.state, error: ev.error });
+        else state.servers.set(ev.id, { id: ev.id, state: ev.state, error: ev.error, since: ev.since, reconnects: ev.reconnects });
       }
       renderSoon();
       break;
@@ -282,40 +296,427 @@ function serviceLabel(id) {
 
 const byOrder = (a, b) => a.order - b.order || a.name?.localeCompare?.(b.name) || 0;
 
+// The dashboard has a sidebar (projects and servers) and one page at a time,
+// chosen by the address: #/ is the Overview, #/server/<id>/<tab> a server.
+const SERVER_TABS = ["overview", "apps", "activity"];
+
+function currentRoute() {
+  const m = location.hash.match(/^#\/server\/([^/]+)(?:\/([a-z]+))?$/);
+  if (m) return { page: "server", id: decodeURIComponent(m[1]), tab: SERVER_TABS.includes(m[2]) ? m[2] : "overview" };
+  return { page: "overview" };
+}
+
+const serverHref = (id, tab = "overview") => `#/server/${encodeURIComponent(id)}${tab === "overview" ? "" : "/" + tab}`;
+
+let lastRouteKey = "";
+
+window.addEventListener("hashchange", () => {
+  state.sidebarOpen = false;
+  if (currentScreen === "dashboard") renderDashboard();
+});
+
 function renderDashboard() {
   const d = state.data;
-  const scroll = window.scrollY;
-  const header = h("header", { class: "topbar" },
-    h("div", { class: "brand" }, logo(), h("span", {}, "TunnelTab")),
-    h("span", { id: "conn", class: ["conn", !state.connected && "offline"], title: "Connection to the TunnelTab program" }),
-    h("div", { class: "spacer" }),
-    h("button", { class: "btn primary", onclick: () => projectDialog() }, "+ Project"),
-    h("button", {
-      class: "btn secondary", onclick: openSettings,
-      title: state.updateAvailable ? `TunnelTab ${state.updateAvailable} is available` : null,
-    }, "Settings", state.updateAvailable ? [h("span", { class: "update-dot" }), h("span", { class: "sr-only" }, " (update available)")] : null),
-    h("button", { class: "btn secondary", onclick: lock, title: "Lock now" }, "Lock"),
-    h("button", { class: "btn secondary", onclick: quit, title: "Close all tunnels and stop TunnelTab" }, "Quit"));
+  let r = currentRoute();
+  const server = r.page === "server" ? d.servers.find((s) => s.id === r.id) : null;
+  if (r.page === "server" && !server) {
+    // The server was deleted (or the link is old): go to the Overview.
+    history.replaceState(null, "", "#/");
+    r = { page: "overview" };
+  }
+  const routeKey = server ? `${server.id}/${r.tab}` : "overview";
+  const sameRoute = routeKey === lastRouteKey;
+  const scroll = sameRoute ? window.scrollY : 0;
 
   const banner = h("div", { id: "offline-banner", class: "banner", hidden: state.connected },
     "Lost connection to the TunnelTab program. Retrying… If you quit it, start it again.");
-
-  const projects = [...d.projects].sort(byOrder);
-  const main = projects.length === 0
-    ? h("div", { class: "empty card" },
-      h("h2", {}, "Add your first project"),
-      h("p", {}, "Projects group your servers. Inside each server you add the web apps (services) you want to open, like n8n or Portainer."),
-      h("button", { class: "btn primary", onclick: () => projectDialog() }, "+ New project"))
-    : h("div", { class: "projects" }, projects.map(renderProject));
+  const mobileBar = h("div", { class: "mobile-bar" },
+    h("button", {
+      type: "button", class: "btn secondary small", "aria-expanded": String(Boolean(state.sidebarOpen)),
+      "aria-controls": "sidebar", onclick: () => { state.sidebarOpen = !state.sidebarOpen; renderDashboard(); },
+    }, "☰ Menu"),
+    h("div", { class: "brand" }, logo(), h("span", {}, "TunnelTab")));
 
   currentScreen = "dashboard";
-  replace(root, header, banner, h("main", { class: "dashboard" }, main),
-    h("footer", { class: "footer" }, `TunnelTab ${state.version}`));
+  replace(root, h("div", { class: ["shell", state.sidebarOpen && "nav-open"] },
+    renderSidebar(r),
+    h("div", { class: "content" },
+      mobileBar, banner,
+      h("main", { class: "page", id: "main" }, server ? renderServerPage(server, r.tab) : renderOverview()),
+      h("footer", { class: "footer" }, `TunnelTab ${state.version}`))));
+
   window.scrollTo(0, scroll);
   if (focusGripAfterRender) {
     root.querySelector(`[data-grip="${CSS.escape(focusGripAfterRender)}"]`)?.focus();
     focusGripAfterRender = null;
+  } else if (!sameRoute && lastRouteKey) {
+    root.querySelector("main h1")?.focus(); // so screen readers announce the new page
   }
+  lastRouteKey = routeKey;
+}
+
+// Durations ("connected 2h 14m") are refreshed now and then, unless the
+// user is working in the page (a redraw would move the keyboard focus).
+setInterval(() => {
+  const busy = document.activeElement && document.activeElement !== document.body && root.contains(document.activeElement);
+  if (currentScreen === "dashboard" && !busy && !document.querySelector("dialog[open]")) renderSoon();
+}, 30000);
+
+// --- Sidebar ----------------------------------------------------------------
+
+function renderSidebar(r) {
+  const projects = [...state.data.projects].sort(byOrder);
+  return h("aside", { class: "sidebar", id: "sidebar", "aria-label": "Projects and servers" },
+    h("div", { class: "side-brand" },
+      logo(), h("span", {}, "TunnelTab"),
+      h("span", { id: "conn", class: ["conn", !state.connected && "offline"], title: "Connection to the TunnelTab program" })),
+    h("nav", { class: "side-nav", "aria-label": "Pages" },
+      h("a", { class: "side-link", href: "#/", "aria-current": r.page === "overview" ? "page" : null }, overviewIcon(), "Overview"),
+      projects.map((p) => renderSideProject(p, r)),
+      projects.length === 0 ? h("p", { class: "hint side-empty" }, "No projects yet.") : null),
+    h("div", { class: "side-foot" },
+      h("button", { type: "button", class: "btn primary small", onclick: () => projectDialog() }, "+ Project"),
+      h("div", { class: "side-actions" },
+        h("button", {
+          type: "button", class: "btn secondary small", onclick: openSettings,
+          title: state.updateAvailable ? `TunnelTab ${state.updateAvailable} is available` : null,
+        }, "Settings", state.updateAvailable ? [h("span", { class: "update-dot" }), h("span", { class: "sr-only" }, " (update available)")] : null),
+        h("button", { type: "button", class: "btn secondary small", onclick: lock, title: "Lock now" }, "Lock"),
+        h("button", { type: "button", class: "btn secondary small", onclick: quit, title: "Close all tunnels and stop TunnelTab" }, "Quit"))));
+}
+
+function overviewIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("width", "14");
+  svg.setAttribute("height", "14");
+  svg.setAttribute("aria-hidden", "true");
+  for (const [x, y] of [[1.5, 1.5], [9.5, 1.5], [1.5, 9.5], [9.5, 9.5]]) {
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    for (const [k, v] of Object.entries({ x, y, width: 5, height: 5, rx: 1, fill: "none", stroke: "currentColor", "stroke-width": 1.5 })) {
+      rect.setAttribute(k, String(v));
+    }
+    svg.appendChild(rect);
+  }
+  return svg;
+}
+
+function renderSideProject(p, r) {
+  const servers = state.data.servers.filter((s) => s.projectId === p.id).sort(byOrder);
+  const serverIds = servers.map((s) => s.id);
+  const group = h("section", { class: "side-project", dataset: { projectId: p.id } });
+  const head = h("div", { class: "side-project-head" },
+    grip(`Move project ${p.name}`, group, DRAG_PROJECT, p.id, (delta) => {
+      const ids = nudged(idsInOrder(state.data.projects), p.id, delta);
+      if (ids) saveOrder("/projects/order", ids, p.id);
+    }),
+    h("h2", { class: "side-project-name", title: p.description || null }, p.name),
+    moreMenu(`More actions for project ${p.name}`, [
+      ["Add server", () => serverDialog(p.id)],
+      ["Edit project", () => projectDialog(p)],
+    ]));
+  replace(group, head,
+    servers.length
+      ? h("ul", { class: "side-servers" }, servers.map((s) => renderSideServer(s, r)))
+      : h("button", { type: "button", class: "side-add", onclick: () => serverDialog(p.id) }, "+ Add a server"));
+
+  // Reorder projects by dropping one onto another.
+  dropTarget(group, DRAG_PROJECT, (id, after) => {
+    if (id !== p.id) saveOrder("/projects/order", placed(idsInOrder(state.data.projects), id, p.id, after), id);
+  });
+  // Dropping a server on the project's name puts it last in this project.
+  head.addEventListener("dragover", (e) => {
+    if (!e.dataTransfer.types.includes(DRAG_SERVER)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    group.classList.add("drag-over");
+  });
+  head.addEventListener("dragleave", (e) => {
+    if (!head.contains(e.relatedTarget)) group.classList.remove("drag-over");
+  });
+  head.addEventListener("drop", (e) => {
+    group.classList.remove("drag-over");
+    const id = e.dataTransfer.getData(DRAG_SERVER);
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    saveOrder(`/projects/${p.id}/servers/order`, placed(serverIds, id, null, true), id);
+  });
+  return group;
+}
+
+function renderSideServer(s, r) {
+  const status = state.servers.get(s.id);
+  const siblings = () => idsInOrder(state.data.servers.filter((x) => x.projectId === s.projectId));
+  const current = r.page === "server" && r.id === s.id;
+  const li = h("li", { class: "side-server", dataset: { serverId: s.id } });
+  replace(li,
+    grip(`Move server ${s.name}`, li, DRAG_SERVER, s.id, (delta) => {
+      const ids = nudged(siblings(), s.id, delta);
+      if (ids) saveOrder(`/projects/${s.projectId}/servers/order`, ids, s.id);
+    }),
+    h("a", { class: "side-link", href: serverHref(s.id, current ? r.tab : "overview"), "aria-current": current ? "page" : null },
+      h("span", { class: ["dot", status?.state || "idle"] }),
+      h("span", { class: "side-name" }, s.name),
+      h("span", { class: ["side-status", attentionStates.has(status?.state) && "warn"] }, shortStatus(s.id))));
+  dropTarget(li, DRAG_SERVER, (id, after) => {
+    if (id !== s.id) saveOrder(`/projects/${s.projectId}/servers/order`, placed(siblings(), id, s.id, after), id);
+  });
+  return li;
+}
+
+const attentionStates = new Set(["reconnecting", "failed", "paused"]);
+
+/** A few words for the sidebar: "2 running", "reconnecting"… */
+function shortStatus(serverId) {
+  const st = state.servers.get(serverId)?.state;
+  if (st === "reconnecting") return "reconnecting";
+  if (st === "failed") return "failed";
+  if (st === "paused") return "waiting";
+  if (st === "connecting") return "connecting";
+  const running = forwardsOf(serverId).length;
+  return running ? `${running} running` : "";
+}
+
+const forwardsOf = (serverId) => [...state.forwards.values()].filter((f) => f.serverId === serverId);
+const terminalsOf = (serverId) => [...state.terminals.values()].filter((t) => t.serverId === serverId);
+const serverName = (id) => state.data?.servers.find((s) => s.id === id)?.name || "A server";
+
+// --- Overview ---------------------------------------------------------------
+
+function renderOverview() {
+  const d = state.data;
+  if (d.projects.length === 0) {
+    return h("div", { class: "empty card" },
+      h("h1", { tabindex: "-1" }, "Add your first project"),
+      h("p", {}, "Projects group your servers. Inside each server you add the web apps (services) you want to open, like n8n or Portainer."),
+      h("button", { class: "btn primary", onclick: () => projectDialog() }, "+ New project"));
+  }
+  const online = d.servers.filter((s) => state.servers.get(s.id)?.state === "connected").length;
+  const problems = d.servers.filter((s) => attentionStates.has(state.servers.get(s.id)?.state));
+
+  return [
+    h("h1", { tabindex: "-1" }, "Overview"),
+    h("div", { class: "tiles" },
+      tile("Servers online", String(online), `of ${d.servers.length}`),
+      tile("Tunnels running", String(state.forwards.size)),
+      tile("Terminals open", String(state.terminals.size))),
+    problems.length
+      ? h("section", { class: "attention", "aria-label": "Needs attention" },
+        problems.map((s) => {
+          const st = state.servers.get(s.id);
+          return h("div", { class: "attention-row" },
+            h("span", { class: ["dot", st.state] }),
+            h("span", { class: "grow" }, h("strong", {}, s.name), " ", problemText(st)),
+            h("a", { class: "chip", href: serverHref(s.id) }, "Show server"));
+        }))
+      : null,
+    h("div", { class: "two-col" },
+      h("section", { class: "box" }, h("h2", {}, "Running now"), renderRunningNow()),
+      h("section", { class: "box" }, h("h2", {}, "Recent activity"), renderActivity(state.activity, { limit: 8, withServer: true }))),
+    h("section", { class: "box" }, h("h2", {}, "All servers"), renderServerTable()),
+  ];
+}
+
+function tile(label, value, extra) {
+  return h("div", { class: "tile" }, h("span", { class: "label" }, label),
+    h("span", { class: "tile-value" }, value, extra ? h("span", { class: "muted" }, " ", extra) : null));
+}
+
+function problemText(st) {
+  if (st.state === "reconnecting") return "lost its connection. Reconnecting…";
+  if (st.state === "paused") return "is waiting for TunnelTab to be unlocked.";
+  return `couldn't connect${st.error ? ": " + st.error : "."}`;
+}
+
+function renderRunningNow() {
+  const d = state.data;
+  const rows = [];
+  for (const svc of [...d.services].sort(byOrder)) {
+    const fwd = state.forwards.get(svc.id);
+    if (!fwd) continue;
+    const open = h("button", { class: "chip open" }, "Open ↗");
+    open.addEventListener("click", () => openService(svc, open));
+    rows.push(h("li", { class: "list-row" },
+      h("span", { class: ["dot", fwd.state === "active" ? "connected" : fwd.state] }),
+      h("strong", {}, svc.label),
+      h("a", { class: "muted", href: serverHref(svc.serverId, "apps") }, serverName(svc.serverId)),
+      fwd.state === "active"
+        ? h("a", { class: "mono", href: serviceURL(svc, fwd), target: "_blank", rel: "noopener noreferrer" }, `localhost:${fwd.localPort}`)
+        : h("span", { class: "muted" }, STATE_TEXT[fwd.state] || fwd.state),
+      h("span", { class: "grow" }),
+      h("button", { class: "chip stop", onclick: () => stopService(svc) }, "Stop"),
+      open));
+  }
+  for (const t of state.terminals.values()) {
+    rows.push(h("li", { class: "list-row" },
+      h("span", { class: "dot connected" }),
+      h("strong", {}, "Terminal"),
+      h("a", { class: "muted", href: serverHref(t.serverId) }, serverName(t.serverId)),
+      h("span", { class: "muted" }, `opened ${clock(t.openedAt)}`),
+      h("span", { class: "grow" }),
+      h("button", { class: "chip stop", onclick: () => closeTerminal(t) }, "Close")));
+  }
+  return rows.length
+    ? h("ul", { class: "list" }, rows)
+    : h("p", { class: "hint" }, "Nothing is running. Start an app from a server's Apps tab, or open a terminal.");
+}
+
+function renderServerTable() {
+  const projects = new Map(state.data.projects.map((p) => [p.id, p]));
+  const servers = [...state.data.servers].sort((a, b) =>
+    byOrder(projects.get(a.projectId) || {}, projects.get(b.projectId) || {}) || byOrder(a, b));
+  return h("div", { class: "table-wrap" }, h("table", { class: "table" },
+    h("thead", {}, h("tr", {},
+      h("th", {}, "Server"), h("th", {}, "Project"), h("th", {}, "Status"), h("th", {}, "Connected for"),
+      h("th", {}, "Apps running"), h("th", { class: "sr-only" }, "Actions"))),
+    h("tbody", {}, servers.map((s) => {
+      const st = state.servers.get(s.id);
+      const apps = state.data.services.filter((x) => x.serverId === s.id).length;
+      return h("tr", {},
+        h("td", {}, h("a", { href: serverHref(s.id) }, s.name)),
+        h("td", { class: "muted" }, projects.get(s.projectId)?.name || ""),
+        h("td", {}, statusPill(st)),
+        h("td", {}, st?.since && st.state === "connected" ? duration(Date.now() - Date.parse(st.since)) : h("span", { class: "muted" }, "—")),
+        h("td", {}, `${forwardsOf(s.id).length} of ${apps}`),
+        h("td", { class: "right" }, h("button", { class: "chip open", onclick: () => openTerminal(s) }, "Terminal ↗")));
+    }))));
+}
+
+function statusPill(st) {
+  if (!st) return h("span", { class: "pill idle" }, "Not connected");
+  const cls = st.state === "connected" ? "connected" : attentionStates.has(st.state) ? st.state : "idle";
+  return h("span", { class: ["pill", cls] }, STATE_TEXT[st.state] || st.state);
+}
+
+// --- Activity -----------------------------------------------------------------
+
+const ACTIVITY_DOT = {
+  // (a failure that only needs a fingerprint confirmed is shown as waiting)
+  connected: "connected", active: "connected", opened: "connected",
+  reconnecting: "reconnecting", paused: "paused", failed: "failed",
+};
+
+// Plain words for the common connection failures (sshx.ErrorKind).
+const FAILURE_TEXT = {
+  unknown_host_key: "New server: waiting for you to confirm its fingerprint",
+  host_key_changed: "Blocked: the server's fingerprint has changed",
+  auth_failed: "Login failed: check the username and password or key",
+  key_passphrase: "The key needs its passphrase",
+};
+
+function activityText(e) {
+  // Errors can be long (a fingerprint, say); the full text is on the server page.
+  const err = e.error ? `: ${e.error.length > 90 ? e.error.slice(0, 90) + "…" : e.error}` : "";
+  if (e.kind === "server") {
+    if (e.state === "failed" && FAILURE_TEXT[e.reason]) return FAILURE_TEXT[e.reason];
+    return {
+      connected: e.reconnects ? "Reconnected" : "Connected",
+      reconnecting: "Lost the connection; reconnecting",
+      failed: `Couldn't connect${err}`,
+      stopped: "Disconnected",
+      paused: "Waiting for unlock to reconnect",
+    }[e.state] || e.state;
+  }
+  if (e.kind === "forward") {
+    const label = state.data?.services.find((s) => s.id === e.id)?.label || "A tunnel";
+    return `${label}: ${{ active: "tunnel started", stopped: "tunnel stopped", failed: "tunnel failed" }[e.state] || e.state}${e.state === "failed" ? err : ""}`;
+  }
+  return e.state === "opened" ? "Terminal opened" : "Terminal closed";
+}
+
+function renderActivity(entries, { limit = 0, withServer = false } = {}) {
+  let list = [...entries].reverse();
+  if (limit) list = list.slice(0, limit);
+  if (!list.length) return h("p", { class: "hint" }, "Nothing yet. Connections, tunnels and terminals show up here while TunnelTab runs.");
+  return h("ul", { class: "activity" }, list.map((e) => h("li", {},
+    h("time", { class: "mono muted", datetime: e.at }, clock(e.at)),
+    h("span", { class: ["dot", e.reason === "unknown_host_key" ? "paused" : ACTIVITY_DOT[e.state] || "idle"] }),
+    h("span", {}, withServer ? [h("a", { href: serverHref(e.serverId) }, serverName(e.serverId)), " · "] : null, activityText(e)))));
+}
+
+function clock(iso) {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function duration(ms) {
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "under a minute";
+  if (min < 60) return `${min} min`;
+  const hours = Math.floor(min / 60);
+  if (hours < 48) return `${hours}h ${min % 60}m`;
+  return `${Math.floor(hours / 24)} days`;
+}
+
+// --- Server page ------------------------------------------------------------
+
+function renderServerPage(s, tab) {
+  const st = state.servers.get(s.id);
+  const services = state.data.services.filter((x) => x.serverId === s.id).sort(byOrder);
+  const tabs = [["overview", "Overview"], ["apps", "Apps", services.length], ["activity", "Activity"]];
+  return [
+    h("div", { class: "page-head" },
+      h("span", { class: ["dot", st?.state || "idle"] }),
+      h("h1", { tabindex: "-1" }, s.name),
+      h("span", { class: "mono muted" }, address(s)),
+      statusPill(st),
+      h("span", { class: "grow" }),
+      h("button", { class: "btn secondary open-btn", onclick: () => openTerminal(s), title: "Open an SSH terminal in a new tab" }, "Terminal ↗"),
+      moreMenu(`More actions for ${s.name}`, [
+        ["Test connection", () => testServer(s), "Check the connection and login"],
+        ["Edit server", () => serverDialog(s.projectId, s)],
+      ])),
+    st?.error ? h("p", { class: "error-line" }, st.error) : null,
+    h("nav", { class: "page-tabs", "aria-label": `${s.name} sections` },
+      tabs.map(([id, label, count]) => h("a", { href: serverHref(s.id, id), "aria-current": id === tab ? "page" : null },
+        label, count !== undefined ? h("span", { class: "count" }, String(count)) : null))),
+    tab === "apps" ? renderAppsTab(s, services)
+      : tab === "activity" ? h("section", { class: "box" }, renderActivity(state.activity.filter((e) => e.serverId === s.id)))
+        : renderServerOverview(s, st, services),
+  ];
+}
+
+const address = (s) => `${s.username}@${s.host}${s.port !== 22 ? ":" + s.port : ""}`;
+
+function renderServerOverview(s, st, services) {
+  const connected = st?.state === "connected";
+  const rows = [
+    ["Status", statusPill(st)],
+    ["Connected", st?.since && connected
+      ? `${duration(Date.now() - Date.parse(st.since))}, since ${clock(st.since)}`
+      : h("span", { class: "muted" }, "Not right now. Starting an app or a terminal connects.")],
+    ["Reconnects", st?.since ? String(st.reconnects || 0) : "—"],
+    ["Address", h("span", { class: "mono" }, address(s))],
+    ["Login", AUTH_TEXT[s.auth.type] || s.auth.type],
+    ["Terminals open", String(terminalsOf(s.id).length)],
+  ];
+  return h("div", { class: "two-col" },
+    h("section", { class: "box" }, h("h2", {}, "Connection"),
+      h("dl", { class: "kv" }, rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))),
+    h("section", { class: "box" },
+      h("div", { class: "box-head" }, h("h2", {}, "Apps"), h("a", { class: "chip", href: serverHref(s.id, "apps") }, "Manage")),
+      services.length
+        ? h("ul", { class: "list" }, services.map((svc) => {
+          const fwd = state.forwards.get(svc.id);
+          const open = h("button", { class: "chip open" }, "Open ↗");
+          open.addEventListener("click", () => openService(svc, open));
+          return h("li", { class: "list-row" },
+            h("strong", {}, svc.label),
+            fwd ? h("span", { class: ["pill", fwd.state] }, STATE_TEXT[fwd.state] || fwd.state) : h("span", { class: "pill idle" }, "Stopped"),
+            h("span", { class: "grow" }),
+            open);
+        }))
+        : h("p", { class: "hint" }, "No apps yet.", " ", h("button", { class: "linklike", onclick: () => serviceDialog(s.id) }, "Add one"))));
+}
+
+function renderAppsTab(s, services) {
+  return h("section", { class: "box" },
+    h("div", { class: "box-head" },
+      h("h2", {}, "Apps"),
+      h("button", { class: "chip add", onclick: () => serviceDialog(s.id) }, "+ Service")),
+    services.length
+      ? h("ul", { class: "services" }, services.map(renderService))
+      : h("p", { class: "hint" }, "No apps yet. Add a web app running on this server with “+ Service”."));
 }
 
 // --- Reordering (drag the ⠿ grip, or focus it and press ↑/↓) ---------------
@@ -408,90 +809,12 @@ function dropTarget(el, type, onDrop) {
   });
 }
 
-function renderProject(p) {
-  const servers = state.data.servers.filter((s) => s.projectId === p.id).sort(byOrder);
-  const serverIds = servers.map((s) => s.id);
-  const card = h("section", { class: "project card", dataset: { projectId: p.id } });
-  replace(card,
-    h("div", { class: "project-head" },
-      h("div", { class: "title-row" },
-        grip(`Move project ${p.name}`, card, DRAG_PROJECT, p.id, (delta) => {
-          const ids = nudged(idsInOrder(state.data.projects), p.id, delta);
-          if (ids) saveOrder("/projects/order", ids, p.id);
-        }),
-        h("div", {},
-          h("h2", {}, p.name),
-          p.description ? h("p", { class: "desc" }, p.description) : null)),
-      h("div", { class: "actions" },
-        h("button", { class: "chip", onclick: () => projectDialog(p) }, "Edit"),
-        h("button", { class: "chip add", onclick: () => serverDialog(p.id) }, "+ Server"))),
-    servers.length ? servers.map(renderServer) : h("p", { class: "hint" }, "No servers yet. Add one with “+ Server”."));
-
-  // Reorder projects by dropping one onto another.
-  dropTarget(card, DRAG_PROJECT, (id, after) => {
-    if (id !== p.id) saveOrder("/projects/order", placed(idsInOrder(state.data.projects), id, p.id, after), id);
-  });
-  // Dropping a server on the project (not on one of its servers) puts it last.
-  card.addEventListener("dragover", (e) => {
-    if (!e.dataTransfer.types.includes(DRAG_SERVER)) return;
-    e.preventDefault();
-    card.classList.add("drag-over");
-  });
-  card.addEventListener("dragleave", (e) => {
-    if (!card.contains(e.relatedTarget)) card.classList.remove("drag-over");
-  });
-  card.addEventListener("drop", (e) => {
-    card.classList.remove("drag-over");
-    const id = e.dataTransfer.getData(DRAG_SERVER);
-    if (!id) return;
-    e.preventDefault();
-    saveOrder(`/projects/${p.id}/servers/order`, placed(serverIds, id, null, true), id);
-  });
-  return card;
-}
-
 const STATE_TEXT = {
   connecting: "Connecting…", connected: "Connected", active: "Running", reconnecting: "Reconnecting…",
   paused: "Waiting for unlock", failed: "Failed", stopped: "Stopped",
 };
 
 const AUTH_TEXT = { agent: "SSH agent", keyVault: "Stored key", keyFile: "Key file", password: "Password" };
-
-function renderServer(s) {
-  const status = state.servers.get(s.id);
-  const services = state.data.services.filter((x) => x.serverId === s.id).sort(byOrder);
-  const siblings = () => idsInOrder(state.data.servers.filter((x) => x.projectId === s.projectId));
-  const el = h("div", { class: "server", dataset: { serverId: s.id } });
-  replace(el,
-    h("div", { class: "server-head" },
-      grip(`Move server ${s.name}`, el, DRAG_SERVER, s.id, (delta) => {
-        const ids = nudged(siblings(), s.id, delta);
-        if (ids) saveOrder(`/projects/${s.projectId}/servers/order`, ids, s.id);
-      }),
-      h("span", { class: ["dot", status?.state || "idle"], title: status ? STATE_TEXT[status.state] : "Not connected" }),
-      h("div", { class: "server-info" },
-        h("strong", {}, s.name),
-        h("span", { class: "mono muted" }, `${s.username}@${s.host}${s.port !== 22 ? ":" + s.port : ""}`),
-        h("span", { class: "badge" }, AUTH_TEXT[s.auth.type] || s.auth.type)),
-      h("div", { class: "actions" },
-        h("button", { class: "chip open", onclick: () => openTerminal(s), title: "Open an SSH terminal in a new tab" }, "Terminal ↗"),
-        h("button", { class: "chip add", onclick: () => serviceDialog(s.id) }, "+ Service"),
-        moreMenu(`More actions for ${s.name}`, [
-          ["Test connection", () => testServer(s), "Check the connection and login"],
-          ["Edit server", () => serverDialog(s.projectId, s)],
-        ]))),
-    status?.error ? h("p", { class: "error-line" }, status.error) : null,
-    services.length
-      ? h("ul", { class: "services" }, services.map(renderService))
-      : h("p", { class: "hint" }, "No services. Add a web app running on this server with “+ Service”."));
-
-  // Dropping a server onto this one places it before/after (moving it into
-  // this project if it came from another).
-  dropTarget(el, DRAG_SERVER, (id, after) => {
-    if (id !== s.id) saveOrder(`/projects/${s.projectId}/servers/order`, placed(siblings(), id, s.id, after), id);
-  });
-  return el;
-}
 
 /**
  * A "⋯" button with a small menu of [label, action, title?] items.
@@ -670,12 +993,25 @@ async function lock() {
   }
 }
 
+async function closeTerminal(t) {
+  if (!(await confirmDialog("Close terminal?",
+    `The terminal on ${serverName(t.serverId)} ends, along with anything still running in it.`,
+    { confirmLabel: "Close terminal", danger: true }))) return;
+  try {
+    await api("DELETE", `/terminals/${encodeURIComponent(t.id)}`);
+  } catch (err) {
+    if (err.status !== 404) toast(err.message, "error");
+  }
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 async function quit() {
-  const running = state.forwards.size;
-  const msg = running
-    ? `Stop TunnelTab? ${running} running tunnel${running === 1 ? "" : "s"} will close.`
-    : "Stop TunnelTab?";
-  if (!(await confirmDialog("Quit TunnelTab", msg, { confirmLabel: "Quit", danger: running > 0 }))) return;
+  const parts = [];
+  if (state.forwards.size) parts.push(plural(state.forwards.size, "running tunnel"));
+  if (state.terminals.size) parts.push(plural(state.terminals.size, "terminal"));
+  const msg = parts.length ? `Stop TunnelTab? ${parts.join(" and ")} will close.` : "Stop TunnelTab?";
+  if (!(await confirmDialog("Quit TunnelTab", msg, { confirmLabel: "Quit", danger: parts.length > 0 }))) return;
   try {
     await api("POST", "/quit");
   } catch {

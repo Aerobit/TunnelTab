@@ -604,12 +604,21 @@ func TestReconnectAfterDrop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	before := m.Servers()
+	if len(before) != 1 || before[0].Since == nil || before[0].Reconnects != 0 {
+		t.Fatalf("status after connecting: %+v", before)
+	}
 
 	srv.DropConnections()
 	waitFor(t, "reconnect", func() bool { return srv.Logins() >= 2 && forwardState(m, svc.ID) == StateActive })
 	mustGet(t, st.LocalPort, "back")
 	if !e.sawEvent("server", s.ID, StateReconnecting) {
 		t.Error("no reconnecting event")
+	}
+	// "Connected since" survives the reconnect, which is counted.
+	after := m.Servers()
+	if len(after) != 1 || after[0].Since == nil || !after[0].Since.Equal(*before[0].Since) || after[0].Reconnects != 1 {
+		t.Fatalf("status after reconnecting: %+v (before %+v)", after, before)
 	}
 }
 

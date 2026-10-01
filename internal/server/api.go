@@ -390,7 +390,10 @@ func (s *Server) handleData(w http.ResponseWriter, r *http.Request) {
 	if forwards == nil {
 		forwards = []sshx.ForwardStatus{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": pub, "forwards": forwards, "servers": s.mgr.Servers()})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data": pub, "forwards": forwards, "servers": s.mgr.Servers(),
+		"terminals": s.terminalList(), "activity": s.activity.list(),
+	})
 }
 
 func (s *Server) handleAddProject(w http.ResponseWriter, r *http.Request) {

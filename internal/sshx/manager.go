@@ -63,6 +63,13 @@ type Event struct {
 	State     State  `json:"state"`
 	Error     string `json:"error,omitempty"`
 	LocalPort int    `json:"localPort,omitempty"`
+
+	// Server events: when the connection first came up (it survives
+	// reconnects) and how many times it has reconnected since.
+	Since      *time.Time `json:"since,omitempty"`
+	Reconnects int        `json:"reconnects,omitempty"`
+	// Reason is ErrorKind of the error, e.g. "unknown_host_key".
+	Reason string `json:"reason,omitempty"`
 }
 
 // ServerStatus describes one server connection.
@@ -70,6 +77,12 @@ type ServerStatus struct {
 	ID    string `json:"id"`
 	State State  `json:"state"`
 	Error string `json:"error,omitempty"`
+	// Since is when the connection first came up (nil before that); it
+	// survives reconnects, which Reconnects counts.
+	Since      *time.Time `json:"since,omitempty"`
+	Reconnects int        `json:"reconnects,omitempty"`
+	// Reason is ErrorKind of the error, e.g. "unknown_host_key".
+	Reason string `json:"reason,omitempty"`
 }
 
 // Manager owns all SSH connections and port forwards. One SSH connection per
@@ -123,8 +136,7 @@ func (m *Manager) Servers() []ServerStatus {
 	m.mu.Unlock()
 	out := make([]ServerStatus, 0, len(list))
 	for _, sc := range list {
-		st, err := sc.status()
-		out = append(out, ServerStatus{ID: sc.id, State: st, Error: errString(err)})
+		out = append(out, sc.status())
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
@@ -218,6 +230,9 @@ type serverConn struct {
 	err    error
 	users  int
 	done   bool
+
+	since      time.Time // first successful connect
+	reconnects int       // successful connects after the first
 }
 
 // acquire returns a connected (or reconnecting) connection to the server,
@@ -259,7 +274,7 @@ func (m *Manager) acquire(serverID string) (*serverConn, error) {
 		}
 		m.mu.Unlock()
 		sc.shutdown()
-		m.emit(Event{Kind: "server", ID: serverID, ServerID: serverID, State: StateFailed, Error: err.Error()})
+		m.emit(Event{Kind: "server", ID: serverID, ServerID: serverID, State: StateFailed, Error: err.Error(), Reason: ErrorKind(err)})
 		return nil, err
 	}
 	go sc.supervise()
@@ -316,10 +331,25 @@ func (sc *serverConn) currentClient() *ssh.Client {
 	return sc.client
 }
 
-func (sc *serverConn) status() (State, error) {
+func (sc *serverConn) status() ServerStatus {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	return sc.state, sc.err
+	return sc.statusLocked()
+}
+
+func (sc *serverConn) statusLocked() ServerStatus {
+	st := ServerStatus{ID: sc.id, State: sc.state, Error: errString(sc.err), Reconnects: sc.reconnects, Reason: ErrorKind(sc.err)}
+	if !sc.since.IsZero() {
+		since := sc.since
+		st.Since = &since
+	}
+	return st
+}
+
+// event is a "server" event for the given status.
+func (st ServerStatus) event() Event {
+	return Event{Kind: "server", ID: st.ID, ServerID: st.ID, State: st.State, Error: st.Error,
+		Since: st.Since, Reconnects: st.Reconnects, Reason: st.Reason}
 }
 
 func (sc *serverConn) setState(st State, err error) {
@@ -329,8 +359,9 @@ func (sc *serverConn) setState(st State, err error) {
 		return
 	}
 	sc.state, sc.err = st, err
+	status := sc.statusLocked()
 	sc.mu.Unlock()
-	sc.m.emit(Event{Kind: "server", ID: sc.id, ServerID: sc.id, State: st, Error: errString(err)})
+	sc.m.emit(status.event())
 	sc.m.emitForwards(sc.id)
 }
 
@@ -378,9 +409,15 @@ func (sc *serverConn) dial() error {
 		sc.closer.Close()
 	}
 	sc.client, sc.closer, sc.state, sc.err = client, closer, StateConnected, nil
+	if sc.since.IsZero() {
+		sc.since = time.Now()
+	} else {
+		sc.reconnects++
+	}
+	status := sc.statusLocked()
 	sc.mu.Unlock()
 	m.log.Info("connected", "server", sc.id)
-	m.emit(Event{Kind: "server", ID: sc.id, ServerID: sc.id, State: StateConnected})
+	m.emit(status.event())
 	m.emitForwards(sc.id)
 	return nil
 }

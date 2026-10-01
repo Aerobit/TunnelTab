@@ -86,26 +86,36 @@ function start(cmd, args) {
   }, webPort);
   await page.getByRole("heading", { name: "Client sites" }).waitFor();
 
-  // Fingerprint confirmation (first connection to homelab).
-  const homelabRow = page.locator(".server", { hasText: "homelab" });
-  await homelabRow.getByRole("button", { name: /More actions/ }).click();
+  // Fingerprint confirmation (first connection to homelab), from its page.
+  await page.locator(".side-server", { hasText: "homelab" }).getByRole("link").click();
+  await page.getByRole("heading", { name: "homelab", level: 1 }).waitFor();
+  await page.locator(".page-head").getByRole("button", { name: /More actions/ }).click();
   await page.getByRole("menuitem", { name: "Test connection" }).click();
   await page.getByRole("heading", { name: "Confirm new server" }).waitFor();
   await shot(page, "fingerprint");
   await page.getByRole("button", { name: "Trust and connect" }).click();
   await page.getByText("Connected to homelab.").waitFor();
 
-  // Two running tunnels, then the dashboard.
+  // Two running tunnels (Apps tab), then the server page and the Overview.
+  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
   for (const name of ["n8n", "Grafana"]) {
     await page.locator(".service", { hasText: name }).getByRole("button", { name: "Start" }).click();
     await page.locator(".service", { hasText: name }).locator(".pill.active").waitFor();
   }
   await clearToasts();
   await page.mouse.move(0, 0);
-  await shot(page, "dashboard", { fullPage: true });
+  await shot(page, "apps");
+  await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
+  await page.mouse.move(0, 0);
+  await shot(page, "server");
+  await page.getByRole("link", { name: "Overview" }).first().click();
+  await page.getByRole("heading", { name: "Overview", level: 1 }).waitFor();
+  await page.mouse.move(0, 0);
+  await shot(page, "dashboard");
 
   // Adding a server (form only; cancelled).
-  await page.locator(".project", { hasText: "Client sites" }).getByRole("button", { name: "+ Server" }).click();
+  await page.locator(".side-project", { hasText: "Client sites" }).getByRole("button", { name: /More actions/ }).click();
+  await page.getByRole("menuitem", { name: "Add server" }).click();
   await page.getByLabel("Name", { exact: true }).fill("New VPS");
   await page.getByLabel("Host", { exact: true }).fill("vps2.example.com");
   await page.getByLabel("Username").fill("deploy");
@@ -114,7 +124,8 @@ function start(cmd, args) {
   await page.getByRole("button", { name: "Cancel" }).click();
 
   // Terminal.
-  const [term] = await Promise.all([context.waitForEvent("page"), homelabRow.getByRole("button", { name: "Terminal ↗" }).click()]);
+  await page.locator(".side-server", { hasText: "homelab" }).getByRole("link").click();
+  const [term] = await Promise.all([context.waitForEvent("page"), page.locator(".page-head").getByRole("button", { name: "Terminal ↗" }).click()]);
   await term.setViewportSize({ width: 1000, height: 560 });
   await term.locator("#term-status", { hasText: "Connected" }).waitFor();
   for (const cmd of ["uptime", "df -h", "docker ps"]) {

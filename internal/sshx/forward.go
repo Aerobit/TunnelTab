@@ -185,7 +185,8 @@ func (m *Manager) emitForwards(serverID string) {
 }
 
 func (f *forward) status() ForwardStatus {
-	st, err := f.sc.status()
+	ss := f.sc.status()
+	st, errText := ss.State, ss.Error
 	if st == StateConnected {
 		st = StateActive
 	}
@@ -194,7 +195,7 @@ func (f *forward) status() ForwardStatus {
 	f.mu.Unlock()
 	return ForwardStatus{
 		ServiceID: f.svc.ID, ServerID: f.svc.ServerID, LocalPort: f.port,
-		State: st, Error: errString(err), Connections: n,
+		State: st, Error: errText, Connections: n,
 	}
 }
 

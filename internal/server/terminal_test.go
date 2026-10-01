@@ -101,6 +101,10 @@ func TestTerminalSession(t *testing.T) {
 	ctx := context.Background()
 
 	readUntil(t, c, "$ ")
+	// The dashboard lists the open terminal.
+	if m := h.mustCall("GET", "/api/data", nil, 200); len(m["terminals"].([]any)) != 1 {
+		t.Fatalf("terminals: %v", m["terminals"])
+	}
 	c.Write(ctx, websocket.MessageBinary, []byte("echo over websocket\r"))
 	readUntil(t, c, "over websocket\r\n")
 
@@ -125,6 +129,21 @@ func TestTerminalSession(t *testing.T) {
 		t.Fatalf("exit %v", exit)
 	}
 	waitShells(t, h, 0)
+
+	// Gone from the list; opening and ending it are in the activity log.
+	m := h.mustCall("GET", "/api/data", nil, 200)
+	if len(m["terminals"].([]any)) != 0 {
+		t.Fatalf("terminals after exit: %v", m["terminals"])
+	}
+	var states []string
+	for _, e := range m["activity"].([]any) {
+		if e := e.(map[string]any); e["kind"] == "terminal" {
+			states = append(states, e["state"].(string))
+		}
+	}
+	if strings.Join(states, ",") != "opened,ended" {
+		t.Fatalf("terminal activity: %v", states)
+	}
 }
 
 func waitShells(t *testing.T, h *harness, n int) {

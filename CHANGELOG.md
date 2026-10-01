@@ -6,6 +6,21 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **New dashboard layout.** A sidebar lists your projects and servers with
+  their status. **Overview** (the home page) shows how many servers are
+  online, tunnels running and terminals open, anything that needs
+  attention, everything running now, recent activity and all servers.
+  Each server has its own page with **Overview**, **Apps** and **Activity**
+  tabs. The address remembers the page, so reload and Back work. On narrow
+  windows the sidebar opens from a Menu button.
+
+### Added
+- Each server shows how long it has been connected and how often it
+  reconnected.
+- **Recent activity**: connections, tunnels and terminals since TunnelTab
+  started. Kept in memory only; gone when TunnelTab quits.
+
 ## [0.2.1] - 2026-10-01
 
 ### Changed

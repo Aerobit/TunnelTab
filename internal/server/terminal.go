@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -74,6 +75,7 @@ type termTicket struct {
 
 type termSession struct {
 	id, serverID, serverName string
+	openedAt                 time.Time
 	shell                    *sshx.Shell
 
 	mu       sync.Mutex
@@ -116,11 +118,12 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		s.writeSSHError(w, err)
 		return
 	}
-	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, lastSeen: s.now()}
+	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, lastSeen: s.now(), openedAt: s.now()}
 	s.terms.mu.Lock()
 	s.terms.sessions[t.id] = t
 	s.terms.mu.Unlock()
 	go s.runTerminal(t)
+	s.recordActivity(activityEntry{Kind: "terminal", ID: t.id, ServerID: t.serverID, State: "opened"})
 
 	writeJSON(w, http.StatusOK, map[string]string{"terminalId": t.id, "ticket": s.terminalTicket(t.id), "serverName": name})
 }
@@ -236,6 +239,7 @@ func (s *Server) runTerminal(t *termSession) {
 	delete(s.terms.sessions, t.id)
 	s.terms.mu.Unlock()
 	t.end(exit)
+	s.recordActivity(activityEntry{Kind: "terminal", ID: t.id, ServerID: t.serverID, State: "ended"})
 }
 
 // readTerminalInput passes the page's keystrokes and resizes to the shell
@@ -430,4 +434,26 @@ func (s *Server) reapTerminalsOnce() {
 			t.shell.Close()
 		}
 	}
+}
+
+// terminalInfo describes an open terminal session for the dashboard.
+type terminalInfo struct {
+	ID       string    `json:"id"`
+	ServerID string    `json:"serverId"`
+	OpenedAt time.Time `json:"openedAt"`
+	Attached bool      `json:"attached"` // a page is showing it right now
+}
+
+// terminalList lists the open terminal sessions, oldest first.
+func (s *Server) terminalList() []terminalInfo {
+	list := []terminalInfo{}
+	for _, t := range s.sessionsSnapshot() {
+		t.mu.Lock()
+		if !t.ended {
+			list = append(list, terminalInfo{ID: t.id, ServerID: t.serverID, OpenedAt: t.openedAt, Attached: t.conn != nil})
+		}
+		t.mu.Unlock()
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].OpenedAt.Before(list[j].OpenedAt) })
+	return list
 }

@@ -93,6 +93,7 @@ type Server struct {
 	pendingKeys map[string]pendingKey
 
 	terms      terminals
+	activity   activityLog // recent events, in memory only
 	stopReaper chan struct{}
 	closeOnce  sync.Once
 }
@@ -130,7 +131,10 @@ func New(cfg Config) (*Server, error) {
 		Targets: s.target,
 		BaseDir: cfg.BaseDir,
 		Logger:  cfg.Logger,
-		OnEvent: func(e sshx.Event) { s.events.publish(tunnelEvent{Type: "tunnel", Event: e}) },
+		OnEvent: func(e sshx.Event) {
+			s.events.publish(tunnelEvent{Type: "tunnel", Event: e})
+			s.recordTunnelActivity(e)
+		},
 	})
 	if vault.Exists(cfg.Paths.Vault) {
 		v, err := vault.Open(cfg.Paths.Vault, cfg.Paths.VaultBackup, s.vaultOptions())
