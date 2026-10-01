@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"sort"
 	"strconv"
@@ -70,6 +71,9 @@ type Event struct {
 	Reconnects int        `json:"reconnects,omitempty"`
 	// Reason is ErrorKind of the error, e.g. "unknown_host_key".
 	Reason string `json:"reason,omitempty"`
+	// PingMs is the last keep-alive round trip in milliseconds (0 = not
+	// measured yet).
+	PingMs float64 `json:"pingMs,omitempty"`
 }
 
 // ServerStatus describes one server connection.
@@ -83,6 +87,9 @@ type ServerStatus struct {
 	Reconnects int        `json:"reconnects,omitempty"`
 	// Reason is ErrorKind of the error, e.g. "unknown_host_key".
 	Reason string `json:"reason,omitempty"`
+	// PingMs is the last keep-alive round trip in milliseconds (0 = not
+	// measured yet).
+	PingMs float64 `json:"pingMs,omitempty"`
 }
 
 // Manager owns all SSH connections and port forwards. One SSH connection per
@@ -97,6 +104,8 @@ type Manager struct {
 	forwards map[string]*forward // by service ID; nil value = starting
 	shells   map[*Shell]struct{}
 	closed   bool
+
+	traffic *trafficMeter
 }
 
 // NewManager returns a Manager with defaults applied.
@@ -117,7 +126,7 @@ func NewManager(cfg Config) *Manager {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, shells: map[*Shell]struct{}{}}
+	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, shells: map[*Shell]struct{}{}, traffic: newTrafficMeter()}
 }
 
 func (m *Manager) emit(e Event) {
@@ -231,8 +240,9 @@ type serverConn struct {
 	users  int
 	done   bool
 
-	since      time.Time // first successful connect
-	reconnects int       // successful connects after the first
+	since      time.Time     // first successful connect
+	reconnects int           // successful connects after the first
+	ping       time.Duration // last keep-alive round trip
 }
 
 // acquire returns a connected (or reconnecting) connection to the server,
@@ -338,7 +348,7 @@ func (sc *serverConn) status() ServerStatus {
 }
 
 func (sc *serverConn) statusLocked() ServerStatus {
-	st := ServerStatus{ID: sc.id, State: sc.state, Error: errString(sc.err), Reconnects: sc.reconnects, Reason: ErrorKind(sc.err)}
+	st := ServerStatus{ID: sc.id, State: sc.state, Error: errString(sc.err), Reconnects: sc.reconnects, Reason: ErrorKind(sc.err), PingMs: pingMs(sc.ping)}
 	if !sc.since.IsZero() {
 		since := sc.since
 		st.Since = &since
@@ -349,7 +359,7 @@ func (sc *serverConn) statusLocked() ServerStatus {
 // event is a "server" event for the given status.
 func (st ServerStatus) event() Event {
 	return Event{Kind: "server", ID: st.ID, ServerID: st.ID, State: st.State, Error: st.Error,
-		Since: st.Since, Reconnects: st.Reconnects, Reason: st.Reason}
+		Since: st.Since, Reconnects: st.Reconnects, Reason: st.Reason, PingMs: st.PingMs}
 }
 
 func (sc *serverConn) setState(st State, err error) {
@@ -506,8 +516,9 @@ func (sc *serverConn) watch(client *ssh.Client) bool {
 		client.Wait()
 		close(closed)
 	}()
-	ticker := time.NewTicker(m.cfg.KeepAliveInterval)
-	defer ticker.Stop()
+	// The first keep-alive goes out right away, so the ping is known soon.
+	next := time.NewTimer(0)
+	defer next.Stop()
 	missed := 0
 	for {
 		select {
@@ -515,9 +526,13 @@ func (sc *serverConn) watch(client *ssh.Client) bool {
 			return false
 		case <-closed:
 			return true
-		case <-ticker.C:
+		case <-next.C:
+			next.Reset(m.cfg.KeepAliveInterval)
 			reply := make(chan error, 1)
+			sent := time.Now()
 			go func() {
+				// Servers answer with success or failure; either way the
+				// round trip is the ping.
 				_, _, err := client.SendRequest("keepalive@openssh.com", true, nil)
 				reply <- err
 			}()
@@ -527,6 +542,7 @@ func (sc *serverConn) watch(client *ssh.Client) bool {
 					missed++
 				} else {
 					missed = 0
+					sc.setPing(time.Since(sent))
 				}
 			case <-time.After(m.cfg.KeepAliveInterval):
 				missed++
@@ -554,4 +570,25 @@ func errString(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// setPing records a keep-alive round trip and tells the dashboard.
+func (sc *serverConn) setPing(d time.Duration) {
+	sc.mu.Lock()
+	if sc.done {
+		sc.mu.Unlock()
+		return
+	}
+	sc.ping = d
+	status := sc.statusLocked()
+	sc.mu.Unlock()
+	sc.m.emit(status.event())
+}
+
+// pingMs is d in milliseconds, rounded to 0.1 (and at least 0.1 once measured).
+func pingMs(d time.Duration) float64 {
+	if d <= 0 {
+		return 0
+	}
+	return max(math.Round(float64(d.Microseconds())/100)/10, 0.1)
 }

@@ -29,6 +29,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("GET /api/events", s.handleEvents)
 	a("POST /api/quit", s.handleQuit)
 	a("POST /api/touch", s.handleTouch)
+	a("GET /api/traffic", s.handleTraffic)
 	a("POST /api/updates/check", s.handleCheckUpdates)
 	a("POST /api/updates/install", s.handleInstallUpdate)
 	a("GET /api/settings", s.handleGetSettings)
@@ -48,6 +49,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("DELETE /api/servers/{id}", s.handleDeleteServer)
 	a("POST /api/servers/{id}/move", s.handleMoveServer)
 	a("POST /api/servers/{id}/clear-passphrase", s.handleClearPassphrase)
+	a("PUT /api/servers/{id}/notes", s.handleServerNotes)
 	a("POST /api/servers/{id}/test", s.handleTestServer)
 	a("POST /api/services", s.handleAddService)
 	a("PUT /api/services/{id}", s.handleUpdateService)
@@ -745,6 +747,28 @@ func (s *Server) handleConfirmHostKey(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTouch(w http.ResponseWriter, r *http.Request) {
 	if v := s.currentVault(); v != nil && s.vaultState() == "unlocked" {
 		v.Touch()
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleTraffic reports the bytes through each tunnel (today, and per
+// minute for the last hour), counted on this PC. Service IDs only.
+func (s *Server) handleTraffic(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"services": s.mgr.Traffic()})
+}
+
+// handleServerNotes saves a server's notes (stored in the vault).
+func (s *Server) handleServerNotes(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Notes string `json:"notes"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	id := r.PathValue("id")
+	if err := s.update(func(d *model.Data) error { return d.SetServerNotes(id, req.Notes) }); err != nil {
+		s.writeDataError(w, err)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

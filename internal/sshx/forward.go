@@ -237,8 +237,12 @@ func (f *forward) handle(local net.Conn) {
 	// (half-close) and keep the other direction open until it finishes too,
 	// so responses are never cut short.
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(remote, local); closeWrite(remote); done <- struct{}{} }()
-	go func() { io.Copy(local, remote); closeWrite(local); done <- struct{}{} }()
+	// The bytes are counted for the dashboard's traffic figures.
+	id := f.svc.ID
+	toServer := countingWriter{remote, func(n int) { f.m.traffic.add(id, n, false) }}
+	toBrowser := countingWriter{local, func(n int) { f.m.traffic.add(id, n, true) }}
+	go func() { io.Copy(toServer, local); closeWrite(remote); done <- struct{}{} }()
+	go func() { io.Copy(toBrowser, remote); closeWrite(local); done <- struct{}{} }()
 	<-done
 	<-done
 }

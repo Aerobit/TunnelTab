@@ -14,6 +14,7 @@ import (
 const (
 	MaxNameLen        = 100
 	MaxDescriptionLen = 1000
+	MaxNotesLen       = 10000
 	MaxHostLen        = 253
 	MaxUsernameLen    = 64
 	MaxKeyPathLen     = 4096
@@ -115,6 +116,9 @@ func (s *Server) Validate() error {
 	}
 	if len(s.Username) > MaxUsernameLen || !usernamePattern.MatchString(s.Username) {
 		return invalid("username", "must be 1–%d characters: letters, digits, . _ @ - (not starting with . @ or -)", MaxUsernameLen)
+	}
+	if err := checkNotes(s.Notes); err != nil {
+		return err
 	}
 	return s.Auth.Validate()
 }
@@ -266,6 +270,23 @@ func (d *Data) Validate() error {
 				return invalid("localPort", "port %d is already used by service %q", s.LocalPort, other)
 			}
 			localPorts[s.LocalPort] = s.Label
+		}
+	}
+	return nil
+}
+
+// checkNotes allows multi-line text: line breaks and tabs, no other
+// control characters.
+func checkNotes(s string) error {
+	if !utf8.ValidString(s) {
+		return invalid("notes", "must be valid text")
+	}
+	if utf8.RuneCountInString(s) > MaxNotesLen {
+		return invalid("notes", "must be at most %d characters", MaxNotesLen)
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) && r != '\n' && r != '\t' {
+			return invalid("notes", "must not contain control characters")
 		}
 	}
 	return nil

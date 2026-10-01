@@ -753,3 +753,50 @@ func TestOrderEndpoints(t *testing.T) {
 		t.Errorf("services %s", got)
 	}
 }
+
+func TestServerNotesAPI(t *testing.T) {
+	h := ready(t)
+	_, serverID, _ := sshSetup(t, h)
+	h.mustCall("PUT", "/api/servers/"+serverID+"/notes", map[string]string{"notes": "Backups at 02:00"}, 204)
+	h.mustCall("PUT", "/api/servers/"+serverID+"/notes", map[string]string{"notes": "bad \a"}, 400)
+	h.mustCall("PUT", "/api/servers/nope/notes", map[string]string{"notes": "x"}, 404)
+
+	// Saved in the vault: still there after locking and unlocking.
+	h.mustCall("POST", "/api/vault/lock", nil, 200)
+	h.mustCall("PUT", "/api/servers/"+serverID+"/notes", map[string]string{"notes": "x"}, 423)
+	h.mustCall("POST", "/api/vault/unlock", map[string]string{"password": masterPW}, 200)
+	servers := h.mustCall("GET", "/api/data", nil, 200)["data"].(map[string]any)["servers"].([]any)
+	if notes := servers[0].(map[string]any)["notes"]; notes != "Backups at 02:00" {
+		t.Fatalf("notes %v", notes)
+	}
+}
+
+func TestTrafficAPI(t *testing.T) {
+	h := ready(t)
+	sshSrv, _, serviceID := sshSetup(t, h)
+	h.srv.currentVault().Update(func(d *model.Data) error {
+		_, err := d.SetHostKey(model.HostKeyAddress(sshSrv.Host, sshSrv.Port), sshSrv.HostKey.PublicKey())
+		return err
+	})
+	if m := h.mustCall("GET", "/api/traffic", nil, 200); len(m["services"].([]any)) != 0 {
+		t.Fatalf("traffic before any: %v", m)
+	}
+	fwd := h.mustCall("POST", "/api/services/"+serviceID+"/start", nil, 200)["forward"].(map[string]any)
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/x", int(fwd["localPort"].(float64))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.ReadAll(resp.Body)
+	resp.Body.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		list := h.mustCall("GET", "/api/traffic", nil, 200)["services"].([]any)
+		if len(list) == 1 && list[0].(map[string]any)["todayIn"].(float64) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no traffic counted: %v", list)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

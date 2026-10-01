@@ -6,6 +6,22 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- The bottom line of a terminal (often the one with the cursor) was partly
+  cut off; 0.3.1's extra padding made it worse. Rows now always fit inside
+  the terminal, with room at the bottom.
+
+### Added
+- **Ping**: each connected server shows its round-trip time (from the
+  keep-alive TunnelTab already sends), in the Overview's server table and on
+  the server's page.
+- **Traffic**: bytes through each tunnel, counted on your PC. Today's total
+  on the Overview and next to each running service, and a chart of the
+  last hour on the server's page. Kept in memory only.
+- **Server notes**: a **Notes** tab on each server for free text (backup
+  times, where the passwords are…), stored in the encrypted vault and
+  shown on the server's Overview tab.
+
 ## [0.3.1] - 2026-10-01
 
 ### Changed

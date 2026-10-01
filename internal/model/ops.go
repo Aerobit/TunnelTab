@@ -106,7 +106,7 @@ func (d *Data) UpdateServer(in Server) (Server, error) {
 	}
 	old := d.Servers[i]
 	s := normalizeServer(in)
-	s.ID, s.ProjectID, s.Order = old.ID, old.ProjectID, old.Order
+	s.ID, s.ProjectID, s.Order, s.Notes = old.ID, old.ProjectID, old.Order, old.Notes
 	if s.Auth.Type == old.Auth.Type {
 		keep := func(newVal *string, oldVal string) {
 			if *newVal == "" {
@@ -363,4 +363,19 @@ func normalizeService(in Service) Service {
 		s.Protocol = HTTP
 	}
 	return s
+}
+
+// SetServerNotes replaces a server's notes. Windows line endings become
+// plain ones, and trailing blank space is dropped.
+func (d *Data) SetServerNotes(serverID, notes string) error {
+	i := d.serverIndex(serverID)
+	if i < 0 {
+		return ErrNotFound
+	}
+	notes = strings.TrimRight(strings.ReplaceAll(notes, "\r\n", "\n"), " \t\n")
+	if err := checkNotes(notes); err != nil {
+		return err
+	}
+	d.Servers[i].Notes = notes
+	return nil
 }

@@ -20,6 +20,7 @@ type PublicServer struct {
 	Username  string     `json:"username"`
 	Auth      PublicAuth `json:"auth"`
 	Order     int        `json:"order"`
+	Notes     string     `json:"notes,omitempty"`
 }
 
 // PublicAuth describes a login method without revealing any secret.
@@ -53,6 +54,7 @@ func (s Server) Public() PublicServer {
 		Username:  s.Username,
 		Auth:      s.Auth.Public(),
 		Order:     s.Order,
+		Notes:     s.Notes,
 	}
 }
 

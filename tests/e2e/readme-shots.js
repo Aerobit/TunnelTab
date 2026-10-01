@@ -78,6 +78,7 @@ function start(cmd, args) {
     const staging = await call("POST", "/servers", { projectId: clients.id, name: "Staging", host: "staging.example.com", port: 2200, username: "deploy", auth: { type: "agent" } });
     const n8n = await call("POST", "/services", { serverId: homelab.id, label: "n8n", remotePort: Number(webPort), localPort: 5678 });
     const grafana = await call("POST", "/services", { serverId: homelab.id, label: "Grafana", remotePort: 3000, localPort: 3000 });
+    await call("PUT", `/servers/${homelab.id}/notes`, { notes: "Backups run nightly at 02:00 (restic → offsite).\nPortainer admin login is in the password manager.\nReboot window: Sunday 04:00." });
     await call("POST", "/services", { serverId: homelab.id, label: "Portainer", remotePort: 9443, protocol: "https" });
     await call("POST", "/services", { serverId: nas.id, label: "File browser", remotePort: 8080 });
     await call("POST", "/services", { serverId: web.id, label: "Admin panel", remotePort: 8080, path: "/admin" });
@@ -102,6 +103,13 @@ function start(cmd, args) {
     await page.locator(".service", { hasText: name }).getByRole("button", { name: "Start" }).click();
     await page.locator(".service", { hasText: name }).locator(".pill.active").waitFor();
   }
+  // Some traffic through the n8n tunnel, so the traffic figures show something.
+  for (let i = 0; i < 25; i++) {
+    await new Promise((resolve) => require("http").get("http://127.0.0.1:5678/", (res) => { res.resume(); res.on("end", resolve); }).on("error", resolve));
+  }
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  await page.reload();
+  await page.locator(".service", { hasText: "n8n" }).locator(".pill.active").waitFor();
   await clearToasts();
   await page.mouse.move(0, 0);
   await shot(page, "services");

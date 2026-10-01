@@ -32,6 +32,9 @@ type Server struct {
 	Username  string `json:"username"`
 	Auth      Auth   `json:"auth"`
 	Order     int    `json:"order"`
+	// Notes is free text about the server (Notes tab). Not secret, but like
+	// everything else it is stored only inside the encrypted vault.
+	Notes string `json:"notes,omitempty"`
 }
 
 // AuthType selects how TunnelTab logs in to a server.

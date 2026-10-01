@@ -85,19 +85,30 @@ Each time TunnelTab starts, enter your master password to unlock it.
   waiting, red failed), with a short note such as *2 running*. Settings,
   Lock and Quit are at the bottom. On a narrow window the sidebar opens from
   the **☰ Menu** button.
-- **Overview**: how many servers are online, tunnels running and terminals
-  open; anything that **needs attention** (a server reconnecting, for
+- **Overview**: how many servers are online, tunnels running, terminals
+  open and traffic today; anything that **needs attention** (a server reconnecting, for
   example); everything **running now**, with Stop and Open; **recent
-  activity**; and a table of **all servers**.
+  activity**; and a table of **all servers** with their status and ping.
 - **A server's page** (click it in the sidebar) has tabs:
-  - **Overview**: the connection (connected for how long, reconnects,
-    address, login method) and its apps.
+  - **Overview**: the connection (connected for how long, ping,
+    reconnects, address, login method), its services, the traffic through
+    its tunnels in the last hour, and your notes.
   - **Services**: start, stop, open, edit and reorder its web apps.
+  - **Terminals**: terminals on this server (see [Opening a terminal](#opening-a-terminal)).
   - **Activity**: what happened with this server since TunnelTab started.
+  - **Notes**: free text about the server (backup times, where the
+    passwords are…). **Save notes** or Ctrl+S. Notes are stored inside the
+    encrypted vault, like the server's login details.
 
 The address bar remembers which page you're on, so reloading the tab (or
-the browser's Back button) brings you back to it. Recent activity is kept in
-memory only and is gone when TunnelTab quits.
+the browser's Back button) brings you back to it.
+
+**Ping and traffic.** Ping is the round trip of the small "keep-alive"
+message TunnelTab already sends to a connected server every 30 seconds.
+Traffic is counted on your PC as data passes through each tunnel: today's
+total and a chart of the last hour. Like recent activity, both are kept in
+memory only: they start from zero when TunnelTab starts and are gone when
+it quits. Nothing extra is sent to your servers to measure them.
 
 ## Projects
 

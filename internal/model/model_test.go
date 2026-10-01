@@ -499,3 +499,39 @@ func TestPublicFlags(t *testing.T) {
 		t.Fatal("Public shares memory with the data")
 	}
 }
+
+func TestServerNotes(t *testing.T) {
+	d, _, s, _ := fixture(t)
+	if err := d.SetServerNotes(s.ID, "Backups at 02:00\r\n\tPortainer: see password manager  \n\n"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := d.Server(s.ID)
+	if got.Notes != "Backups at 02:00\n\tPortainer: see password manager" {
+		t.Fatalf("notes %q", got.Notes)
+	}
+	if d.Public().Servers[0].Notes != got.Notes {
+		t.Error("notes missing from the dashboard view")
+	}
+
+	// Editing the server's details keeps its notes.
+	upd, err := d.UpdateServer(Server{ID: s.ID, Name: "renamed", Host: s.Host, Port: s.Port, Username: s.Username, Auth: Auth{Type: AuthPassword}})
+	if err != nil || upd.Notes != got.Notes {
+		t.Fatalf("notes after edit %q (%v)", upd.Notes, err)
+	}
+
+	for name, bad := range map[string]string{
+		"control character": "bell \a",
+		"too long":          strings.Repeat("x", MaxNotesLen+1),
+		"invalid UTF-8":     "\xff",
+	} {
+		if err := d.SetServerNotes(s.ID, bad); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+	if err := d.SetServerNotes("nope", "x"); err != ErrNotFound {
+		t.Errorf("unknown server: %v", err)
+	}
+	if err := d.SetServerNotes(s.ID, ""); err != nil {
+		t.Errorf("clearing notes: %v", err)
+	}
+}

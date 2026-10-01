@@ -854,3 +854,77 @@ func TestErrorKindHasNoDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestPingMeasured(t *testing.T) {
+	e := newEnv()
+	_, s := passwordServer(t, e)
+	host, port := backend(t, "ping")
+	m := newManager(t, e, nil) // keep-alive every hour: only the first one, sent right away
+	if _, err := m.StartForward(service(s.ID, host, port)); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "ping", func() bool {
+		st := m.Servers()
+		return len(st) == 1 && st[0].PingMs > 0
+	})
+}
+
+func TestPingMs(t *testing.T) {
+	for d, want := range map[time.Duration]float64{
+		0: 0, time.Microsecond: 0.1, 38 * time.Millisecond: 38, 1234567 * time.Nanosecond: 1.2,
+	} {
+		if got := pingMs(d); got != want {
+			t.Errorf("pingMs(%v) = %v, want %v", d, got, want)
+		}
+	}
+}
+
+func TestTrafficCounted(t *testing.T) {
+	e := newEnv()
+	_, s := passwordServer(t, e)
+	host, port := backend(t, "counted")
+	m := newManager(t, e, nil)
+	svc := service(s.ID, host, port)
+	st, err := m.StartForward(svc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustGet(t, st.LocalPort, "counted")
+	var tr []TrafficStatus
+	waitFor(t, "traffic", func() bool {
+		tr = m.Traffic()
+		return len(tr) == 1 && tr[0].TodayIn > 0 && tr[0].TodayOut > 0
+	})
+	if tr[0].ServiceID != svc.ID || len(tr[0].LastHour) != 60 || tr[0].LastHour[59] != tr[0].TodayIn+tr[0].TodayOut {
+		t.Fatalf("traffic %+v", tr[0])
+	}
+}
+
+func TestTrafficMeterWindows(t *testing.T) {
+	now := time.Date(2026, 10, 1, 23, 58, 30, 0, time.Local)
+	tm := newTrafficMeter()
+	tm.now = func() time.Time { return now }
+	tm.add("svc", 100, true)
+	tm.add("svc", 50, false)
+	now = now.Add(time.Minute) // 23:59
+	tm.add("svc", 10, true)
+	got := tm.list()[0]
+	if got.TodayIn != 110 || got.TodayOut != 50 || got.LastHour[58] != 150 || got.LastHour[59] != 10 {
+		t.Fatalf("same day: %+v", got)
+	}
+	now = now.Add(2 * time.Minute) // 00:01 the next day: today starts again
+	got = tm.list()[0]
+	if got.TodayIn != 0 || got.TodayOut != 0 || got.LastHour[56] != 150 || got.LastHour[57] != 10 || got.LastHour[59] != 0 {
+		t.Fatalf("next day: %+v", got)
+	}
+	now = now.Add(61 * time.Minute) // over an hour later: nothing left in the window
+	for _, b := range tm.list()[0].LastHour {
+		if b != 0 {
+			t.Fatalf("old minutes still counted: %v", tm.list()[0].LastHour)
+		}
+	}
+	tm.add("svc", 0, true) // nothing to count
+	if len(tm.list()) != 1 {
+		t.Fatal("unexpected services")
+	}
+}

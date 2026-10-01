@@ -190,6 +190,14 @@ function start(cmd, args, opts) {
   await waitPane(1, "second terminal\n");
   assert.strictEqual(await page.getByRole("tab", { name: /Terminal \d/ }).count(), 2);
   await shot("07b-terminals-split");
+  // Every row fits inside the terminal's visible area (the bottom line isn't
+  // cut off), with some room to spare.
+  const rowsFit = (p, frame) => p.evaluate((sel) => [...document.querySelectorAll(sel)].every((f) => {
+    const rows = f.querySelector(".xterm-screen")?.getBoundingClientRect();
+    const visible = f.querySelector(".xterm-viewport")?.getBoundingClientRect();
+    return rows && visible && rows.bottom <= visible.bottom - 6;
+  }), frame);
+  assert.ok(await rowsFit(page, ".term-pane"), "terminal rows run past the bottom of the pane");
   await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
   await page.locator(".kv").getByText("Terminals open").waitFor();
   await page.locator(".page-tabs").getByRole("link", { name: /Terminals/ }).click();
@@ -218,6 +226,7 @@ function start(cmd, args, opts) {
   await termPage.keyboard.press("Enter");
   await waitTerm("x");
   await termPage.screenshot({ path: `${OUT}/07-terminal.png` });
+  assert.ok(await rowsFit(termPage, ".term-view"), "terminal rows run past the bottom of the window");
   step("Pop out moves a terminal to its own tab (same session); the dashboard says where it went");
 
   // 5c. Copy and paste: Ctrl+C copies a selection (and doesn't interrupt),
@@ -470,6 +479,26 @@ function start(cmd, args, opts) {
   await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   assert.ok(touches > 0, "clicking around the dashboard never reported activity (auto-lock would lock)");
   step("overview (totals, running now, activity, all servers), narrow-window menu, server tabs, Back button; clicks count as activity");
+
+  // D3: ping, traffic and notes.
+  await page.locator("#sidebar").getByRole("link", { name: "Overview" }).click();
+  const trafficTile = await page.locator(".tile", { hasText: "Traffic today" }).locator(".tile-value").innerText();
+  assert.ok(/\d/.test(trafficTile) && trafficTile !== "0 B", "traffic through the tunnel not counted: " + trafficTile);
+  assert.match(await page.locator("table tbody tr").first().locator("td").nth(4).innerText(), /ms$/, "no ping in the servers table");
+  await page.locator("table").getByRole("link", { name: "Demo VPS (renamed)" }).click();
+  assert.match(await page.locator(".kv dd").nth(2).innerText(), /ms$/, "no ping on the server page");
+  await page.locator("svg.chart").waitFor();
+  await page.getByRole("link", { name: "Add notes" }).click();
+  await page.getByRole("textbox", { name: /Notes about/ }).fill("Backups run nightly at 02:00.\nAdmin login is in the password manager.");
+  await page.keyboard.press("Control+s");
+  await page.locator(".inline-status.ok", { hasText: "Saved." }).waitFor();
+  await shot("14-notes");
+  await page.reload();
+  await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
+  await page.locator(".notes-preview", { hasText: "Backups run nightly at 02:00." }).waitFor();
+  await shot("15-server-overview");
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
+  step("ping (servers table and server page), traffic counted and charted, notes saved in the vault");
 
   // 10. Stop the tunnel, then quit.
   await page.locator(".service", { hasText: "Demo app" }).getByRole("button", { name: "Stop" }).click();

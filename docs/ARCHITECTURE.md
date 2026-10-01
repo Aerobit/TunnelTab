@@ -50,7 +50,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/vault` | Master-password KDF, encrypted file format, atomic save + backup, auto-lock | Done |
 | `internal/model` | Project / Server / Service types, IDs, validation, CRUD operations, secret-free public view | Done |
 | `internal/atomicfile` | Crash-safe file writes (temp file → fsync → rename) | Done |
-| `internal/sshx` | Connection pool, auth, host-key checks, forwards, terminals (PTY), keep-alive, reconnect | Done |
+| `internal/sshx` | Connection pool, auth, host-key checks, forwards, terminals (PTY), keep-alive (and ping from it), reconnect, per-tunnel traffic counters (`traffic.go`) | Done |
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
 | `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events, terminal WebSocket | Done |
 | `internal/update` | Updates, only when the user clicks: "Check for updates" (GitHub releases/latest API, version comparison) and "Update now" (download, signature + checksum verification, unpack, install with `.old` backups, rollback, cleanup). Release signature format in `signature.go` | Done |
@@ -253,14 +253,16 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `GET /settings` · `PUT /settings` | `Settings` | settings (+ `restartRequired` if the port changed) |
 | `POST /quit` | | stops tunnels and exits |
 | `POST /touch` | | 204; the user is working in the dashboard (it sends this on clicks, keys and scrolling, at most every 30 s), so auto-lock waits — moving between pages makes no other request |
+| `GET /traffic` | | `{services: [{serviceId, todayIn, todayOut, lastHour: [60 × bytes per minute, oldest first]}]}` — counted on this PC (`sshx` traffic meter), in memory only |
 | `POST /vault/create` | `{password}` | 400 `weak_password`, 409 `vault_exists` |
 | `POST /vault/unlock` | `{password}` | 401 `wrong_password`, 429 `too_many_attempts` (+ `retryAfterMs`) |
 | `POST /vault/lock` | | |
 | `POST /vault/password` | `{old, new}` | |
-| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached}], activity: [activity entry]}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects` and `reason` (`sshx.ErrorKind`) |
+| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached}], activity: [activity entry]}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects`, `reason` (`sshx.ErrorKind`) and `pingMs` (last keep-alive round trip; the first keep-alive goes out right after connecting) |
 | `POST /projects` · `PUT`/`DELETE /projects/{id}` | `{name, description}` | project; delete cascades |
 | `POST /servers` · `PUT`/`DELETE /servers/{id}` | `model.Server` | `PublicServer` (never secrets); blank secrets are kept on update |
 | `POST /servers/{id}/move` | `{projectId}` | |
+| `PUT /servers/{id}/notes` | `{notes}` | 204; free text (≤ 10 000 characters, line breaks allowed), stored in the vault; `PublicServer` includes `notes` |
 | `POST /servers/{id}/clear-passphrase` | | |
 | `POST /servers/{id}/test` | | connects once (drives host-key confirmation) |
 | `POST /services` · `PUT`/`DELETE /services/{id}` | `model.Service` | service |

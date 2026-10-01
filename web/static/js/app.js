@@ -24,6 +24,7 @@ const state = {
   sidebarOpen: false, // narrow windows: the sidebar is shown over the page
   connected: true, // event stream
   updateAvailable: null, // newer version found by the last "Check for updates" (never checked automatically)
+  traffic: new Map(), // serviceId → {todayIn, todayOut, lastHour[60]} (counted by the program, in memory)
 };
 
 let stopEvents = null;
@@ -232,6 +233,7 @@ async function loadData() {
     state.servers = new Map(res.servers.map((s) => [s.id, s]));
     state.terminals = new Map((res.terminals || []).map((t) => [t.id, t]));
     state.activity = res.activity || [];
+    await loadTraffic();
     syncViews(state.terminals.values());
     renderDashboard();
     allViews().forEach((v) => v.resume()); // after an unlock
@@ -296,7 +298,7 @@ function onEvent(ev) {
         }
       } else if (ev.kind === "server") {
         if (ev.state === "stopped") state.servers.delete(ev.id);
-        else state.servers.set(ev.id, { id: ev.id, state: ev.state, error: ev.error, since: ev.since, reconnects: ev.reconnects });
+        else state.servers.set(ev.id, { id: ev.id, state: ev.state, error: ev.error, since: ev.since, reconnects: ev.reconnects, pingMs: ev.pingMs, reason: ev.reason });
       }
       renderSoon();
       break;
@@ -324,7 +326,7 @@ const byOrder = (a, b) => a.order - b.order || a.name?.localeCompare?.(b.name) |
 
 // The dashboard has a sidebar (projects and servers) and one page at a time,
 // chosen by the address: #/ is the Overview, #/server/<id>/<tab> a server.
-const SERVER_TABS = ["overview", "services", "terminals", "activity"];
+const SERVER_TABS = ["overview", "services", "terminals", "activity", "notes"];
 
 function currentRoute() {
   const m = location.hash.match(/^#\/server\/([^/]+)(?:\/([a-z]+))?$/);
@@ -366,6 +368,8 @@ function renderDashboard() {
   currentScreen = "dashboard";
   // A terminal being typed into keeps the keyboard across a redraw.
   const typingIn = allViews().find((v) => v.el.contains(document.activeElement));
+  const editing = [...noteEditors.values()].find((e) => e.textarea === document.activeElement)?.textarea;
+  const caret = editing ? [editing.selectionStart, editing.selectionEnd] : null;
   replace(root, h("div", { class: ["shell", state.sidebarOpen && "nav-open"] },
     renderSidebar(r),
     h("div", { class: "content" },
@@ -376,6 +380,9 @@ function renderDashboard() {
   window.scrollTo(0, scroll);
   if (typingIn?.el.isConnected) {
     typingIn.focus();
+  } else if (editing?.isConnected) {
+    editing.focus();
+    editing.setSelectionRange(...caret);
   } else if (focusGripAfterRender) {
     root.querySelector(`[data-grip="${CSS.escape(focusGripAfterRender)}"]`)?.focus();
     focusGripAfterRender = null;
@@ -387,10 +394,22 @@ function renderDashboard() {
 
 // Durations ("connected 2h 14m") are refreshed now and then, unless the
 // user is working in the page (a redraw would move the keyboard focus).
-setInterval(() => {
+setInterval(async () => {
+  if (currentScreen !== "dashboard") return;
+  await loadTraffic();
   const busy = document.activeElement && document.activeElement !== document.body && root.contains(document.activeElement);
-  if (currentScreen === "dashboard" && !busy && !document.querySelector("dialog[open]")) renderSoon();
+  if (!busy && !document.querySelector("dialog[open]")) renderSoon();
 }, 30000);
+
+/** Fetches the traffic figures (bytes through each tunnel). */
+async function loadTraffic() {
+  try {
+    const res = await api("GET", "/traffic");
+    state.traffic = new Map(res.services.map((t) => [t.serviceId, t]));
+  } catch {
+    // shown as unknown until the next try
+  }
+}
 
 // --- Sidebar ----------------------------------------------------------------
 
@@ -530,7 +549,8 @@ function renderOverview() {
     h("div", { class: "tiles" },
       tile("Servers online", String(online), `of ${d.servers.length}`),
       tile("Tunnels running", String(state.forwards.size)),
-      tile("Terminals open", String(state.terminals.size))),
+      tile("Terminals open", String(state.terminals.size)),
+      tile("Traffic today", fmtBytes(trafficTodayAll()))),
     problems.length
       ? h("section", { class: "attention", "aria-label": "Needs attention" },
         problems.map((s) => {
@@ -574,6 +594,7 @@ function renderRunningNow() {
       fwd.state === "active"
         ? h("a", { class: "mono", href: serviceURL(svc, fwd), target: "_blank", rel: "noopener noreferrer" }, `localhost:${fwd.localPort}`)
         : h("span", { class: "muted" }, STATE_TEXT[fwd.state] || fwd.state),
+      h("span", { class: "muted" }, todayText(trafficOf([svc.id]))),
       h("span", { class: "grow" }),
       h("button", { class: "chip stop", onclick: () => stopService(svc) }, "Stop"),
       open));
@@ -601,7 +622,7 @@ function renderServerTable() {
     byOrder(projects.get(a.projectId) || {}, projects.get(b.projectId) || {}) || byOrder(a, b));
   return h("div", { class: "table-wrap" }, h("table", { class: "table" },
     h("thead", {}, h("tr", {},
-      h("th", {}, "Server"), h("th", {}, "Project"), h("th", {}, "Status"), h("th", {}, "Connected for"),
+      h("th", {}, "Server"), h("th", {}, "Project"), h("th", {}, "Status"), h("th", {}, "Connected for"), h("th", {}, "Ping"),
       h("th", {}, "Services running"), h("th", { class: "sr-only" }, "Actions"))),
     h("tbody", {}, servers.map((s) => {
       const st = state.servers.get(s.id);
@@ -611,6 +632,7 @@ function renderServerTable() {
         h("td", { class: "muted" }, projects.get(s.projectId)?.name || ""),
         h("td", {}, statusPill(st)),
         h("td", {}, st?.since && st.state === "connected" ? duration(Date.now() - Date.parse(st.since)) : h("span", { class: "muted" }, "—")),
+        h("td", {}, st?.pingMs && st.state === "connected" ? fmtPing(st.pingMs) : h("span", { class: "muted" }, "—")),
         h("td", {}, `${forwardsOf(s.id).length} of ${apps}`),
         h("td", { class: "right" }, h("button", { class: "chip open", onclick: () => newTerminal(s) }, "Terminal")));
     }))));
@@ -681,13 +703,69 @@ function duration(ms) {
   return `${Math.floor(hours / 24)} days`;
 }
 
+// --- Traffic ----------------------------------------------------------------
+
+function fmtBytes(n) {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n;
+  let i = -1;
+  do {
+    v /= 1024;
+    i++;
+  } while (v >= 1024 && i < units.length - 1);
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
+/** Traffic of some services added up: {todayIn, todayOut, lastHour[60]}. */
+function trafficOf(serviceIds) {
+  const sum = { todayIn: 0, todayOut: 0, lastHour: new Array(60).fill(0) };
+  for (const id of serviceIds) {
+    const t = state.traffic.get(id);
+    if (!t) continue;
+    sum.todayIn += t.todayIn;
+    sum.todayOut += t.todayOut;
+    t.lastHour.forEach((b, i) => (sum.lastHour[i] += b));
+  }
+  return sum;
+}
+
+const todayText = (t) => (t.todayIn + t.todayOut ? `${fmtBytes(t.todayIn + t.todayOut)} today` : "");
+const trafficTodayAll = () => {
+  const t = trafficOf(state.traffic.keys());
+  return t.todayIn + t.todayOut;
+};
+const fmtPing = (ms) => (ms < 1 ? "under 1 ms" : `${Math.round(ms)} ms`);
+
+/** An area chart of 60 per-minute values (oldest first), drawn with SVG. */
+function trafficChart(values) {
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 300;
+  const H = 80;
+  const peak = Math.max(...values, 1);
+  const pts = values.map((v, i) => [(i / (values.length - 1)) * W, H - 4 - (v / peak) * (H - 12)]);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const el = (tag, attrs) => {
+    const node = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+    return node;
+  };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", class: "chart", role: "img",
+    "aria-label": `Traffic in the last hour; busiest minute ${fmtBytes(peak)}` });
+  svg.append(
+    el("path", { d: `M0 ${H / 2}H${W}M0 ${H - 4}H${W}`, class: "chart-grid" }),
+    el("path", { d: `${line} L${W} ${H} L0 ${H} Z`, class: "chart-area" }),
+    el("path", { d: line, class: "chart-line" }));
+  return svg;
+}
+
 // --- Server page ------------------------------------------------------------
 
 function renderServerPage(s, tab) {
   const st = state.servers.get(s.id);
   const services = state.data.services.filter((x) => x.serverId === s.id).sort(byOrder);
   const views = termGroup(s.id).views;
-  const tabs = [["overview", "Overview"], ["services", "Services", services.length], ["terminals", "Terminals", views.length], ["activity", "Activity"]];
+  const tabs = [["overview", "Overview"], ["services", "Services", services.length], ["terminals", "Terminals", views.length], ["activity", "Activity"], ["notes", "Notes"]];
   return [
     h("div", { class: "page-head" },
       h("span", { class: ["dot", st?.state || "idle"] }),
@@ -706,6 +784,7 @@ function renderServerPage(s, tab) {
         label, count !== undefined ? h("span", { class: "count" }, String(count)) : null))),
     tab === "services" ? renderServicesTab(s, services)
       : tab === "terminals" ? renderTerminalsTab(s)
+        : tab === "notes" ? renderNotesTab(s)
         : tab === "activity" ? h("section", { class: "box" }, renderActivity(state.activity.filter((e) => e.serverId === s.id)))
           : renderServerOverview(s, st, services),
   ];
@@ -720,11 +799,31 @@ function renderServerOverview(s, st, services) {
     ["Connected", st?.since && connected
       ? `${duration(Date.now() - Date.parse(st.since))}, since ${clock(st.since)}`
       : h("span", { class: "muted" }, "Not right now. Starting a service or a terminal connects.")],
+    ["Ping", st?.pingMs && connected ? fmtPing(st.pingMs) : "—"],
     ["Reconnects", st?.since ? String(st.reconnects || 0) : "—"],
     ["Address", h("span", { class: "mono" }, address(s))],
     ["Login", AUTH_TEXT[s.auth.type] || s.auth.type],
     ["Terminals open", String(terminalsOf(s.id).length)],
   ];
+  const traffic = trafficOf(services.map((x) => x.id));
+  const trafficBox = h("section", { class: "box" },
+    h("h2", {}, "Traffic, last hour"),
+    traffic.todayIn + traffic.todayOut
+      ? [
+        trafficChart(traffic.lastHour),
+        h("div", { class: "chart-axis muted" }, h("span", {}, "60 min ago"), h("span", {}, "now")),
+        h("p", { class: "hint" }, `Today: ${fmtBytes(traffic.todayIn)} from the server, ${fmtBytes(traffic.todayOut)} to it. Counted on this PC; starts at zero when TunnelTab starts.`),
+      ]
+      : h("p", { class: "hint" }, "No traffic through this server's tunnels yet today."));
+  const notesBox = h("section", { class: "box" },
+    h("div", { class: "box-head" }, h("h2", {}, "Notes"), h("a", { class: "chip", href: serverHref(s.id, "notes") }, s.notes ? "Edit" : "Add notes")),
+    s.notes
+      ? h("p", { class: "notes-preview" }, s.notes)
+      : h("p", { class: "hint" }, "Anything worth remembering about this server: backup times, where passwords are, who to call. Stored in the encrypted vault."));
+  return [renderServerOverviewTop(s, rows, services), h("div", { class: "two-col" }, trafficBox, notesBox)];
+}
+
+function renderServerOverviewTop(s, rows, services) {
   return h("div", { class: "two-col" },
     h("section", { class: "box" }, h("h2", {}, "Connection"),
       h("dl", { class: "kv" }, rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))),
@@ -742,6 +841,56 @@ function renderServerOverview(s, st, services) {
             open);
         }))
         : h("p", { class: "hint" }, "No services yet.", " ", h("button", { class: "linklike", onclick: () => serviceDialog(s.id) }, "Add one"))));
+}
+
+// One editor per server, kept across redraws so typing isn't lost.
+const noteEditors = new Map(); // serverId → { textarea, status, save, saved }
+
+function renderNotesTab(s) {
+  let ed = noteEditors.get(s.id);
+  if (!ed) {
+    const textarea = h("textarea", {
+      class: "notes-input", rows: 14, maxlength: 10000, "aria-label": `Notes about ${s.name}`,
+      placeholder: "Backup times, where the passwords are, what runs where…",
+    });
+    const status = h("span", { class: "inline-status", role: "status" });
+    const save = h("button", { type: "button", class: "btn primary" }, "Save notes");
+    ed = { textarea, status, save, saved: s.notes || "" };
+    textarea.value = ed.saved;
+    textarea.addEventListener("input", () => {
+      status.className = "inline-status";
+      status.textContent = textarea.value !== ed.saved ? "Not saved yet" : "";
+    });
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      try {
+        await api("PUT", `/servers/${encodeURIComponent(s.id)}/notes`, { notes: textarea.value });
+        ed.saved = textarea.value;
+        status.className = "inline-status ok";
+        status.textContent = "Saved.";
+      } catch (err) {
+        status.className = "inline-status bad";
+        status.textContent = err.message;
+      } finally {
+        save.disabled = false;
+      }
+    });
+    textarea.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        save.click();
+      }
+    });
+    noteEditors.set(s.id, ed);
+  } else if (ed.textarea.value === ed.saved && (s.notes || "") !== ed.saved) {
+    // Changed elsewhere (or tidied when saved) and nothing typed here: show it.
+    ed.textarea.value = ed.saved = s.notes || "";
+  }
+  return h("section", { class: "box" },
+    h("h2", {}, "Notes"),
+    h("p", { class: "hint" }, "Free text about this server. Stored in the encrypted vault, like its login details. Ctrl+S saves."),
+    ed.textarea,
+    h("div", { class: "inline-actions" }, ed.save, ed.status));
 }
 
 function renderServicesTab(s, services) {
@@ -931,6 +1080,7 @@ function renderService(svc) {
         usable ? h("a", { href: serviceURL(svc, fwd), target: "_blank", rel: "noopener noreferrer" }, localText) : localText,
         ` → ${remote}${svc.path || ""}`),
       fwd ? h("span", { class: ["pill", fwd.state] }, STATE_TEXT[fwd.state] || fwd.state) : null,
+      h("span", { class: "muted" }, todayText(trafficOf([svc.id]))),
       svc.autoStart ? h("span", { class: "badge", title: "Starts automatically after unlocking" }, "auto") : null),
     h("div", { class: "actions" },
       toggle, open,
@@ -1032,6 +1182,7 @@ const allViews = () => [...termGroups.values()].flatMap((g) => g.views);
 function dropViews() {
   allViews().forEach((v) => v.dispose());
   termGroups.clear();
+  noteEditors.clear();
 }
 
 function makeView(serverId, terminalId) {
