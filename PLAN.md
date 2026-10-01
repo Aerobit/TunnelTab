@@ -190,7 +190,7 @@ Testing environment: everything through phase 6 is built and tested in the dev c
 
 System tray icon · macOS build · Linux ARM build · "Open in system terminal" (would need TunnelTab's host-key checks and vault keys handed to an external ssh) · jump hosts / ProxyJump · SOCKS proxy mode · SFTP file browser · import from local.browser or `~/.ssh/config` · code signing.
 
-## 11. v0.2.0 — "Update now" (built; ships in 0.2.0)
+## 11. v0.2.0 — "Update now" (released 2026-10-01)
 
 Today **Check for updates** only reports a newer version and links to the
 release page; you download, extract and replace the files yourself. v0.2.0
