@@ -343,3 +343,74 @@ tick the ones to add — nothing is added without your choice.
 | S2 | **API + UI**: `POST /api/servers/{id}/discover` (on click, connects if needed), results dialog with tick boxes, editable names, *already added* marking, **Add selected** | Browser test against the dev SSH server answering the command; nothing added unless ticked |
 | S3 | **Web check (optional)**: HEAD probe through the tunnel to label web UIs and pick http/https | Tests with HTTP, HTTPS and non-HTTP backends |
 | S4 | **Docs + security**: CLAUDE.md invariant 7 names this command too (on click only), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE | Review done; docs match behaviour |
+
+## 14. Future — Smaller ideas (backlog)
+
+### Progress bar while updating
+
+Today **Update now** shows "Downloading and checking the update…" until
+the restart, with no sign of how far along it is. Show real progress:
+
+1. In Settings → Updates, a progress bar with the current step and, while
+   downloading, how much is done: *Downloading 4.2 of 9.8 MB (43%)* →
+   *Checking the signature* → *Installing* → *Restarting*.
+2. On the *Updating TunnelTab* screen, keep showing the step (*Starting
+   TunnelTab 0.5.0…*) until the new version is up, then say so — or, after
+   about 30 s, explain that the previous version came back (rollback).
+
+**How:** the install request already runs in the program; it would send
+`update` events (`step`, `done`, `total` bytes) over the event stream while
+it works (the download size is known from the release file). The dashboard
+draws them with a native `<progress>` element. No extra network access;
+same checks and limits as today.
+
+**Done when:** a browser test (`tests/e2e/update.js`, with a slowed-down
+fake release server) sees the steps in order and the bar move; docs updated.
+
+## 15. Future — Remote desktop (VNC) (idea, not scheduled)
+
+See a server's (or a home PC's) graphical desktop from the dashboard, over
+the same SSH connection — no VNC port exposed to the internet.
+
+### What the user sees
+
+- A server gets a **Desktop** tab (when a desktop is set up for it): the
+  remote screen in the page, with keyboard and mouse, **Fit to window** /
+  **Actual size**, **Ctrl+Alt+Del**, clipboard send/receive, and **Pop out ↗**
+  like terminals.
+- Setting it up: in the server's settings, *Remote desktop: VNC on port
+  5900* (or the display number), plus the VNC password if the server asks
+  for one — stored in the encrypted vault like the other secrets.
+
+### How (proposal)
+
+- **Transport:** TunnelTab opens an SSH tunnel to the VNC server's port on
+  the server itself (usually `127.0.0.1:5900`, so VNC never listens on the
+  network), and bridges it to the page over a WebSocket — the same
+  authenticated, one-time-ticket pattern as terminals.
+- **Viewer:** an in-browser VNC client, most likely **noVNC** (MPL-2.0),
+  vendored and embedded like xterm.js — no plugin, nothing loaded from the
+  internet. This is a **new dependency**, so it needs your OK first
+  (CLAUDE.md), plus its license in THIRD_PARTY_NOTICES.
+- **Alternative / extra:** *Open in your VNC viewer* — start the tunnel and
+  show `127.0.0.1:<port>` to paste into TightVNC/RealVNC. TunnelTab still
+  wouldn't launch other programs itself (CLAUDE.md invariant 7).
+- **Not covered:** Windows RDP needs a different protocol (and usually a
+  gateway such as Apache Guacamole); a possible later step.
+
+### Things to decide before building
+
+| Topic | Question |
+|---|---|
+| Scope | VNC only first? Which servers will you use it with (Linux desktop, Raspberry Pi, Windows with a VNC server)? |
+| Security | The VNC password is weak by design; the protection is SSH. Show a warning if the VNC port is reachable from outside? Lock blanks and disconnects the desktop, like terminals. |
+| Viewer | noVNC embedded (recommended) vs. external viewer only (simpler, no new dependency). |
+| CSP | noVNC draws on a canvas and uses a WebSocket to the same origin; check it needs no inline scripts (styles are already allowed on the dashboard). |
+
+### Build phases (sketch)
+
+| # | Phase | Done when |
+|---|---|---|
+| V1 | **Desktop setting + tunnel bridge**: per-server VNC port/password in the vault; WebSocket ⇄ SSH channel bridge with tickets | Tests with a fake VNC server (RFB handshake) through the test SSH server |
+| V2 | **Viewer**: vendored noVNC in a Desktop tab, fit/scale, Ctrl+Alt+Del, clipboard, Pop out, blank on lock | Browser test against a fake RFB server showing a test pattern |
+| V3 | **Docs + security review**, license notice | Review done; user guide explains setting up a VNC server safely (bound to localhost) |
