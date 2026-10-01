@@ -41,9 +41,42 @@ type harness struct {
 	base    string // http://127.0.0.1:port
 	session string
 	quit    chan struct{}
+	clock   *testClock
 
 	mu     sync.Mutex
 	bodies []string
+}
+
+// testClock is the server's clock in tests. It follows the real time until
+// frozen; tests then move it with advance. It is safe to use while the
+// server's goroutines read it (replacing Server.now mid-test is a data race).
+type testClock struct {
+	mu     sync.Mutex
+	frozen bool
+	t      time.Time
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.frozen {
+		return time.Now()
+	}
+	return c.t
+}
+
+// freeze stops the clock at the current time.
+func (c *testClock) freeze() {
+	c.mu.Lock()
+	c.frozen, c.t = true, time.Now()
+	c.mu.Unlock()
+}
+
+// advance moves a frozen clock forward.
+func (c *testClock) advance(d time.Duration) {
+	c.mu.Lock()
+	c.t = c.t.Add(d)
+	c.mu.Unlock()
 }
 
 func newHarness(t *testing.T, opts ...func(*Config)) *harness {
@@ -52,8 +85,9 @@ func newHarness(t *testing.T, opts ...func(*Config)) *harness {
 	if err := config.EnsureDataDir(dir); err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, quit: make(chan struct{}, 1)}
+	h := &harness{t: t, quit: make(chan struct{}, 1), clock: &testClock{}}
 	cfg := Config{
+		Now:             h.clock.Now,
 		Paths:           config.PathsFor(dir),
 		BaseDir:         dir,
 		Settings:        config.DefaultSettings(),
@@ -243,8 +277,7 @@ func TestRequiresSession(t *testing.T) {
 
 func TestLaunchTokenIsOneTimeAndExpires(t *testing.T) {
 	h := newHarness(t)
-	now := time.Now()
-	h.srv.now = func() time.Time { return now }
+	h.clock.freeze()
 
 	u, _ := url.Parse(h.srv.LaunchURL())
 	if u.Host != strings.TrimPrefix(h.base, "http://") {
@@ -262,7 +295,7 @@ func TestLaunchTokenIsOneTimeAndExpires(t *testing.T) {
 		t.Fatal("launch token accepted twice")
 	}
 	u, _ = url.Parse(h.srv.LaunchURL())
-	now = now.Add(launchTokenTTL + time.Second)
+	h.clock.advance(launchTokenTTL + time.Second)
 	if redeem(u.Query().Get("launch")) != http.StatusUnauthorized {
 		t.Fatal("expired launch token accepted")
 	}

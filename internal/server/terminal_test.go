@@ -185,10 +185,9 @@ func TestTerminalTicketChecks(t *testing.T) {
 	}
 
 	// An expired ticket is refused.
-	now := time.Now()
-	h.srv.now = func() time.Time { return now }
+	h.clock.freeze()
 	stale := openTicket(t, h, serverID)
-	now = now.Add(terminalTicketTTL + time.Second)
+	h.clock.advance(terminalTicketTTL + time.Second)
 	if _, resp, err := dialTerminal(h, stale, h.base); err == nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expired ticket: %v %v", resp, err)
 	}
@@ -308,8 +307,7 @@ func TestTerminalExplicitClose(t *testing.T) {
 func TestTerminalClosesWhenItsTabIsGone(t *testing.T) {
 	h := ready(t)
 	serverID := trustedServer(t, h)
-	now := time.Now()
-	h.srv.now = func() time.Time { return now }
+	h.clock.freeze()
 	id, c := openTerminal(t, h, serverID)
 	stopWatching := h.srv.watchTerminal(id) // the tab's event stream
 	c.CloseNow()                            // WebSocket gone (e.g. locked)
@@ -317,7 +315,7 @@ func TestTerminalClosesWhenItsTabIsGone(t *testing.T) {
 
 	// The tab is still open: kept, even while locked and long past the grace.
 	h.mustCall("POST", "/api/vault/lock", nil, 200)
-	now = now.Add(10 * terminalDetachGrace)
+	h.clock.advance(10 * terminalDetachGrace)
 	h.srv.reapTerminalsOnce()
 	if h.srv.mgr.ShellCount() != 1 {
 		t.Fatal("closed a terminal whose tab is still open")
@@ -329,7 +327,7 @@ func TestTerminalClosesWhenItsTabIsGone(t *testing.T) {
 	if h.srv.mgr.ShellCount() != 1 {
 		t.Fatal("closed before the grace period (a reload would lose the session)")
 	}
-	now = now.Add(terminalDetachGrace + time.Second)
+	h.clock.advance(terminalDetachGrace + time.Second)
 	h.srv.reapTerminalsOnce()
 	waitShells(t, h, 0)
 }
@@ -441,8 +439,7 @@ func TestTerminalPageCSP(t *testing.T) {
 func TestTerminalOwnedByDashboardTab(t *testing.T) {
 	h := ready(t)
 	serverID := trustedServer(t, h)
-	now := time.Now()
-	h.srv.now = func() time.Time { return now }
+	h.clock.freeze()
 	const client = "dashboard-tab-0123456789"
 
 	h.mustCall("POST", "/api/terminals", map[string]any{"serverId": serverID, "cols": 80, "rows": 24, "client": "bad id!"}, 400)
@@ -462,7 +459,7 @@ func TestTerminalOwnedByDashboardTab(t *testing.T) {
 	c.CloseNow()
 	waitDetached(t, h)
 	h.mustCall("POST", "/api/vault/lock", nil, 200)
-	now = now.Add(10 * terminalDetachGrace)
+	h.clock.advance(10 * terminalDetachGrace)
 	h.srv.reapTerminalsOnce()
 	if h.srv.mgr.ShellCount() != 1 {
 		t.Fatal("closed a terminal whose dashboard tab is still open")
@@ -474,7 +471,7 @@ func TestTerminalOwnedByDashboardTab(t *testing.T) {
 	if h.srv.mgr.ShellCount() != 1 {
 		t.Fatal("closed before the grace period")
 	}
-	now = now.Add(terminalDetachGrace + time.Second)
+	h.clock.advance(terminalDetachGrace + time.Second)
 	h.srv.reapTerminalsOnce()
 	waitShells(t, h, 0)
 }
