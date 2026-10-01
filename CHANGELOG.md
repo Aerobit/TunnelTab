@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-01
+
 ### Changed
 - Terminals have an even 5 px margin on every side, in the terminal's own
   colour (it showed as a black frame before).
@@ -157,7 +159,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.0
 [0.3.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.3.0
