@@ -424,6 +424,19 @@ func TestAutoLock(t *testing.T) {
 	}
 
 	v.Unlock([]byte(pw))
+	now = now.Add(14 * time.Minute)
+	if err := v.Peek(func(*model.Data) error { return nil }); err != nil { // background read
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	if !v.LockIfIdle() {
+		t.Fatal("Peek postponed auto-lock")
+	}
+	if err := v.Peek(func(*model.Data) error { return nil }); !errors.Is(err, ErrLocked) {
+		t.Fatalf("Peek while locked: got %v", err)
+	}
+
+	v.Unlock([]byte(pw))
 	v.SetAutoLock(0)
 	now = now.Add(1000 * time.Hour)
 	if v.LockIfIdle() {

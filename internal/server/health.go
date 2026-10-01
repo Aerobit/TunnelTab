@@ -68,7 +68,7 @@ func (s *Server) checkAllHealth() {
 // healthServers lists the servers with health switched on.
 func (s *Server) healthServers() []string {
 	var ids []string
-	s.view(func(d *model.Data) error {
+	s.peek(func(d *model.Data) error {
 		for _, srv := range d.Servers {
 			if srv.HealthEnabled {
 				ids = append(ids, srv.ID)
@@ -81,7 +81,7 @@ func (s *Server) healthServers() []string {
 
 func (s *Server) healthEnabled(id string) bool {
 	on := false
-	s.view(func(d *model.Data) error {
+	s.peek(func(d *model.Data) error {
 		srv, ok := d.Server(id)
 		on = ok && srv.HealthEnabled
 		return nil

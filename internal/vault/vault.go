@@ -180,6 +180,19 @@ func (v *Vault) View(fn func(d *model.Data) error) error {
 	return fn(d)
 }
 
+// Peek is View for background work (health checks, reconnects): it does not
+// count as activity, so it never postpones auto-lock.
+func (v *Vault) Peek(fn func(d *model.Data) error) error {
+	v.mu.RLock()
+	if v.key == nil {
+		v.mu.RUnlock()
+		return ErrLocked
+	}
+	d := v.data.Clone()
+	v.mu.RUnlock()
+	return fn(d)
+}
+
 // Update calls fn with a copy of the data. If fn returns nil and the result
 // is valid, the copy is saved to disk and becomes the current data. If
 // anything fails, neither the file nor the in-memory data changes.

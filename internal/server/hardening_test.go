@@ -190,3 +190,19 @@ func TestDashboardActivityPostponesAutoLock(t *testing.T) {
 		t.Fatalf("unauthenticated touch: %d", status)
 	}
 }
+
+func TestBackgroundWorkDoesNotPostponeAutoLock(t *testing.T) {
+	h := ready(t)
+	v := h.srv.currentVault()
+	v.SetAutoLock(300 * time.Millisecond)
+	ch := h.srv.events.subscribe() // a dashboard left open, nobody using it
+	defer h.srv.events.unsubscribe(ch)
+	for i := 0; i < 6; i++ { // ~600 ms of health rounds and reconnect lookups
+		h.srv.checkAllHealth()
+		h.srv.target("missing")
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !v.LockIfIdle() {
+		t.Fatal("background health checks or reconnects kept the vault unlocked")
+	}
+}

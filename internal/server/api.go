@@ -131,6 +131,15 @@ func (s *Server) view(fn func(d *model.Data) error) error {
 	return v.View(fn)
 }
 
+// peek is view for background work: it doesn't postpone auto-lock.
+func (s *Server) peek(fn func(d *model.Data) error) error {
+	v := s.currentVault()
+	if v == nil {
+		return errNoVault
+	}
+	return v.Peek(fn)
+}
+
 func (s *Server) update(fn func(d *model.Data) error) error {
 	v := s.currentVault()
 	if v == nil {

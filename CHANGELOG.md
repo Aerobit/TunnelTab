@@ -6,6 +6,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Auto-lock never locked while a dashboard tab was open, even if nobody
+  used it: the background server-health round (every 30 s) counted as
+  activity. Background work (health checks, reconnects) no longer postpones
+  auto-lock; only clicks, typing and other things you do count.
+
 ## [0.4.1] - 2026-10-01
 
 ### Changed

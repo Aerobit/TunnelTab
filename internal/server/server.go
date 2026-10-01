@@ -446,7 +446,7 @@ func (s *Server) target(serverID string) (sshx.Target, error) {
 		return sshx.Target{}, sshx.ErrPaused
 	}
 	var t sshx.Target
-	err := v.View(func(d *model.Data) error {
+	err := v.Peek(func(d *model.Data) error {
 		srv, ok := d.Server(serverID)
 		if !ok {
 			return fmt.Errorf("server %s no longer exists", serverID)

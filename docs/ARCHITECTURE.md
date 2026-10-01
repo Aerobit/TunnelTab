@@ -47,7 +47,7 @@ TunnelTab is one Go executable. When started it:
 |---|---|---|
 | `cmd/tunneltab` | Entry point: flags, startup, single instance, browser, shutdown | Done |
 | `internal/config` | Portable paths, `settings.json`, rotated logs | Done |
-| `internal/vault` | Master-password KDF, encrypted file format, atomic save + backup, auto-lock | Done |
+| `internal/vault` | Master-password KDF, encrypted file format, atomic save + backup, auto-lock (`View`/`Update` count as activity; `Peek`, for background work such as health checks and reconnects, does not) | Done |
 | `internal/model` | Project / Server / Service types, IDs, validation, CRUD operations, secret-free public view | Done |
 | `internal/atomicfile` | Crash-safe file writes (temp file → fsync → rename) | Done |
 | `internal/sshx` | Connection pool, auth, host-key checks, forwards, terminals (PTY), keep-alive (and ping from it), reconnect, per-tunnel traffic counters (`traffic.go`) | Done |
