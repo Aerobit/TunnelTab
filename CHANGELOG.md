@@ -10,6 +10,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Terminals have an even 5 px margin on every side, in the terminal's own
   colour (it showed as a black frame before).
 
+### Fixed
+- On Windows, a server on the same network could show no ping ("—")
+  because the clock measured its round trip as 0. It now shows "under 1 ms".
+
 ## [0.4.0] - 2026-10-01
 
 ### Fixed

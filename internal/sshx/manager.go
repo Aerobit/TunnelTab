@@ -579,7 +579,9 @@ func (sc *serverConn) setPing(d time.Duration) {
 		sc.mu.Unlock()
 		return
 	}
-	sc.ping = d
+	// Windows' clock can report a very fast round trip (a server on the
+	// same network) as 0, which would read as "not measured yet".
+	sc.ping = max(d, time.Microsecond)
 	status := sc.statusLocked()
 	sc.mu.Unlock()
 	sc.m.emit(status.event())
