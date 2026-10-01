@@ -96,15 +96,15 @@ function start(cmd, args) {
   await page.getByRole("button", { name: "Trust and connect" }).click();
   await page.getByText("Connected to homelab.").waitFor();
 
-  // Two running tunnels (Apps tab), then the server page and the Overview.
-  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
+  // Two running tunnels (Services tab), then the server page and the Overview.
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   for (const name of ["n8n", "Grafana"]) {
     await page.locator(".service", { hasText: name }).getByRole("button", { name: "Start" }).click();
     await page.locator(".service", { hasText: name }).locator(".pill.active").waitFor();
   }
   await clearToasts();
   await page.mouse.move(0, 0);
-  await shot(page, "apps");
+  await shot(page, "services");
   await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
   await page.mouse.move(0, 0);
   await shot(page, "server");

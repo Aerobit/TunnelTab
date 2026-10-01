@@ -33,6 +33,20 @@ let currentScreen = ""; // which screen is showing, so it isn't redrawn needless
 
 whenSignedOut(showSignedOut);
 
+// Auto-lock counts requests to the program as activity, but moving between
+// pages in the dashboard makes none. So clicks, keys and scrolling in the
+// dashboard are reported, at most every 30 s. (Typing in a terminal is
+// counted by the program itself.)
+let lastTouch = 0;
+function noteActivity() {
+  if (state.vault !== "unlocked" || currentScreen !== "dashboard" || Date.now() - lastTouch < 30000) return;
+  lastTouch = Date.now();
+  api("POST", "/touch").catch(() => {});
+}
+for (const type of ["pointerdown", "keydown", "wheel"]) {
+  document.addEventListener(type, noteActivity, { capture: true, passive: true });
+}
+
 async function start() {
   if (!(await signIn())) return showSignedOut();
   try {
@@ -310,7 +324,7 @@ const byOrder = (a, b) => a.order - b.order || a.name?.localeCompare?.(b.name) |
 
 // The dashboard has a sidebar (projects and servers) and one page at a time,
 // chosen by the address: #/ is the Overview, #/server/<id>/<tab> a server.
-const SERVER_TABS = ["overview", "apps", "terminals", "activity"];
+const SERVER_TABS = ["overview", "services", "terminals", "activity"];
 
 function currentRoute() {
   const m = location.hash.match(/^#\/server\/([^/]+)(?:\/([a-z]+))?$/);
@@ -556,7 +570,7 @@ function renderRunningNow() {
     rows.push(h("li", { class: "list-row" },
       h("span", { class: ["dot", fwd.state === "active" ? "connected" : fwd.state] }),
       h("strong", {}, svc.label),
-      h("a", { class: "muted", href: serverHref(svc.serverId, "apps") }, serverName(svc.serverId)),
+      h("a", { class: "muted", href: serverHref(svc.serverId, "services") }, serverName(svc.serverId)),
       fwd.state === "active"
         ? h("a", { class: "mono", href: serviceURL(svc, fwd), target: "_blank", rel: "noopener noreferrer" }, `localhost:${fwd.localPort}`)
         : h("span", { class: "muted" }, STATE_TEXT[fwd.state] || fwd.state),
@@ -578,7 +592,7 @@ function renderRunningNow() {
   }
   return rows.length
     ? h("ul", { class: "list" }, rows)
-    : h("p", { class: "hint" }, "Nothing is running. Start an app from a server's Apps tab, or open a terminal.");
+    : h("p", { class: "hint" }, "Nothing is running. Start a service from a server's Services tab, or open a terminal.");
 }
 
 function renderServerTable() {
@@ -588,7 +602,7 @@ function renderServerTable() {
   return h("div", { class: "table-wrap" }, h("table", { class: "table" },
     h("thead", {}, h("tr", {},
       h("th", {}, "Server"), h("th", {}, "Project"), h("th", {}, "Status"), h("th", {}, "Connected for"),
-      h("th", {}, "Apps running"), h("th", { class: "sr-only" }, "Actions"))),
+      h("th", {}, "Services running"), h("th", { class: "sr-only" }, "Actions"))),
     h("tbody", {}, servers.map((s) => {
       const st = state.servers.get(s.id);
       const apps = state.data.services.filter((x) => x.serverId === s.id).length;
@@ -673,7 +687,7 @@ function renderServerPage(s, tab) {
   const st = state.servers.get(s.id);
   const services = state.data.services.filter((x) => x.serverId === s.id).sort(byOrder);
   const views = termGroup(s.id).views;
-  const tabs = [["overview", "Overview"], ["apps", "Apps", services.length], ["terminals", "Terminals", views.length], ["activity", "Activity"]];
+  const tabs = [["overview", "Overview"], ["services", "Services", services.length], ["terminals", "Terminals", views.length], ["activity", "Activity"]];
   return [
     h("div", { class: "page-head" },
       h("span", { class: ["dot", st?.state || "idle"] }),
@@ -690,7 +704,7 @@ function renderServerPage(s, tab) {
     h("nav", { class: "page-tabs", "aria-label": `${s.name} sections` },
       tabs.map(([id, label, count]) => h("a", { href: serverHref(s.id, id), "aria-current": id === tab ? "page" : null },
         label, count !== undefined ? h("span", { class: "count" }, String(count)) : null))),
-    tab === "apps" ? renderAppsTab(s, services)
+    tab === "services" ? renderServicesTab(s, services)
       : tab === "terminals" ? renderTerminalsTab(s)
         : tab === "activity" ? h("section", { class: "box" }, renderActivity(state.activity.filter((e) => e.serverId === s.id)))
           : renderServerOverview(s, st, services),
@@ -705,7 +719,7 @@ function renderServerOverview(s, st, services) {
     ["Status", statusPill(st)],
     ["Connected", st?.since && connected
       ? `${duration(Date.now() - Date.parse(st.since))}, since ${clock(st.since)}`
-      : h("span", { class: "muted" }, "Not right now. Starting an app or a terminal connects.")],
+      : h("span", { class: "muted" }, "Not right now. Starting a service or a terminal connects.")],
     ["Reconnects", st?.since ? String(st.reconnects || 0) : "—"],
     ["Address", h("span", { class: "mono" }, address(s))],
     ["Login", AUTH_TEXT[s.auth.type] || s.auth.type],
@@ -715,7 +729,7 @@ function renderServerOverview(s, st, services) {
     h("section", { class: "box" }, h("h2", {}, "Connection"),
       h("dl", { class: "kv" }, rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))),
     h("section", { class: "box" },
-      h("div", { class: "box-head" }, h("h2", {}, "Apps"), h("a", { class: "chip", href: serverHref(s.id, "apps") }, "Manage")),
+      h("div", { class: "box-head" }, h("h2", {}, "Services"), h("a", { class: "chip", href: serverHref(s.id, "services") }, "Manage")),
       services.length
         ? h("ul", { class: "list" }, services.map((svc) => {
           const fwd = state.forwards.get(svc.id);
@@ -727,17 +741,17 @@ function renderServerOverview(s, st, services) {
             h("span", { class: "grow" }),
             open);
         }))
-        : h("p", { class: "hint" }, "No apps yet.", " ", h("button", { class: "linklike", onclick: () => serviceDialog(s.id) }, "Add one"))));
+        : h("p", { class: "hint" }, "No services yet.", " ", h("button", { class: "linklike", onclick: () => serviceDialog(s.id) }, "Add one"))));
 }
 
-function renderAppsTab(s, services) {
+function renderServicesTab(s, services) {
   return h("section", { class: "box" },
     h("div", { class: "box-head" },
-      h("h2", {}, "Apps"),
+      h("h2", {}, "Services"),
       h("button", { class: "chip add", onclick: () => serviceDialog(s.id) }, "+ Service")),
     services.length
       ? h("ul", { class: "services" }, services.map(renderService))
-      : h("p", { class: "hint" }, "No apps yet. Add a web app running on this server with “+ Service”."));
+      : h("p", { class: "hint" }, "No services yet. Add a web app running on this server with “+ Service”."));
 }
 
 // --- Reordering (drag the ⠿ grip, or focus it and press ↑/↓) ---------------

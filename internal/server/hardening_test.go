@@ -164,3 +164,29 @@ func TestNoDirectoryListings(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardActivityPostponesAutoLock(t *testing.T) {
+	h := ready(t)
+	v := h.srv.currentVault()
+	v.SetAutoLock(300 * time.Millisecond)
+	for i := 0; i < 6; i++ { // ~600 ms of clicking around the dashboard
+		h.mustCall("POST", "/api/touch", nil, 204)
+		time.Sleep(100 * time.Millisecond)
+		if v.LockIfIdle() {
+			t.Fatal("auto-locked while the dashboard was in use")
+		}
+	}
+	time.Sleep(400 * time.Millisecond)
+	if !v.LockIfIdle() {
+		t.Fatal("did not auto-lock after the activity stopped")
+	}
+	// Locked: touching doesn't unlock or fail.
+	h.mustCall("POST", "/api/touch", nil, 204)
+	if h.srv.vaultState() != "locked" {
+		t.Fatal("touch changed the lock state")
+	}
+	// Needs a session, like everything else.
+	if status, _ := h.request("POST", "/api/touch", nil, map[string]string{"Origin": h.base}); status != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated touch: %d", status)
+	}
+}

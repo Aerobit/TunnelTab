@@ -96,11 +96,11 @@ protects an unattended PC.
 <table>
 <tr>
 <td width="50%"><img src="docs/images/server.png" alt="A server's page: connection details and its apps"></td>
-<td width="50%"><img src="docs/images/apps.png" alt="A server's Apps tab: start, stop, open and reorder web apps"></td>
+<td width="50%"><img src="docs/images/services.png" alt="A server's Services tab: start, stop, open and reorder web apps"></td>
 </tr>
 <tr>
 <td align="center"><b>Server page</b><br><sub>Connection details and apps, in tabs</sub></td>
-<td align="center"><b>Apps</b><br><sub>Start, stop, open and reorder</sub></td>
+<td align="center"><b>Services</b><br><sub>Start, stop, open and reorder</sub></td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/images/terminal.png" alt="In-browser SSH terminal"></td>

@@ -6,6 +6,16 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The **Apps** tab is now called **Services**, matching **+ Service** and the
+  service dialogs.
+- A little more room around the text in terminals, especially at the bottom.
+
+### Fixed
+- TunnelTab could auto-lock while you were moving between pages of the new
+  dashboard, because those clicks didn't count as activity. Clicks, typing
+  and scrolling in the dashboard now postpone auto-lock.
+
 ## [0.3.0] - 2026-10-01
 
 ### Changed

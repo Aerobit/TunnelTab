@@ -505,7 +505,7 @@ a.chip { text-decoration: none; display: inline-block; }
   border-bottom: 1px solid rgba(210, 153, 34, .35);
 }
 .termview-msg.bad { background: rgba(248, 81, 73, .1); border-bottom-color: rgba(248, 81, 73, .35); }
-.termview-screen { flex: 1; min-height: 0; padding: 6px 0 0 8px; }
+.termview-screen { flex: 1; min-height: 0; padding: 8px 6px 12px 10px; }
 .termview-screen .xterm { height: 100%; }
 .termview-screen.hidden-while-locked { visibility: hidden; }
 

@@ -28,6 +28,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("GET /api/state", s.handleState)
 	a("GET /api/events", s.handleEvents)
 	a("POST /api/quit", s.handleQuit)
+	a("POST /api/touch", s.handleTouch)
 	a("POST /api/updates/check", s.handleCheckUpdates)
 	a("POST /api/updates/install", s.handleInstallUpdate)
 	a("GET /api/settings", s.handleGetSettings)
@@ -735,4 +736,15 @@ func (s *Server) handleConfirmHostKey(w http.ResponseWriter, r *http.Request) {
 	s.pendingMu.Unlock()
 	s.log.Info("host key confirmed", "replaced", p.changed)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "confirmed", "fingerprint": ssh.FingerprintSHA256(p.key)})
+}
+
+// handleTouch records that the user is working in the dashboard (clicking,
+// typing, scrolling — the dashboard sends it at most every 30 s), so
+// auto-lock doesn't lock while they move between pages, which needs no other
+// request. It does nothing while locked.
+func (s *Server) handleTouch(w http.ResponseWriter, r *http.Request) {
+	if v := s.currentVault(); v != nil && s.vaultState() == "unlocked" {
+		v.Touch()
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

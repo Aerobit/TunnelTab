@@ -68,6 +68,8 @@ function start(cmd, args, opts) {
   const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
   const page = await context.newPage();
   const problems = [];
+  let touches = 0; // "the user is active" reports (auto-lock)
+  page.on("request", (r) => { if (r.url().endsWith("/api/touch")) touches++; });
   page.on("console", (m) => m.type() === "error" && !m.text().startsWith("Failed to load resource") && problems.push("console: " + m.text()));
   page.on("pageerror", (e) => problems.push("pageerror: " + e.message));
   await page.addInitScript(() => document.addEventListener("securitypolicyviolation",
@@ -121,7 +123,7 @@ function start(cmd, args, opts) {
   await page.locator(".side-server", { hasText: "Demo VPS" }).getByRole("link").click();
   await page.getByRole("heading", { name: "Demo VPS", level: 1 }).waitFor();
   assert.ok(page.url().includes("#/server/"), "server page not in the address: " + page.url());
-  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
 
   // 4. Service, then Open through the tunnel.
   await page.getByRole("button", { name: "+ Service" }).click();
@@ -316,7 +318,7 @@ function start(cmd, args, opts) {
   // The dashboard's own terminal (the second one) re-attaches by itself.
   await page.locator(".page-tabs a[aria-current=page]", { hasText: "Terminals" }).waitFor();
   await waitPane(1, "second terminal");
-  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   await page.locator(".pill.active").waitFor();
   step("lock and unlock (rate-limited retry), tunnel still running, in-page terminal back");
 
@@ -368,7 +370,7 @@ function start(cmd, args, opts) {
   await page.getByRole("tab", { name: /Terminal 1/ }).waitFor();
   assert.strictEqual(await page.getByRole("tab", { name: /Terminal \d/ }).count(), 1, "the exited terminal is still listed");
   await waitPane(0, "second terminal");
-  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   step("reload keeps the session and brings this tab's terminal back");
 
   // 9. Edit server keeping the saved password.
@@ -465,8 +467,9 @@ function start(cmd, args, opts) {
   await page.locator(".activity").getByText("Demo app: tunnel started").first().waitFor();
   await page.goBack();
   await page.locator(".kv").waitFor();
-  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
-  step("overview (totals, running now, activity, all servers), narrow-window menu, server tabs, Back button");
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
+  assert.ok(touches > 0, "clicking around the dashboard never reported activity (auto-lock would lock)");
+  step("overview (totals, running now, activity, all servers), narrow-window menu, server tabs, Back button; clicks count as activity");
 
   // 10. Stop the tunnel, then quit.
   await page.locator(".service", { hasText: "Demo app" }).getByRole("button", { name: "Stop" }).click();

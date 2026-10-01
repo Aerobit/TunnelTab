@@ -92,7 +92,7 @@ Each time TunnelTab starts, enter your master password to unlock it.
 - **A server's page** (click it in the sidebar) has tabs:
   - **Overview**: the connection (connected for how long, reconnects,
     address, login method) and its apps.
-  - **Apps**: start, stop, open, edit and reorder its web apps.
+  - **Services**: start, stop, open, edit and reorder its web apps.
   - **Activity**: what happened with this server since TunnelTab started.
 
 The address bar remembers which page you're on, so reloading the tab (or
@@ -107,14 +107,14 @@ next to a project's name has **Add server** and **Edit project** (rename
 or delete it; deleting also deletes its servers and services).
 
 **Reordering.** Every project and server in the sidebar, and every app on a
-server's **Apps** tab, has a ⠿ grip on its left:
+server's **Services** tab, has a ⠿ grip on its left:
 
 - **Drag** the grip to move the item; a blue line shows where it will go.
   Drop a server onto another project (or between that project's servers) to
   move it there.
 - Or **click the grip and press ↑ / ↓** to move it one place at a time.
 
-Apps can be reordered within their server. The order is saved in the
+Services can be reordered within their server. The order is saved in the
 vault.
 
 ## Adding a server
@@ -212,7 +212,7 @@ same connection when one is open).
 ## Services and web UI quick launch
 
 A **service** is a web app (or any TCP port) running on your server, such as
-n8n, Portainer or Grafana. On the server's page, open the **Apps** tab and
+n8n, Portainer or Grafana. On the server's page, open the **Services** tab and
 click **+ Service**:
 
 | Field | Meaning |

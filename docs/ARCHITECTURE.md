@@ -252,6 +252,7 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `GET /events` | | event stream (see below) |
 | `GET /settings` · `PUT /settings` | `Settings` | settings (+ `restartRequired` if the port changed) |
 | `POST /quit` | | stops tunnels and exits |
+| `POST /touch` | | 204; the user is working in the dashboard (it sends this on clicks, keys and scrolling, at most every 30 s), so auto-lock waits — moving between pages makes no other request |
 | `POST /vault/create` | `{password}` | 400 `weak_password`, 409 `vault_exists` |
 | `POST /vault/unlock` | `{password}` | 401 `wrong_password`, 429 `too_many_attempts` (+ `retryAfterMs`) |
 | `POST /vault/lock` | | |
@@ -399,7 +400,7 @@ the executable as-is.
 **Flow:** `start()` signs in → `GET /api/state` → setup, unlock or
 dashboard. The dashboard is a sidebar (projects and servers) plus one
 page chosen by the address: `#/` the Overview (totals, needs attention,
-running now, recent activity, all servers), `#/server/<id>[/apps|/activity]`
+running now, recent activity, all servers), `#/server/<id>[/services|/terminals|/activity]`
 a server page with tabs. `hashchange` re-renders; focus moves to the new
 page's heading. Below 860 px the sidebar becomes a slide-in panel (☰ Menu). The dashboard renders from `GET /api/data`; events update tunnel
 states in place (`tunnel`), trigger a re-fetch (`data`, `resync`) or switch
@@ -407,7 +408,7 @@ to the unlock screen (`vault`). Screens the user may be typing into are
 never redrawn by a background refresh.
 
 **Reordering** (`app.js`): projects and servers in the sidebar and apps on the
-Apps tab each have a ⠿ `grip` button that is the drag
+Services tab each have a ⠿ `grip` button that is the drag
 source (HTML5 drag and drop; types `application/x-tunneltab-project`,
 `…-server`, and `…-service-<serverId>` so services only drop within their
 server) and also moves the item with ↑/↓. `dropTarget` shows a line

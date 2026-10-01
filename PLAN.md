@@ -260,7 +260,7 @@ https://claude.ai/artifact/J8Tm3ZRyoxxjK41uDUoRoz.
 - **Server page**, with tabs:
   - **Overview** — health (when switched on), connection (connected since,
     ping, reconnects today, login method, fingerprint), apps, notes.
-  - **Apps** — the server's services: start/stop, open, edit, reorder.
+  - **Services** — start/stop, open, edit, reorder.
   - **Terminals** — terminals **inside the page** (see below).
   - **Activity** — this server's recent events.
   - **Notes** — free text about the server.
@@ -278,7 +278,7 @@ https://claude.ai/artifact/J8Tm3ZRyoxxjK41uDUoRoz.
 | Topic | Decision |
 |---|---|
 | Navigation | Hash routes (`#/overview`, `#/server/<id>/<tab>`); no framework, still vanilla JS with `h()`. Back/forward work. |
-| Reordering | Kept: servers (and moving between projects) in the sidebar; services in the Apps tab; projects in the sidebar. Keyboard reordering stays. |
+| Reordering | Kept: servers (and moving between projects) in the sidebar; services in the Services tab; projects in the sidebar. Keyboard reordering stays. |
 | Terminals | Same terminal sessions and WebSocket protocol as today. In-page terminals stay alive while you look at another server or the Overview; × ends one; closing the dashboard tab ends them (as closing a terminal tab does today). **Pop out** hands the session to a terminal tab (the existing "opened in another tab" hand-over). Locking detaches and blanks them, as today. Copy/paste as in 0.2.1. |
 | Activity log | Kept **in memory only** (last ~200 events), sent over the event stream, cleared on Quit. Never written to disk. Contains server names, so it is only shown while unlocked (like the rest of the data). |
 | Connection details | "Connected since", reconnect count and ping are measured by the SSH engine (ping = keep-alive round trip). |
