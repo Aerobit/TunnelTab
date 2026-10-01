@@ -237,3 +237,61 @@ one last time. From 0.2.0 onward, **Update now** works.
 | U3 ✅ | **Install + restart** — rename/swap, relaunch, wait for port, cleanup of `.old`, rollback on failed start | Tests on Linux in the container; you test on Windows with a real 0.2.0 → 0.2.1 update |
 | U4 ✅ | **UI** — Update now button, confirm dialog listing open terminals/tunnels, progress and errors | `tests/e2e` walkthrough with the fake release server |
 | U5 ✅ | **Docs + security** — update CLAUDE.md invariant ("never downloads or runs anything" → "only on click, only signed releases"), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE (Updates + FAQ), ARCHITECTURE (API `POST /updates/install`), CHANGELOG | Docs match behaviour; security review of the new code done |
+
+## 12. v0.3.0 / v0.4.0 — Dashboard redesign (planned)
+
+The dashboard is one long list today. The redesign uses a **sidebar** with
+an **Overview** home and a **page per server** with tabs, and moves
+terminals **into the page**. Mockups (example data): the "Blend" page of
+the *TunnelTab Dashboard Concepts* canvas,
+https://claude.ai/artifact/J8Tm3ZRyoxxjK41uDUoRoz.
+
+### What the user sees
+
+- **Sidebar** (always visible): Overview, then projects and their servers
+  with status dots and short status ("2 running", "reconnecting"); + Project;
+  Settings, Lock, Quit at the bottom. On a narrow window it folds into a
+  menu button.
+- **Overview** (the home screen): totals (servers online, tunnels running,
+  terminals open, traffic today), a **Needs attention** banner (a server
+  reconnecting, a busy port…), **Running now** (every running tunnel and
+  terminal, with Stop / Open / Show), **Recent activity**, and a table of
+  **all servers**.
+- **Server page**, with tabs:
+  - **Overview** — health (when switched on), connection (connected since,
+    ping, reconnects today, login method, fingerprint), apps, notes.
+  - **Apps** — the server's services: start/stop, open, edit, reorder.
+  - **Terminals** — terminals **inside the page** (see below).
+  - **Activity** — this server's recent events.
+  - **Notes** — free text about the server.
+- **Built-in terminals:** **+ New terminal** opens a terminal in the
+  server's Terminals tab, with its own tab strip (several terminals per
+  server), **Split** (two side by side) and **Pop out ↗** (the same session
+  in its own browser tab, as today). The address remembers where you are
+  (`#/server/<id>/terminals`), so a reload comes back to the same place.
+- **Server health** (CPU load, memory, disk, server uptime): **off by
+  default**; switched on or off per server at any time in **Settings →
+  Server health** (and from the server's Overview tab).
+
+### Decisions
+
+| Topic | Decision |
+|---|---|
+| Navigation | Hash routes (`#/overview`, `#/server/<id>/<tab>`); no framework, still vanilla JS with `h()`. Back/forward work. |
+| Reordering | Kept: servers (and moving between projects) in the sidebar; services in the Apps tab; projects in the sidebar. Keyboard reordering stays. |
+| Terminals | Same terminal sessions and WebSocket protocol as today. In-page terminals stay alive while you look at another server or the Overview; × ends one; closing the dashboard tab ends them (as closing a terminal tab does today). **Pop out** hands the session to a terminal tab (the existing "opened in another tab" hand-over). Locking detaches and blanks them, as today. Copy/paste as in 0.2.1. |
+| Activity log | Kept **in memory only** (last ~200 events), sent over the event stream, cleared on Quit. Never written to disk. Contains server names, so it is only shown while unlocked (like the rest of the data). |
+| Connection details | "Connected since", reconnect count and ping are measured by the SSH engine (ping = keep-alive round trip). |
+| Traffic | Counted on the PC as data passes through each tunnel: today's total and per-minute buckets for the last hour, in memory only. |
+| Notes | A new `notes` field on servers, stored **inside the encrypted vault**. Older versions keep but don't show it. |
+| Server health | **Opt-in per server**, stored in the vault (`healthEnabled`). Runs only while that server is already connected for something else (it never opens a connection by itself), every 30 s while the dashboard is open. One SSH exec of a fixed, read-only command (`cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k`) — no user input in the command; output size-limited and parsed strictly; Linux servers only (others show "not available"). Switching it off stops it immediately. Documented in SECURITY.md. |
+| Invariants | No change to "no local shell" or "network only to your servers": health runs a command **on your server** over the existing SSH connection. CLAUDE.md invariant 7 gets a line naming the health command as the only remote command TunnelTab runs by itself. |
+
+### Build phases
+
+| # | Phase | Ships in | Done when |
+|---|---|---|---|
+| D1 | **New layout** — sidebar, hash routes, Overview home (totals, needs attention, running now, all servers), server page with Overview / Apps / Activity tabs, in-memory activity log, connected-since + reconnect count; reordering moved into the new places; narrow-window menu | 0.3.0 | Browser test covers navigation, reload, reordering, lock/unlock; README screenshots regenerated |
+| D2 | **Built-in terminals** — Terminals tab with terminal tabs, + New terminal, Split, Pop out (session hand-over), lock blanking, close-dashboard-ends-sessions | 0.3.0 | Browser test: open two terminals in-page, split, pop one out, lock/unlock, reload |
+| D3 | **Ping, traffic, notes** — keep-alive RTT, per-tunnel byte counters (today + last hour chart), server notes in the vault | 0.4.0 | Unit tests (counters, vault round-trip with notes, older vault without notes); browser test |
+| D4 | **Server health (opt-in)** — Settings → Server health tab with a switch per server (plus one on the server's Overview tab), the fixed read-only command, strict parser, 30 s polling only while connected and the dashboard is open | 0.4.0 | Parser tests with real `/proc` samples and hostile output (huge, malformed); test server answers the command; browser test: off by default, on, off again stops polling; SECURITY.md + SECURITY_REVIEW.md updated |
