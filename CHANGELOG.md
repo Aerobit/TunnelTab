@@ -6,13 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-01
+
 ### Changed
 - **New dashboard layout.** A sidebar lists your projects and servers with
   their status. **Overview** (the home page) shows how many servers are
   online, tunnels running and terminals open, anything that needs
   attention, everything running now, recent activity and all servers.
-  Each server has its own page with **Overview**, **Apps** and **Activity**
-  tabs. The address remembers the page, so reload and Back work. On narrow
+  Each server has its own page with **Overview**, **Apps**, **Terminals** and
+  **Activity** tabs. The address remembers the page, so reload and Back work. On narrow
   windows the sidebar opens from a Menu button.
 
 ### Added
@@ -111,7 +113,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.3.0
 [0.2.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.1.0
