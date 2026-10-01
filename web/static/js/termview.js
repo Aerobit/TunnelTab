@@ -30,13 +30,14 @@ export const TERM_STATES = {
   connected: ["connected", "Connected"],
   locked: ["paused", "Locked"],
   disconnected: ["reconnecting", "Disconnected"],
+  reconnecting: ["reconnecting", "Reconnecting…"],
   elsewhere: ["paused", "In another tab"],
   ended: ["ended", "Ended"],
 };
 
 const encoder = new TextEncoder();
 
-// Undoes what a program on the lost session may have left switched on (full
+// Undoes what a program in the lost shell may have left switched on (full
 // screen, hidden cursor, mouse reporting, colours…) without clearing the
 // screen or moving the cursor. Not a soft reset (ESC [ ! p): in xterm.js that
 // moves the cursor to the top. Leaving full screen (ESC [ ? 1049 l) is added
@@ -59,8 +60,6 @@ export class TermView {
     this.serverName = "";
     this.ws = null;
     this.retryTimer = null;
-    this.reopening = false; // the server connection dropped: opening a new session by itself
-    this.reopenDelay = 0;
     this.disposed = false;
 
     this.msgText = h("span", { class: "grow" });
@@ -85,12 +84,9 @@ export class TermView {
     this.term.onData((data) => this.send(encoder.encode(data)));
     this.term.onBinary((data) => this.send(Uint8Array.from(data, (c) => c.charCodeAt(0))));
     this.term.onResize(({ cols, rows }) => this.send(JSON.stringify({ type: "resize", cols, rows })));
-    // After the session ends, Enter starts a new one; while reconnecting it
-    // retries straight away.
+    // After the session ends, Enter starts a new one.
     this.term.onKey(({ domEvent }) => {
-      if (domEvent.key !== "Enter") return;
-      if (this.state === "ended") this.open();
-      else if (this.state === "disconnected") this.reconnect();
+      if (this.state === "ended" && domEvent.key === "Enter") this.open();
     });
     this.resizer = new ResizeObserver(() => this.fit());
     this.resizer.observe(this.screen);
@@ -181,47 +177,23 @@ export class TermView {
   /** Opens a new shell on the server. */
   async open() {
     clearTimeout(this.retryTimer);
-    const reopening = this.reopening;
-    if (!reopening) this.setState("connecting");
+    this.setState("connecting");
     let opened;
     try {
       opened = await withHostKeys(() => api("POST", "/terminals", {
         serverId: this.serverId, cols: this.term.cols, rows: this.term.rows, client: this.client || undefined,
       }));
     } catch (err) {
-      if (this.disposed) return;
-      // The server isn't reachable yet: keep trying, a little slower each time.
-      if (reopening && (err.code === "ssh_error" || err.code === "offline")) {
-        this.setState("disconnected", "Lost the connection to the server. Reconnecting…");
-        this.reopenDelay = Math.min(this.reopenDelay * 2 || 1000, 15000);
-        return this.retrySoon(this.reopenDelay);
-      }
-      this.reopening = false;
       return this.showError(err);
     }
     if (this.disposed) {
       if (opened) api("DELETE", `/terminals/${encodeURIComponent(opened.terminalId)}`).catch(() => {});
       return;
     }
-    this.reopening = false;
-    this.reopenDelay = 0;
     if (!opened) return this.setState("ended", "The server's fingerprint was not confirmed.");
-    // After a dropped connection the old output stays above the new prompt.
-    if (!reopening) this.term.reset();
+    this.term.reset();
     this.terminalId = opened.terminalId;
-    this.connect(opened, { keepScreen: reopening });
-  }
-
-  /** The connection to the server dropped and took the session with it:
-   *  opens a new one by itself, below what was on screen. */
-  reopenAfterLoss() {
-    this.terminalId = null;
-    this.reopening = true;
-    this.reopenDelay = 0;
-    const fullScreen = this.term.buffer.active.type === "alternate" ? "\x1b[?1049l" : "";
-    this.term.write(fullScreen + RESET_MODES + "\r\n\x1b[2m[connection to the server lost — reconnecting…]\x1b[0m\r\n");
-    this.setState("disconnected", "Lost the connection to the server. Reconnecting…");
-    this.retrySoon(1000);
+    this.connect(opened);
   }
 
   /** Re-attaches to the existing session (after a lock, reload or blip). */
@@ -268,12 +240,12 @@ export class TermView {
       : "TunnelTab is locked. Unlock it to connect.");
   }
 
-  retrySoon(delay = 3000) {
+  retrySoon() {
     clearTimeout(this.retryTimer);
-    this.retryTimer = setTimeout(() => this.start(), delay);
+    this.retryTimer = setTimeout(() => this.start(), 3000);
   }
 
-  connect({ ticket, serverName }, { keepScreen = false } = {}) {
+  connect({ ticket, serverName }) {
     if (this.disposed) return;
     this.serverName = serverName;
     let exitInfo = null;
@@ -293,10 +265,16 @@ export class TermView {
         return;
       }
       if (msg.type === "attached") {
-        // The recent output is replayed next. A session that was just opened
-        // to replace a lost one keeps the old output (its replay is all new).
-        if (!keepScreen) this.term.reset();
-        keepScreen = false;
+        this.term.reset(); // the recent output is replayed next
+        this.setState("connected");
+        this.send(JSON.stringify({ type: "resize", cols: this.term.cols, rows: this.term.rows }));
+      } else if (msg.type === "reconnecting") {
+        // The connection to the server dropped; the program keeps the
+        // session and opens a new shell in it when the connection is back.
+        const fullScreen = this.term.buffer.active.type === "alternate" ? "\x1b[?1049l" : "";
+        this.term.write(fullScreen + RESET_MODES);
+        this.setState("reconnecting", "Lost the connection to the server. Reconnecting…");
+      } else if (msg.type === "reconnected") {
         this.setState("connected");
         this.send(JSON.stringify({ type: "resize", cols: this.term.cols, rows: this.term.rows }));
       } else if (msg.type === "locked") {
@@ -308,9 +286,7 @@ export class TermView {
     socket.onclose = (ev) => {
       if (this.ws !== socket || this.disposed) return; // replaced, or gone
       this.ws = null;
-      if (exitInfo?.lost) {
-        this.reopenAfterLoss();
-      } else if (exitInfo) {
+      if (exitInfo) {
         const why = exitInfo.message
           ? `Session ended: ${exitInfo.message}.`
           : exitInfo.code ? `The shell exited with code ${exitInfo.code}.` : "The session ended.";

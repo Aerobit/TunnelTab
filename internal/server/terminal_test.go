@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/Aerobit/TunnelTab/internal/model"
+	"github.com/Aerobit/TunnelTab/internal/sshx"
 )
 
 // trustedServer creates a server backed by a test SSH server whose host key
@@ -125,7 +127,7 @@ func TestTerminalSession(t *testing.T) {
 
 	c.Write(ctx, websocket.MessageBinary, []byte("exit 5\r"))
 	exit := readExit(t, c)
-	if exit["code"].(float64) != 5 || exit["message"] != "" || exit["lost"] != false {
+	if exit["code"].(float64) != 5 || exit["message"] != "" {
 		t.Fatalf("exit %v", exit)
 	}
 	waitShells(t, h, 0)
@@ -297,7 +299,7 @@ func TestTerminalExplicitClose(t *testing.T) {
 	serverID := trustedServer(t, h)
 	id, c := openTerminal(t, h, serverID)
 	h.mustCall("DELETE", "/api/terminals/"+id, nil, 204)
-	if exit := readExit(t, c); exit["message"] != "the terminal was closed by TunnelTab" || exit["lost"] != false {
+	if exit := readExit(t, c); exit["message"] != "the terminal was closed by TunnelTab" {
 		t.Fatalf("exit %v", exit)
 	}
 	waitShells(t, h, 0)
@@ -510,22 +512,61 @@ func TestEventStreamWatchesClient(t *testing.T) {
 	waitUntil(0)
 }
 
-// A dropped connection tells the page so ("lost"), and a new session can be
-// opened once the server is reachable again: the page does that by itself.
-func TestTerminalLostConnection(t *testing.T) {
+// A dropped connection keeps the session: the page is told it's reconnecting
+// (the server shows reconnecting, never failed), and once the server is back
+// a new shell takes over in the same session. Closing the terminal while it
+// reconnects lets go of the connection.
+func TestTerminalReconnectsAfterDrop(t *testing.T) {
+	terminalReopenEvery = 20 * time.Millisecond
+	t.Cleanup(func() { terminalReopenEvery = time.Second })
 	h := ready(t)
 	sshSrv, serverID, _ := sshSetup(t, h)
 	h.srv.currentVault().Update(func(d *model.Data) error {
 		_, err := d.SetHostKey(model.HostKeyAddress(sshSrv.Host, sshSrv.Port), sshSrv.HostKey.PublicKey())
 		return err
 	})
-	_, c := openTerminal(t, h, serverID)
+	serverState := func() sshx.State {
+		for _, st := range h.srv.mgr.Servers() {
+			if st.ID == serverID {
+				return st.State
+			}
+		}
+		return ""
+	}
+	id, c := openTerminal(t, h, serverID)
+
+	sshSrv.SetRefusing(true)
 	sshSrv.DropConnections()
-	if exit := readExit(t, c); exit["lost"] != true || exit["message"] != "the connection to the server was lost" {
+	if control := readUntil(t, c, "reconnecting…]"); !slices.Contains(control, `{"type":"reconnecting"}`) {
+		t.Fatalf("control messages %v", control)
+	}
+	for range 30 {
+		if st := serverState(); st != sshx.StateReconnecting {
+			t.Fatalf("server %q while the terminal waits, want reconnecting", st)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if m := h.mustCall("GET", "/api/data", nil, 200); len(m["terminals"].([]any)) != 1 {
+		t.Fatalf("terminals while reconnecting: %v", m["terminals"])
+	}
+
+	sshSrv.SetRefusing(false)
+	if control := readUntil(t, c, "$ "); !slices.Contains(control, `{"type":"reconnected"}`) {
+		t.Fatalf("control messages %v", control)
+	}
+	c.Write(context.Background(), websocket.MessageBinary, []byte("echo back again\r"))
+	readUntil(t, c, "back again\r\n")
+	h.mustCall("POST", "/api/terminals/"+id+"/attach", nil, 200) // the same session
+
+	sshSrv.SetRefusing(true)
+	sshSrv.DropConnections()
+	readUntil(t, c, "reconnecting…]")
+	h.mustCall("DELETE", "/api/terminals/"+id, nil, 204)
+	if exit := readExit(t, c); exit["message"] != "the terminal was closed by TunnelTab" {
 		t.Fatalf("exit %v", exit)
 	}
 	waitShells(t, h, 0)
-	_, c2 := openTerminal(t, h, serverID)
-	c2.Write(context.Background(), websocket.MessageBinary, []byte("echo back again\r"))
-	readUntil(t, c2, "back again\r\n")
+	if st := serverState(); st != "" {
+		t.Fatalf("server %q after closing the terminal, want no connection", st)
+	}
 }

@@ -229,10 +229,13 @@ same connection when one is open).
   Closing it leaves the terminal running in the dashboard (**Bring back
   here**), as long as the dashboard tab is open.
 - **If the connection to the server drops, the terminal reconnects by
-  itself.** It says *Reconnecting…*, keeps trying until the server can be
-  reached, then opens a new session below the old output, ready to type in.
-  (Enter or **Reconnect** tries again straight away.) The commands that
-  were running in the old session are gone; see the next point.
+  itself.** The terminal and the server show *Reconnecting…* (not
+  *Failed*) for as long as the server can't be reached; the server page
+  shows the last reason in grey. When it's back, a new shell starts in the
+  same terminal, below the old output, ready to type in. The commands that
+  were running in the old shell are gone; see the point after next.
+  Closing the terminal while it reconnects stops the reconnecting (unless
+  a tunnel still uses the server).
 - When a session ends (you typed `exit`), a bar above it says why. Press
   **Enter** or click **New session**.
 - For jobs that must survive even a dropped connection (hours-long

@@ -785,7 +785,7 @@ function renderServerPage(s, tab) {
         ["Test connection", () => testServer(s), "Check the connection and login"],
         ["Edit server", () => serverDialog(s.projectId, s)],
       ])),
-    st?.error ? h("p", { class: "error-line" }, st.error) : null,
+    st?.error ? h("p", { class: ["error-line", st.state === "reconnecting" && "quiet"] }, st.state === "reconnecting" ? `Last try: ${st.error}` : st.error) : null,
     h("nav", { class: "page-tabs", "aria-label": `${s.name} sections` },
       tabs.map(([id, label, count]) => h("a", { href: serverHref(s.id, id), "aria-current": id === tab ? "page" : null },
         label, count !== undefined ? h("span", { class: "count" }, String(count)) : null))),
@@ -1333,7 +1333,7 @@ function toggleSplit(server) {
   renderDashboard();
 }
 
-const TERM_DOT = { connected: "connected", connecting: "connecting", disconnected: "reconnecting", locked: "paused", elsewhere: "paused", ended: "failed" };
+const TERM_DOT = { connected: "connected", connecting: "connecting", disconnected: "reconnecting", reconnecting: "reconnecting", locked: "paused", elsewhere: "paused", ended: "failed" };
 
 function renderTerminalsTab(s) {
   const g = termGroup(s.id);

@@ -19,6 +19,7 @@ import (
 //	size          prints the terminal size as "<cols>x<rows>"
 //	count <n>     prints "tick 1" … "tick n", one every 200 ms (a long-running job)
 //	exit [code]   ends the session with that exit status (default 0)
+//	hangup        ends the session without an exit status (the connection stays)
 func handleSession(nc ssh.NewChannel, opts Options) {
 	banner, prompt := opts.Banner, opts.Prompt
 	if banner == "" {
@@ -134,6 +135,8 @@ func handleSession(nc ssh.NewChannel, opts Options) {
 					mu.Unlock()
 				case strings.HasPrefix(cmd, "echo "):
 					fmt.Fprintf(ch, "%s\r\n", strings.TrimPrefix(cmd, "echo "))
+				case cmd == "hangup":
+					return
 				case cmd == "exit" || strings.HasPrefix(cmd, "exit "):
 					code := 0
 					fmt.Sscanf(strings.TrimPrefix(cmd, "exit"), "%d", &code)

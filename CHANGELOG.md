@@ -8,9 +8,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - When the connection to a server dropped and came back, a terminal stayed
-  ended until you pressed Enter. It now reconnects by itself: it opens a new
-  session as soon as the server can be reached again, below the old output,
-  and you can type straight away.
+  ended until you pressed Enter. It now reconnects by itself: the terminal
+  keeps the connection, which reconnects in the background like a
+  tunnel's, and a new shell starts in the same terminal as soon as the
+  server can be reached again, below the old output, ready for typing.
+  While it waits, the terminal and the server show *Reconnecting…* (with
+  the last reason in grey), not *Failed*. Closing the terminal stops the
+  reconnecting.
 
 ## [0.4.2] - 2026-10-01
 

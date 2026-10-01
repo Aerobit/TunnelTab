@@ -54,8 +54,9 @@ it yourself with `.\scripts\build.ps1 x.y.z`.
 - [ ] **Update now** from the previous release (Windows): it restarts on the
       new version, the vault unlocks, and no `*.old` files remain in the
       folder a minute later.
-- [ ] Disconnect the network briefly (or sleep the PC): tunnels show
-      *Reconnecting…* and recover.
+- [ ] Disconnect the network briefly (or sleep the PC): tunnels and an open
+      terminal show *Reconnecting…* (not *Failed*) and recover; the terminal
+      gets a new prompt below its old output and takes typing at once.
 - [ ] Quit: tunnels stop, the process exits, `data/instance.json` is gone.
 - [ ] `data/logs/tunneltab.log` contains no server names or addresses.
 

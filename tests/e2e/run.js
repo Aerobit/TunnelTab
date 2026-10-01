@@ -383,29 +383,50 @@ function start(cmd, args, opts) {
   await waitPane(0, "second terminal");
   step("reload keeps the session and brings this tab's terminal back");
 
-  // 8b. The connection to the server drops and stays down for a while: the
-  //     terminal opens a new session by itself once it's back, below the old
-  //     output, and takes typing without pressing Enter first.
+  // 8b. The connection to the server drops and stays down for a while, with
+  //     only a terminal using it (no tunnel): the terminal and the server say
+  //     "Reconnecting" (never "Failed"), and once it's back a new shell takes
+  //     over in the same terminal, below the old output, ready for typing.
+  const services = page.locator(".page-tabs").getByRole("link", { name: /Services/ });
+  const terminals = page.locator(".page-tabs").getByRole("link", { name: /Terminals/ });
+  const demoApp = page.locator(".service", { hasText: "Demo app" });
+  await services.click();
+  await demoApp.getByRole("button", { name: "Stop" }).click();
+  await demoApp.getByRole("button", { name: "Start" }).waitFor();
+  await terminals.click();
+  await waitPane(0, "second terminal");
   fake.stdin.write("down\n");
   await waitPane(0, "connection to the server lost");
   await page.locator(".termview-msg", { hasText: "Reconnecting" }).waitFor();
-  await page.waitForTimeout(3000);
+  for (let n = 0; n < 30; n++) { // 3 s of refused reconnects
+    const pill = await page.locator(".page-head .pill").innerText();
+    assert.ok(!/fail/i.test(pill), "the server shows " + pill + " while reconnecting");
+    await page.waitForTimeout(100);
+  }
+  assert.match(await page.locator(".page-head .pill").innerText(), /Reconnecting/);
+  await shot("07c-terminal-reconnecting");
   fake.stdin.write("up\n");
   for (let n = 0; ; n++) {
     const text = await paneText(0);
     if (text.lastIndexOf("Welcome to the fake shell") > text.indexOf("connection to the server lost")) break;
-    if (n > 600) throw new Error("the terminal didn't reconnect:\n" + text);
+    if (n > 800) throw new Error("the terminal didn't reconnect:\n" + text);
     await page.waitForTimeout(50);
   }
   const after = await paneText(0);
   assert.ok(after.includes("second terminal"), "the old output was cleared:\n" + after);
-  assert.ok(await page.locator(".termview-msg").first().isHidden(), "the reconnect message is still shown");
+  await page.locator(".termview-msg").first().waitFor({ state: "hidden" });
+  assert.strictEqual(await page.getByRole("tab", { name: /Terminal \d/ }).count(), 1, "the terminal was replaced");
   await page.locator(".term-pane").nth(0).click();
   await page.keyboard.type("echo typed after the drop");
   await page.keyboard.press("Enter");
   await waitPane(0, "typed after the drop\n");
-  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
-  step("a dropped connection reopens the terminal by itself; typing works straight away");
+  await page.locator(".page-tabs").getByRole("link", { name: /Activity/ }).click();
+  const activity = await page.locator("ul.activity").innerText();
+  assert.ok(activity.includes("Reconnected") && !activity.includes("Couldn't connect"), "activity:\n" + activity);
+  await services.click();
+  await demoApp.getByRole("button", { name: "Start" }).click();
+  await demoApp.getByRole("button", { name: "Stop" }).waitFor();
+  step("a dropped connection: Reconnecting (not Failed), then the same terminal carries on, ready for typing");
 
   // 9. Edit server keeping the saved password.
   // Edit is in the server's "⋯" menu (also reachable by keyboard).
@@ -482,8 +503,7 @@ function start(cmd, args, opts) {
   await page.getByRole("heading", { name: "Overview", level: 1 }).waitFor();
   assert.strictEqual(await page.locator(".tile", { hasText: "Tunnels running" }).locator(".tile-value").innerText(), "1");
   await page.locator(".box", { hasText: "Running now" }).getByText("Demo app").waitFor();
-  // (the connection drop in 8b is among the latest entries)
-  await page.locator(".box", { hasText: "Recent activity" }).getByText("Reconnected").first().waitFor();
+  await page.locator(".box", { hasText: "Recent activity" }).getByText("Demo app: tunnel started").first().waitFor();
   await page.locator("table").getByRole("link", { name: "Demo VPS (renamed)" }).waitFor();
   await shot("13-overview");
 

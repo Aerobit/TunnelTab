@@ -26,6 +26,12 @@ import (
 // on the server; unlocking lets the pages re-attach, and the recent output is
 // replayed.
 //
+// If the connection to the server drops, the shell ends but the session
+// stays: the old shell keeps the connection, which reconnects in the
+// background as for tunnels, and once it is back a new shell takes over in
+// the same session (the page is told; see reconnectTerminal). Closing the
+// terminal meanwhile lets go of the connection.
+//
 // A terminal page also keeps an event stream open (GET /api/events?terminal=
 // <id>) for as long as the tab exists — locked, hidden or not. Browsers keep
 // such connections alive in background tabs (unlike timers). When the tab is
@@ -52,9 +58,10 @@ import (
 //     browser → app: {"type":"resize","cols":120,"rows":40}
 //     app → browser: {"type":"attached"} then the recent output (binary),
 //                    {"type":"locked"} before detaching because of a lock,
-//                    {"type":"exit","code":0,"message":"…","lost":false} when
-//                    the shell ends ("lost":true if the connection to the
-//                    server dropped: the page then opens a new session).
+//                    {"type":"reconnecting"} when the connection to the server
+//                    dropped (sent on attach too while it lasts) and
+//                    {"type":"reconnected"} when a new shell took over,
+//                    {"type":"exit","code":0,"message":"…"} when the session ends.
 
 const (
 	terminalReadLimit  = 64 * 1024
@@ -68,6 +75,7 @@ var (
 	terminalTouchEvery  = 10 * time.Second // how often typing postpones auto-lock
 	terminalDetachGrace = 10 * time.Second // how long a session with no page waits before closing
 	terminalReapEvery   = 5 * time.Second
+	terminalReopenEvery = time.Second // how often a session whose connection dropped checks it's back
 )
 
 type terminals struct {
@@ -95,14 +103,17 @@ type termSession struct {
 	id, serverID, serverName string
 	openedAt                 time.Time
 	owner                    string // client ID of the dashboard tab showing it, if any
-	shell                    *sshx.Shell
 
-	mu       sync.Mutex
-	scroll   []byte          // the last terminalScrollback bytes of output
-	conn     *websocket.Conn // the attached page, nil while detached
-	watchers int             // open event streams from this session's page
-	lastSeen time.Time       // when a page last detached or stopped watching
-	ended    bool
+	mu           sync.Mutex
+	shell        *sshx.Shell     // replaced after a dropped connection comes back
+	cols, rows   int             // the page's terminal size, for a new shell
+	reconnecting bool            // the connection dropped; waiting for it
+	closed       bool            // closed by TunnelTab (close)
+	scroll       []byte          // the last terminalScrollback bytes of output
+	conn         *websocket.Conn // the attached page, nil while detached
+	watchers     int             // open event streams from this session's page
+	lastSeen     time.Time       // when a page last detached or stopped watching
+	ended        bool
 }
 
 func newTerminals() terminals {
@@ -142,7 +153,7 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		s.writeSSHError(w, err)
 		return
 	}
-	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, lastSeen: s.now(), openedAt: s.now(), owner: req.Client}
+	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, cols: req.Cols, rows: req.Rows, lastSeen: s.now(), openedAt: s.now(), owner: req.Client}
 	s.terms.mu.Lock()
 	s.terms.sessions[t.id] = t
 	s.terms.mu.Unlock()
@@ -171,7 +182,7 @@ func (s *Server) handleCloseTerminal(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "this terminal session has ended")
 		return
 	}
-	t.shell.Close()
+	t.close()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -236,34 +247,80 @@ func (s *Server) redeemTerminalTicket(ticket string) *termSession {
 
 // runTerminal forwards the shell's output to the attached page (and keeps it
 // for replay) until the shell ends, then tells the page why and forgets the
-// session.
+// session. If the connection to the server dropped, the session waits for it
+// to come back and carries on with a new shell instead.
 func (s *Server) runTerminal(t *termSession) {
 	buf := make([]byte, 32*1024)
+	var code int
+	var err error
 	for {
-		n, err := t.shell.Read(buf)
-		if n > 0 {
-			t.output(buf[:n])
+		sh := t.currentShell()
+		for {
+			n, err := sh.Read(buf)
+			if n > 0 {
+				t.output(buf[:n])
+			}
+			if err != nil {
+				break
+			}
 		}
-		if err != nil {
+		<-sh.Done()
+		code, err = sh.ExitStatus()
+		if err == nil || errors.Is(err, sshx.ErrShellClosed) {
+			break
+		}
+		if err = s.reconnectTerminal(t, sh); err != nil {
+			code = -1
 			break
 		}
 	}
-	<-t.shell.Done()
-	code, err := t.shell.ExitStatus()
-	msg, lost := "", false
+	msg := ""
 	switch {
 	case errors.Is(err, sshx.ErrShellClosed):
 		msg = "the terminal was closed by TunnelTab"
 	case err != nil:
-		msg, lost = "the connection to the server was lost", true
+		msg = "couldn't reconnect to the server: " + err.Error()
 	}
-	exit, _ := json.Marshal(map[string]any{"type": "exit", "code": code, "message": msg, "lost": lost})
+	exit, _ := json.Marshal(map[string]any{"type": "exit", "code": code, "message": msg})
 
 	s.terms.mu.Lock()
 	delete(s.terms.sessions, t.id)
 	s.terms.mu.Unlock()
 	t.end(exit)
 	s.recordActivity(activityEntry{Kind: "terminal", ID: t.id, ServerID: t.serverID, State: "ended"})
+}
+
+// reconnectTerminal waits for the dropped connection of the session's shell
+// (old) to come back — the shell keeps it, so it reconnects in the background
+// like a tunnel's — and puts a new shell in the session. It returns why it
+// gave up: ErrShellClosed if the terminal was closed meanwhile, or the
+// reason reconnecting failed.
+func (s *Server) reconnectTerminal(t *termSession, old *sshx.Shell) error {
+	t.setReconnecting()
+	tick := time.NewTicker(terminalReopenEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-old.Dropped():
+			return sshx.ErrShellClosed
+		case <-tick.C:
+		}
+		cols, rows := t.size()
+		sh, err := old.Reopen(cols, rows)
+		switch {
+		case err == nil:
+			if !t.replaceShell(sh) {
+				return sshx.ErrShellClosed
+			}
+			s.log.Info("terminal reconnected", "server", t.serverID)
+			return nil
+		case errors.Is(err, sshx.ErrReconnecting):
+			continue
+		default:
+			old.Close()
+			return err
+		}
+	}
 }
 
 // readTerminalInput passes the page's keystrokes and resizes to the shell
@@ -284,7 +341,7 @@ func (s *Server) readTerminalInput(ctx context.Context, t *termSession, c *webso
 			lastTouch = time.Now()
 		}
 		if typ == websocket.MessageBinary {
-			if _, err := t.shell.Write(data); err != nil {
+			if !t.write(data) {
 				return
 			}
 			continue
@@ -295,9 +352,91 @@ func (s *Server) readTerminalInput(ctx context.Context, t *termSession, c *webso
 			Rows int    `json:"rows"`
 		}
 		if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" {
-			t.shell.Resize(msg.Cols, msg.Rows)
+			t.resize(msg.Cols, msg.Rows)
 		}
 	}
+}
+
+func (t *termSession) currentShell() *sshx.Shell {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.shell
+}
+
+func (t *termSession) size() (cols, rows int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.cols, t.rows
+}
+
+// write sends keystrokes to the shell. It reports false if the shell is
+// gone; while reconnecting, typing is dropped.
+func (t *termSession) write(p []byte) bool {
+	t.mu.Lock()
+	sh, reconnecting := t.shell, t.reconnecting
+	t.mu.Unlock()
+	if reconnecting {
+		return true
+	}
+	_, err := sh.Write(p)
+	return err == nil
+}
+
+// resize records the page's terminal size and passes it to the shell.
+func (t *termSession) resize(cols, rows int) {
+	t.mu.Lock()
+	if cols > 0 && rows > 0 && cols <= 1000 && rows <= 1000 {
+		t.cols, t.rows = cols, rows
+	}
+	sh, reconnecting := t.shell, t.reconnecting
+	t.mu.Unlock()
+	if !reconnecting {
+		sh.Resize(cols, rows)
+	}
+}
+
+// close ends the session (and lets go of the connection if it is waiting
+// for it to come back).
+func (t *termSession) close() {
+	t.mu.Lock()
+	t.closed = true
+	sh := t.shell
+	t.mu.Unlock()
+	sh.Close()
+}
+
+// Messages telling the page that the connection dropped and came back.
+var (
+	msgReconnecting = []byte(`{"type":"reconnecting"}`)
+	msgReconnected  = []byte(`{"type":"reconnected"}`)
+)
+
+// setReconnecting marks the session as waiting for its connection, with a
+// line in the output, and tells the page.
+func (t *termSession) setReconnecting() {
+	t.mu.Lock()
+	t.reconnecting = true
+	if t.conn != nil {
+		writeTimeout(t.conn, websocket.MessageText, msgReconnecting)
+	}
+	t.mu.Unlock()
+	t.output([]byte("\r\n\x1b[2m[connection to the server lost — reconnecting…]\x1b[0m\r\n"))
+}
+
+// replaceShell puts the new shell in the session after a reconnect. It
+// reports false (closing sh) if the session was closed meanwhile.
+func (t *termSession) replaceShell(sh *sshx.Shell) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		sh.Close()
+		return false
+	}
+	t.shell, t.reconnecting = sh, false
+	if t.conn != nil {
+		writeTimeout(t.conn, websocket.MessageText, msgReconnected)
+	}
+	return true
 }
 
 // output records terminal output and sends it to the attached page.
@@ -329,7 +468,8 @@ func (t *termSession) attach(c *websocket.Conn) bool {
 	}
 	t.conn = c
 	if writeTimeout(c, websocket.MessageText, []byte(`{"type":"attached"}`)) != nil ||
-		(len(t.scroll) > 0 && writeTimeout(c, websocket.MessageBinary, t.scroll) != nil) {
+		(len(t.scroll) > 0 && writeTimeout(c, websocket.MessageBinary, t.scroll) != nil) ||
+		(t.reconnecting && writeTimeout(c, websocket.MessageText, msgReconnecting) != nil) {
 		c.CloseNow()
 		t.conn = nil
 	}
@@ -492,7 +632,7 @@ func (s *Server) reapTerminalsOnce() {
 		t.mu.Unlock()
 		if abandoned {
 			s.log.Info("closing abandoned terminal", "server", t.serverID)
-			t.shell.Close()
+			t.close()
 		}
 	}
 }

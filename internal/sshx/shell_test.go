@@ -140,7 +140,11 @@ func TestCloseShellsAndStopServer(t *testing.T) {
 	}
 }
 
-func TestShellEndsWhenConnectionDrops(t *testing.T) {
+// A dropped connection ends the shell, which keeps the connection: it
+// reconnects in the background (shown as reconnecting, never failed, while
+// the server is down), Reopen opens a new shell once it's back, and Close
+// lets go of it.
+func TestShellKeepsConnectionWhenItDrops(t *testing.T) {
 	e := newEnv()
 	srv, s := passwordServer(t, e)
 	m := newManager(t, e, nil)
@@ -148,16 +152,97 @@ func TestShellEndsWhenConnectionDrops(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	srv.SetRefusing(true)
 	srv.DropConnections()
 	select {
 	case <-sh.Done():
 	case <-time.After(5 * time.Second):
 		t.Fatal("terminal did not end when the connection dropped")
 	}
-	if code, _ := sh.ExitStatus(); code != -1 {
-		t.Fatalf("exit code %d, want -1 (connection lost)", code)
+	if code, err := sh.ExitStatus(); code != -1 || err == nil {
+		t.Fatalf("exit %d, %v; want -1 and the connection error", code, err)
+	}
+	waitFor(t, "reconnecting", func() bool { return e.sawEvent("server", s.ID, StateReconnecting) })
+	if _, err := sh.Reopen(80, 24); !errors.Is(err, ErrReconnecting) {
+		t.Fatalf("Reopen while down: %v, want ErrReconnecting", err)
+	}
+	time.Sleep(200 * time.Millisecond) // several refused reconnects
+	if e.sawEvent("server", s.ID, StateFailed) || e.sawEvent("server", s.ID, StateStopped) {
+		t.Fatal("the connection was reported failed or stopped while reconnecting")
+	}
+	select {
+	case <-sh.Dropped():
+		t.Fatal("the shell let go of its connection")
+	default:
+	}
+
+	srv.SetRefusing(false)
+	var sh2 *Shell
+	waitFor(t, "reopened", func() bool {
+		sh2, err = sh.Reopen(80, 24)
+		return err == nil
+	})
+	<-sh.Dropped()
+	r := readAll(sh2)
+	sh2.Write([]byte("echo reopened\r"))
+	r.waitFor(t, "reopened\r\n")
+	if m.ShellCount() != 1 {
+		t.Fatalf("%d shells, want 1", m.ShellCount())
+	}
+
+	// Closing a shell that is waiting to reconnect lets go of the connection.
+	srv.DropConnections()
+	<-sh2.Done()
+	sh2.Close()
+	<-sh2.Dropped()
+	if _, err := sh2.Reopen(80, 24); !errors.Is(err, ErrShellClosed) {
+		t.Fatalf("Reopen after Close: %v", err)
 	}
 	waitFor(t, "no shells", func() bool { return m.ShellCount() == 0 })
+	waitFor(t, "stopped", func() bool { return e.sawEvent("server", s.ID, StateStopped) })
+}
+
+// StopServer also ends a shell that is waiting to reconnect.
+func TestStopServerEndsLostShell(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	m := newManager(t, e, nil)
+	sh, err := m.OpenShell(s.ID, 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.SetRefusing(true)
+	srv.DropConnections()
+	<-sh.Done()
+	m.StopServer(s.ID)
+	select {
+	case <-sh.Dropped():
+	case <-time.After(5 * time.Second):
+		t.Fatal("StopServer kept the lost terminal's connection")
+	}
+}
+
+// A session that ends without an exit code while the connection stays up is
+// an ordinary end, not a lost connection.
+func TestShellEndsWithoutExitCode(t *testing.T) {
+	lostConnectionWait = 100 * time.Millisecond
+	t.Cleanup(func() { lostConnectionWait = 2 * time.Second })
+	e := newEnv()
+	_, s := passwordServer(t, e)
+	m := newManager(t, e, nil)
+	sh, err := m.OpenShell(s.ID, 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh.Write([]byte("hangup\r"))
+	select {
+	case <-sh.Dropped():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the shell kept its connection")
+	}
+	if code, err := sh.ExitStatus(); code != -1 || err != nil {
+		t.Fatalf("exit %d, %v; want -1, nil", code, err)
+	}
 }
 
 func TestShellErrors(t *testing.T) {

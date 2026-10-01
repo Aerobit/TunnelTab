@@ -377,9 +377,24 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   the dashboard's view shows *open in another tab* and **Bring back here**
   re-attaches.
 - **Other messages:** browser → app `{"type":"resize","cols":…,"rows":…}`;
-  app → browser `{"type":"exit","code":…,"message":…,"lost":…}` when the
-  shell ends; `lost` is true when the connection to the server dropped
-  (the view then opens a new session by itself, see below).
+  app → browser `{"type":"reconnecting"}` / `{"type":"reconnected"}` (see
+  below) and `{"type":"exit","code":…,"message":…}` when the session ends.
+- **A dropped connection keeps the session.** When the SSH connection
+  drops, the shell ends but `sshx.Shell` keeps its reference to the
+  connection (and its place in the Manager, so Disconnect, Quit and
+  `CloseShells` still find it). The connection therefore stays and
+  reconnects with the usual back-off, shown as `reconnecting` everywhere,
+  never `failed` — the same as when a tunnel holds it. The session tells
+  the page `reconnecting`, adds a grey line to the output, drops typing, and
+  every second (`terminalReopenEvery`) calls `Shell.Reopen`, which opens a
+  new shell on the connection once it is back (then lets go of the old
+  reference) and the page is told `reconnected`; same terminal ID, old
+  output kept. Closing the terminal (`DELETE`, the tab closing, Disconnect)
+  lets go of the connection at once; if reconnecting gives up (login or
+  host key), the session ends with the reason. A session that ends without
+  an exit code counts as a dropped connection only if the connection
+  closes too within 2 s (`lostConnectionWait`): otherwise it's an ordinary
+  end, so a server that hangs up a shell doesn't loop.
 - **View** (`js/termview.js`, `TermView`): one session in an element —
   xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon,
   the WebSocket, a message bar (New session / Reconnect / Bring back here);
@@ -389,11 +404,10 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   interrupts; Ctrl+V pastes; right-click copies a selection; the key
   handler calls preventDefault so Ctrl+Shift+C doesn't open Firefox's
   Inspector); re-attaches after a reload,
-  lock or blip; *New session* (or Enter) after the shell ends. After a lost
-  connection it opens a new session by itself, retrying with back-off
-  (1 s doubling to 15 s) while the server is unreachable, and keeps the old
-  output on screen (modes such as full screen are reset, without moving the
-  cursor).
+  lock or blip; *New session* (or Enter) after the shell ends. On
+  `reconnecting` it shows *Reconnecting…* and resets modes the old program
+  may have left on (full screen, mouse reporting…) without clearing the
+  screen or moving the cursor.
 - **CSP exception:** xterm.js creates `<style>` elements (it has no nonce
   support), so the two pages that show terminals — `/terminal.html` and the
   dashboard (`/`, `/index.html`) — get `style-src 'self' 'unsafe-inline'`.
