@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-01
+
 ### Fixed
 - When the connection to a server dropped and came back, a terminal stayed
   ended until you pressed Enter. It now reconnects by itself: the terminal
@@ -177,7 +179,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.3
 [0.4.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.2
 [0.4.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.0
