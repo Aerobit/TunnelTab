@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"sort"
 	"sync"
 	"time"
@@ -31,6 +32,11 @@ import (
 // closed, both connections drop, and the session is closed terminalDetachGrace
 // later (long enough for a reload to re-attach first). Closing the tab ends
 // the session, like closing a terminal window.
+//
+// Terminals shown inside the dashboard belong to that dashboard tab instead:
+// the dashboard's event stream carries a random per-tab ID (?client=<id>),
+// POST /api/terminals passes the same ID, and the session is kept while that
+// stream is open (and for terminalDetachGrace after, for a reload).
 //
 // 1. POST /api/terminals {serverId, cols, rows} opens the shell and returns
 //    {terminalId, ticket, serverName}. POST /api/terminals/{id}/attach returns
@@ -66,7 +72,17 @@ type terminals struct {
 	mu       sync.Mutex
 	sessions map[string]*termSession // by terminal ID
 	tickets  map[[32]byte]termTicket // ticket hash → terminal
+	clients  map[string]*termClient  // dashboard tabs (by client ID) that own terminals
 }
+
+// termClient is a dashboard tab, present while its event stream is open.
+type termClient struct {
+	streams  int
+	lastSeen time.Time // when its last stream closed
+}
+
+// validClientID matches the random per-tab ID the dashboard sends.
+var validClientID = regexp.MustCompile(`^[A-Za-z0-9_-]{16,64}$`)
 
 type termTicket struct {
 	id      string
@@ -76,6 +92,7 @@ type termTicket struct {
 type termSession struct {
 	id, serverID, serverName string
 	openedAt                 time.Time
+	owner                    string // client ID of the dashboard tab showing it, if any
 	shell                    *sshx.Shell
 
 	mu       sync.Mutex
@@ -87,7 +104,7 @@ type termSession struct {
 }
 
 func newTerminals() terminals {
-	return terminals{sessions: map[string]*termSession{}, tickets: map[[32]byte]termTicket{}}
+	return terminals{sessions: map[string]*termSession{}, tickets: map[[32]byte]termTicket{}, clients: map[string]*termClient{}}
 }
 
 // --- API ----------------------------------------------------------------
@@ -97,8 +114,13 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		ServerID string `json:"serverId"`
 		Cols     int    `json:"cols"`
 		Rows     int    `json:"rows"`
+		Client   string `json:"client"` // the dashboard tab that shows it, if any
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	if req.Client != "" && !validClientID.MatchString(req.Client) {
+		writeError(w, http.StatusBadRequest, "bad_request", "invalid client ID")
 		return
 	}
 	var name string
@@ -118,7 +140,7 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		s.writeSSHError(w, err)
 		return
 	}
-	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, lastSeen: s.now(), openedAt: s.now()}
+	t := &termSession{id: randomToken(), serverID: req.ServerID, serverName: name, shell: shell, lastSeen: s.now(), openedAt: s.now(), owner: req.Client}
 	s.terms.mu.Lock()
 	s.terms.sessions[t.id] = t
 	s.terms.mu.Unlock()
@@ -416,6 +438,37 @@ func (s *Server) reapTerminals(stop <-chan struct{}) {
 	}
 }
 
+// watchClient records that a dashboard tab's event stream is open, and
+// returns a function to call when it closes.
+func (s *Server) watchClient(id string) func() {
+	s.terms.mu.Lock()
+	c := s.terms.clients[id]
+	if c == nil {
+		c = &termClient{}
+		s.terms.clients[id] = c
+	}
+	c.streams++
+	s.terms.mu.Unlock()
+	return func() {
+		s.terms.mu.Lock()
+		c.streams--
+		c.lastSeen = s.now()
+		s.terms.mu.Unlock()
+	}
+}
+
+// clientPresent reports whether the dashboard tab id has an event stream
+// open, or had one within the grace period (a reload).
+func (s *Server) clientPresent(id string, now time.Time) bool {
+	if id == "" {
+		return false
+	}
+	s.terms.mu.Lock()
+	defer s.terms.mu.Unlock()
+	c := s.terms.clients[id]
+	return c != nil && (c.streams > 0 || now.Sub(c.lastSeen) <= terminalDetachGrace)
+}
+
 func (s *Server) reapTerminalsOnce() {
 	now := s.now()
 	s.terms.mu.Lock()
@@ -424,10 +477,16 @@ func (s *Server) reapTerminalsOnce() {
 			delete(s.terms.tickets, h)
 		}
 	}
+	for id, c := range s.terms.clients {
+		if c.streams == 0 && now.Sub(c.lastSeen) > terminalDetachGrace {
+			delete(s.terms.clients, id)
+		}
+	}
 	s.terms.mu.Unlock()
 	for _, t := range s.sessionsSnapshot() {
+		ownerHere := s.clientPresent(t.owner, now)
 		t.mu.Lock()
-		abandoned := t.conn == nil && t.watchers == 0 && !t.ended && now.Sub(t.lastSeen) > terminalDetachGrace
+		abandoned := t.conn == nil && t.watchers == 0 && !ownerHere && !t.ended && now.Sub(t.lastSeen) > terminalDetachGrace
 		t.mu.Unlock()
 		if abandoned {
 			s.log.Info("closing abandoned terminal", "server", t.serverID)
@@ -441,7 +500,8 @@ type terminalInfo struct {
 	ID       string    `json:"id"`
 	ServerID string    `json:"serverId"`
 	OpenedAt time.Time `json:"openedAt"`
-	Attached bool      `json:"attached"` // a page is showing it right now
+	Attached bool      `json:"attached"`         // a page is showing it right now
+	Client   string    `json:"client,omitempty"` // the dashboard tab that shows it
 }
 
 // terminalList lists the open terminal sessions, oldest first.
@@ -450,7 +510,7 @@ func (s *Server) terminalList() []terminalInfo {
 	for _, t := range s.sessionsSnapshot() {
 		t.mu.Lock()
 		if !t.ended {
-			list = append(list, terminalInfo{ID: t.id, ServerID: t.serverID, OpenedAt: t.openedAt, Attached: t.conn != nil})
+			list = append(list, terminalInfo{ID: t.id, ServerID: t.serverID, OpenedAt: t.openedAt, Attached: t.conn != nil, Client: t.owner})
 		}
 		t.mu.Unlock()
 	}

@@ -163,11 +163,42 @@ function start(cmd, args, opts) {
   await stolen.close();
   step("tunneled web app can't read the session or call the API");
 
-  // 5b. Terminal in a new tab.
+  // 5b. Terminals inside the page: open one, type, split (a second one opens
+  //     next to it), switch pages and come back (still there), pop one out.
+  await page.getByRole("button", { name: "+ New terminal" }).click();
+  await page.locator(".page-tabs a[aria-current=page]", { hasText: "Terminals" }).waitFor();
+  const paneText = (i) => page.locator(".term-pane").nth(i).locator(".xterm-rows").innerText();
+  const waitPane = async (i, want) => {
+    for (let n = 0; n < 100; n++) {
+      if ((await paneText(i).catch(() => "")).includes(want)) return;
+      await page.waitForTimeout(50);
+    }
+    throw new Error(`pane ${i} never showed ${JSON.stringify(want)}:\n${await paneText(i).catch(() => "")}`);
+  };
+  await waitPane(0, "Welcome to the fake shell");
+  await page.keyboard.type("echo hello from the browser"); // the new terminal has the keyboard
+  await page.keyboard.press("Enter");
+  await waitPane(0, "hello from the browser\n");
+  await page.getByRole("button", { name: "Split" }).click();
+  await page.locator(".term-pane").nth(1).waitFor();
+  await waitPane(1, "Welcome to the fake shell");
+  await page.locator(".term-pane").nth(1).locator(".xterm-helper-textarea").focus();
+  await page.keyboard.type("echo second terminal");
+  await page.keyboard.press("Enter");
+  await waitPane(1, "second terminal\n");
+  assert.strictEqual(await page.getByRole("tab", { name: /Terminal \d/ }).count(), 2);
+  await shot("07b-terminals-split");
+  await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
+  await page.locator(".kv").getByText("Terminals open").waitFor();
+  await page.locator(".page-tabs").getByRole("link", { name: /Terminals/ }).click();
+  await waitPane(0, "hello from the browser"); // kept while looking elsewhere
+  step("terminals open inside the page: type, split, switch away and back");
+
   const [termPage] = await Promise.all([
     context.waitForEvent("page"),
-    page.getByRole("button", { name: "Terminal ↗" }).click(),
+    page.getByRole("button", { name: "Pop out ↗" }).click(),
   ]);
+  await page.locator(".termview-msg", { hasText: "open in another tab" }).waitFor();
   termPage.on("pageerror", (e) => problems.push("terminal pageerror: " + e.message));
   termPage.on("console", (m) => m.type() === "error" && !m.text().startsWith("Failed to load resource") && problems.push("terminal console: " + m.text()));
   await termPage.locator("#term-status", { hasText: "Connected" }).waitFor();
@@ -179,16 +210,13 @@ function start(cmd, args, opts) {
     }
     throw new Error("terminal never showed " + JSON.stringify(want) + ":\n" + (await termText()));
   };
-  await waitTerm("Welcome to the fake shell");
+  await waitTerm("hello from the browser"); // the same session, replayed
   assert.strictEqual(await termPage.title(), "Demo VPS — TunnelTab");
-  await termPage.keyboard.type("echo hello from the browser");
-  await termPage.keyboard.press("Enter");
-  await waitTerm("hello from the browser\n");
   await termPage.keyboard.type("size");
   await termPage.keyboard.press("Enter");
   await waitTerm("x");
   await termPage.screenshot({ path: `${OUT}/07-terminal.png` });
-  step("terminal opens in a new tab and runs commands");
+  step("Pop out moves a terminal to its own tab (same session); the dashboard says where it went");
 
   // 5c. Copy and paste: Ctrl+C copies a selection (and doesn't interrupt),
   //     without one it interrupts; right-click copies; Ctrl+V pastes.
@@ -255,14 +283,14 @@ function start(cmd, args, opts) {
   assert.strictEqual(await notes.getAttribute("href"), "https://github.com/Aerobit/TunnelTab/releases/tag/v99.0.0");
   assert.strictEqual(updateRequests, 1);
   await shot("06-settings");
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
   // The check found 99.0.0: Settings shows a dot and reopens on Updates.
   await page.locator("#sidebar .update-dot").waitFor();
   await page.locator(".side-foot").screenshot({ path: `${OUT}/12-update-dot.png` });
   await page.getByRole("button", { name: /Settings/ }).click();
   assert.strictEqual(await page.getByRole("tab", { name: "Updates" }).getAttribute("aria-selected"), "true");
   assert.strictEqual(updateRequests, 1, "reopening Settings checked again");
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
   step("settings: fingerprint listed, master password changed, update check only on click, update dot");
 
   // 7. Lock / unlock while a long job runs in the terminal; the tunnel and the
@@ -272,9 +300,9 @@ function start(cmd, args, opts) {
   await waitTerm("tick 1");
   await page.getByRole("button", { name: "Lock" }).click();
   await page.getByRole("heading", { name: "Unlock TunnelTab" }).waitFor();
-  await termPage.locator("#term-message", { hasText: "Your session keeps running" }).waitFor();
+  await termPage.locator(".termview-msg", { hasText: "session keeps running" }).waitFor();
   assert.ok(!(await termText()).includes("hello from the browser"), "terminal output still readable while locked");
-  assert.ok(!(await termPage.locator("#terminal").isVisible()), "terminal view visible while locked");
+  assert.ok(!(await termPage.locator(".termview-screen").isVisible()), "terminal view visible while locked");
   await termPage.screenshot({ path: `${OUT}/08-terminal-locked.png` });
   await termPage.keyboard.type("typed while locked");
   await termPage.waitForTimeout(2500); // the job finishes while locked
@@ -285,8 +313,12 @@ function start(cmd, args, opts) {
   await page.waitForFunction(() => document.querySelector("button[type=submit]")?.textContent === "Unlock", null, { timeout: 5000 });
   await page.getByLabel("Master password").fill("a brand new passphrase");
   await page.getByRole("button", { name: "Unlock" }).click();
+  // The dashboard's own terminal (the second one) re-attaches by itself.
+  await page.locator(".page-tabs a[aria-current=page]", { hasText: "Terminals" }).waitFor();
+  await waitPane(1, "second terminal");
+  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
   await page.locator(".pill.active").waitFor();
-  step("lock and unlock (rate-limited retry), tunnel still running");
+  step("lock and unlock (rate-limited retry), tunnel still running, in-page terminal back");
 
   // The terminal re-attaches by itself; the job's output (including what it
   // printed while locked) is replayed; nothing typed while locked got through.
@@ -306,14 +338,14 @@ function start(cmd, args, opts) {
   await waitTerm("after unlock");
   await termPage.keyboard.type("exit 7");
   await termPage.keyboard.press("Enter");
-  await termPage.locator("#term-message", { hasText: "exited with code 7" }).waitFor();
+  await termPage.locator(".termview-msg", { hasText: "exited with code 7" }).waitFor();
   await termPage.close();
   step("reload re-attaches to the same session; exit code shown");
 
-  const [closing] = await Promise.all([
-    context.waitForEvent("page"),
-    page.getByRole("button", { name: "Terminal ↗" }).click(),
-  ]);
+  // A terminal page of its own (not shown in the dashboard) ends when its tab closes.
+  const serverPath = new URL(page.url()).hash.split("/")[2];
+  const closing = await context.newPage();
+  await closing.goto(new URL(page.url()).origin + "/terminal.html#" + serverPath);
   await closing.locator("#term-status", { hasText: "Connected" }).waitFor();
   const closingId = decodeURIComponent(closing.url().split("#")[1].split("/")[1]);
   await closing.close();
@@ -329,10 +361,15 @@ function start(cmd, args, opts) {
   }
   step(`closing a terminal tab ends its session (after ${Math.round((Date.now() - closedAt) / 1000)} s)`);
 
-  // 8. Reload keeps the session.
+  // 8. Reload keeps the session, and this tab's terminal comes back.
   await page.reload();
   await page.getByRole("heading", { name: "My VPSs" }).waitFor();
-  step("reload keeps the session");
+  await page.locator(".page-tabs").getByRole("link", { name: /Terminals/ }).click();
+  await page.getByRole("tab", { name: /Terminal 1/ }).waitFor();
+  assert.strictEqual(await page.getByRole("tab", { name: /Terminal \d/ }).count(), 1, "the exited terminal is still listed");
+  await waitPane(0, "second terminal");
+  await page.locator(".page-tabs").getByRole("link", { name: /Apps/ }).click();
+  step("reload keeps the session and brings this tab's terminal back");
 
   // 9. Edit server keeping the saved password.
   // Edit is in the server's "⋯" menu (also reachable by keyboard).

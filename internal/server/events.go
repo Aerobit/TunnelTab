@@ -120,6 +120,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if id := r.URL.Query().Get("terminal"); id != "" {
 		defer s.watchTerminal(id)()
 	}
+	// The dashboard passes its per-tab ID: terminals it shows are kept while
+	// this stream is open.
+	if id := r.URL.Query().Get("client"); validClientID.MatchString(id) {
+		defer s.watchClient(id)()
+	}
 	ch := s.events.subscribe()
 	defer s.events.unsubscribe(ch)
 	hb := time.NewTicker(heartbeatInterval)

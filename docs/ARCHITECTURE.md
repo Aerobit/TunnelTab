@@ -314,8 +314,9 @@ names up. Kept in memory only, never written to disk or the log file.
 ## Terminals
 
 ```
-dashboard: "Terminal ↗" ──opens──▶ terminal.html#<serverId>  (new tab, same origin)
-terminal.js: POST /api/terminals {serverId, cols, rows}
+dashboard: "+ New terminal" ──▶ TermView in the server's Terminals tab (js/termview.js)
+            "Pop out ↗"      ──▶ terminal.html#<serverId>/<terminalId> (same session, new tab)
+termview.js: POST /api/terminals {serverId, cols, rows, client?}
              ──▶ Manager.OpenShell (host-key/login errors come back as API errors)
              ◀── {terminalId, ticket, serverName}   → address becomes #<serverId>/<terminalId>
              WebSocket /api/terminals/connect?ticket=…  (one-time, 30 s; Origin checked)
@@ -347,18 +348,35 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   page and no watcher is closed 10 s later (`terminalDetachGrace`, checked
   every 5 s), whether or not the vault is locked — long enough for a reload
   to re-attach. `DELETE /api/terminals/{id}` ends one explicitly.
+- **Terminals in the dashboard belong to its tab.** The dashboard's event
+  stream carries a random per-tab ID (`?client=<id>`, kept in
+  sessionStorage so a reload keeps it), and it passes the same ID when
+  opening a terminal (`client`). A session whose owner's stream is open
+  (or closed less than 10 s ago) is kept, with or without an attached page
+  — so in-page terminals survive looking at other servers, locking and
+  reloading, and end when the dashboard tab closes. `GET /api/data` lists
+  sessions with their `client`, so a reloaded dashboard finds its own.
+  **Pop out** attaches `terminal.html` to the same session (taking it over);
+  the dashboard's view shows *open in another tab* and **Bring back here**
+  re-attaches.
 - **Other messages:** browser → app `{"type":"resize","cols":…,"rows":…}`;
   app → browser `{"type":"exit","code":…,"message":…}` when the shell ends.
-- **Page** (`web/static/terminal.html`, `js/terminal.js`, `terminal.css`):
-  xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon;
+- **View** (`js/termview.js`, `TermView`): one session in an element —
+  xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon,
+  the WebSocket, a message bar (New session / Reconnect / Bring back here);
+  used by the terminal page (`terminal.html`, `js/terminal.js`) and the
+  dashboard's Terminals tab (several per server, Split = two side by side);
   copy/paste like Windows Terminal (Ctrl+C copies a selection, otherwise
   interrupts; Ctrl+V pastes; right-click copies a selection; the key
   handler calls preventDefault so Ctrl+Shift+C doesn't open Firefox's
   Inspector); re-attaches after a reload,
   lock or blip; *New session* (or Enter) after the shell ends.
-- **CSP exception:** xterm.js creates `<style>` elements, so
-  `/terminal.html` alone gets `style-src 'self' 'unsafe-inline'`. Scripts
-  stay `'self'`-only everywhere; terminal output is drawn as text, never HTML.
+- **CSP exception:** xterm.js creates `<style>` elements (it has no nonce
+  support), so the two pages that show terminals — `/terminal.html` and the
+  dashboard (`/`, `/index.html`) — get `style-src 'self' 'unsafe-inline'`.
+  Inline *styles* only: scripts stay `'self'`-only everywhere, the dashboard
+  never inserts HTML (`h()` builds text nodes), and terminal output is drawn
+  as text.
 
 ## Dashboard (`web/static`)
 
@@ -373,6 +391,7 @@ the executable as-is.
 | `js/dialogs.js` | Native `<dialog>` modals (`openDialog`, `confirmDialog`), form `field`/`checkbox`, `tabs` (Settings), toasts |
 | `js/forms.js` | Project/server/service/settings dialogs; `withHostKeys(fn)` runs a connecting call and handles fingerprint confirmation |
 | `js/app.js` | Screens (signed out, setup, unlock, dashboard), state, rendering, live events, actions |
+| `js/termview.js` | `TermView`: one terminal session (xterm.js + WebSocket), used by the dashboard and the terminal page |
 | `terminal.html`, `js/terminal.js`, `terminal.css` | The terminal page (see Terminals) |
 | `vendor/xterm/` | xterm.js 6 + fit addon (MIT), bundled; see its README to update |
 | `app.css` | All styling (dark GitHub palette from local.browser) |

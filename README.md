@@ -107,7 +107,7 @@ protects an unattended PC.
 <td width="50%"><img src="docs/images/fingerprint.png" alt="Confirming a new server's fingerprint"></td>
 </tr>
 <tr>
-<td align="center"><b>Terminal</b><br><sub>A real SSH shell in a browser tab</sub></td>
+<td align="center"><b>Terminal</b><br><sub>A real SSH shell, right in the dashboard (or popped out)</sub></td>
 <td align="center"><b>Fingerprint check</b><br><sub>Nothing is sent until you confirm the server</sub></td>
 </tr>
 <tr>

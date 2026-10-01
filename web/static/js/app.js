@@ -8,6 +8,7 @@ import { confirmDialog, field, toast } from "./dialogs.js";
 import {
   projectDialog, serverDialog, serviceDialog, settingsDialog, testServer, withHostKeys,
 } from "./forms.js";
+import { TERM_STATES, TermView } from "./termview.js";
 
 const root = document.getElementById("app");
 
@@ -40,7 +41,7 @@ async function start() {
     if (err instanceof ApiError && err.status === 401) return showSignedOut();
     return showMessage("Can't reach TunnelTab", err.message);
   }
-  if (!stopEvents) stopEvents = streamEvents(onEvent, onStreamStatus);
+  if (!stopEvents) stopEvents = streamEvents(onEvent, onStreamStatus, `?client=${CLIENT_ID}`);
   await route();
 }
 
@@ -92,12 +93,14 @@ function showSignedOut() {
 function showStopped() {
   stopEvents?.();
   stopEvents = null;
+  dropViews();
   messageScreen("TunnelTab has stopped", h("p", {}, "All tunnels are closed. You can close this tab."));
 }
 
 function showUpdating(version) {
   stopEvents?.();
   stopEvents = null;
+  dropViews();
   closeDialogs();
   messageScreen("Updating TunnelTab",
     h("p", {}, `TunnelTab ${version} is starting and opens in a new tab. You can close this tab.`),
@@ -215,7 +218,9 @@ async function loadData() {
     state.servers = new Map(res.servers.map((s) => [s.id, s]));
     state.terminals = new Map((res.terminals || []).map((t) => [t.id, t]));
     state.activity = res.activity || [];
+    syncViews(state.terminals.values());
     renderDashboard();
+    allViews().forEach((v) => v.resume()); // after an unlock
   } catch (err) {
     if (err.code === "locked") {
       state.vault = "locked";
@@ -230,7 +235,7 @@ async function loadData() {
 }
 
 const reloadSoon = debounce(() => state.vault === "unlocked" && loadData(), 150);
-const renderSoon = debounce(() => state.vault === "unlocked" && state.data && renderDashboard(), 50);
+const renderSoon = debounce(() => state.vault === "unlocked" && state.data && currentScreen === "dashboard" && renderDashboard(), 50);
 
 function onEvent(ev) {
   switch (ev.type) {
@@ -253,8 +258,15 @@ function onEvent(ev) {
       state.activity.push(ev);
       if (state.activity.length > 200) state.activity.shift();
       if (ev.kind === "terminal") {
-        if (ev.state === "opened") state.terminals.set(ev.id, { id: ev.id, serverId: ev.serverId, openedAt: ev.at });
-        else state.terminals.delete(ev.id);
+        if (ev.state === "opened") {
+          const view = allViews().find((v) => v.terminalId === ev.id);
+          state.terminals.set(ev.id, { id: ev.id, serverId: ev.serverId, openedAt: ev.at, client: view ? CLIENT_ID : undefined });
+        } else {
+          state.terminals.delete(ev.id);
+          // A popped-out terminal that ended: say so here too.
+          const view = allViews().find((v) => v.terminalId === ev.id);
+          if (view?.state === "elsewhere") view.setState("ended", "The session ended.");
+        }
       }
       renderSoon();
       break;
@@ -298,7 +310,7 @@ const byOrder = (a, b) => a.order - b.order || a.name?.localeCompare?.(b.name) |
 
 // The dashboard has a sidebar (projects and servers) and one page at a time,
 // chosen by the address: #/ is the Overview, #/server/<id>/<tab> a server.
-const SERVER_TABS = ["overview", "apps", "activity"];
+const SERVER_TABS = ["overview", "apps", "terminals", "activity"];
 
 function currentRoute() {
   const m = location.hash.match(/^#\/server\/([^/]+)(?:\/([a-z]+))?$/);
@@ -338,6 +350,8 @@ function renderDashboard() {
     h("div", { class: "brand" }, logo(), h("span", {}, "TunnelTab")));
 
   currentScreen = "dashboard";
+  // A terminal being typed into keeps the keyboard across a redraw.
+  const typingIn = allViews().find((v) => v.el.contains(document.activeElement));
   replace(root, h("div", { class: ["shell", state.sidebarOpen && "nav-open"] },
     renderSidebar(r),
     h("div", { class: "content" },
@@ -346,7 +360,9 @@ function renderDashboard() {
       h("footer", { class: "footer" }, `TunnelTab ${state.version}`))));
 
   window.scrollTo(0, scroll);
-  if (focusGripAfterRender) {
+  if (typingIn?.el.isConnected) {
+    typingIn.focus();
+  } else if (focusGripAfterRender) {
     root.querySelector(`[data-grip="${CSS.escape(focusGripAfterRender)}"]`)?.focus();
     focusGripAfterRender = null;
   } else if (!sameRoute && lastRouteKey) {
@@ -549,13 +565,16 @@ function renderRunningNow() {
       open));
   }
   for (const t of state.terminals.values()) {
+    const view = allViews().find((v) => v.terminalId === t.id);
     rows.push(h("li", { class: "list-row" },
       h("span", { class: "dot connected" }),
       h("strong", {}, "Terminal"),
       h("a", { class: "muted", href: serverHref(t.serverId) }, serverName(t.serverId)),
       h("span", { class: "muted" }, `opened ${clock(t.openedAt)}`),
       h("span", { class: "grow" }),
-      h("button", { class: "chip stop", onclick: () => closeTerminal(t) }, "Close")));
+      view
+        ? h("button", { class: "chip open", onclick: () => showTerminal(t.serverId, view) }, "Show")
+        : h("button", { class: "chip stop", onclick: () => closeTerminal(t) }, "Close")));
   }
   return rows.length
     ? h("ul", { class: "list" }, rows)
@@ -579,7 +598,7 @@ function renderServerTable() {
         h("td", {}, statusPill(st)),
         h("td", {}, st?.since && st.state === "connected" ? duration(Date.now() - Date.parse(st.since)) : h("span", { class: "muted" }, "—")),
         h("td", {}, `${forwardsOf(s.id).length} of ${apps}`),
-        h("td", { class: "right" }, h("button", { class: "chip open", onclick: () => openTerminal(s) }, "Terminal ↗")));
+        h("td", { class: "right" }, h("button", { class: "chip open", onclick: () => newTerminal(s) }, "Terminal")));
     }))));
 }
 
@@ -653,7 +672,8 @@ function duration(ms) {
 function renderServerPage(s, tab) {
   const st = state.servers.get(s.id);
   const services = state.data.services.filter((x) => x.serverId === s.id).sort(byOrder);
-  const tabs = [["overview", "Overview"], ["apps", "Apps", services.length], ["activity", "Activity"]];
+  const views = termGroup(s.id).views;
+  const tabs = [["overview", "Overview"], ["apps", "Apps", services.length], ["terminals", "Terminals", views.length], ["activity", "Activity"]];
   return [
     h("div", { class: "page-head" },
       h("span", { class: ["dot", st?.state || "idle"] }),
@@ -661,7 +681,7 @@ function renderServerPage(s, tab) {
       h("span", { class: "mono muted" }, address(s)),
       statusPill(st),
       h("span", { class: "grow" }),
-      h("button", { class: "btn secondary open-btn", onclick: () => openTerminal(s), title: "Open an SSH terminal in a new tab" }, "Terminal ↗"),
+      h("button", { class: "btn secondary open-btn", onclick: () => newTerminal(s), title: "Open an SSH terminal on this page" }, "+ New terminal"),
       moreMenu(`More actions for ${s.name}`, [
         ["Test connection", () => testServer(s), "Check the connection and login"],
         ["Edit server", () => serverDialog(s.projectId, s)],
@@ -671,8 +691,9 @@ function renderServerPage(s, tab) {
       tabs.map(([id, label, count]) => h("a", { href: serverHref(s.id, id), "aria-current": id === tab ? "page" : null },
         label, count !== undefined ? h("span", { class: "count" }, String(count)) : null))),
     tab === "apps" ? renderAppsTab(s, services)
-      : tab === "activity" ? h("section", { class: "box" }, renderActivity(state.activity.filter((e) => e.serverId === s.id)))
-        : renderServerOverview(s, st, services),
+      : tab === "terminals" ? renderTerminalsTab(s)
+        : tab === "activity" ? h("section", { class: "box" }, renderActivity(state.activity.filter((e) => e.serverId === s.id)))
+          : renderServerOverview(s, st, services),
   ];
 }
 
@@ -961,9 +982,161 @@ async function openService(svc, button) {
   toast(`${svc.label} is ready.`, "success", link);
 }
 
-function openTerminal(server) {
-  // Same-origin page; it signs in with the session this tab already has.
-  window.open(`/terminal.html#${encodeURIComponent(server.id)}`, "_blank", "noopener");
+// --- Terminals inside the page ---------------------------------------------
+//
+// Each server's Terminals tab shows the terminals this dashboard tab opened
+// (TermView, see termview.js). They belong to this tab: its event stream
+// carries CLIENT_ID, which keeps them alive while the tab is open — also
+// while locked, or while you look at another server. Pop out moves one to its
+// own browser tab (terminal.html); "Bring back here" moves it back.
+
+const CLIENT_ID = (() => {
+  const make = () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(18));
+    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_");
+  };
+  try {
+    // Survives a reload of this tab, so its terminals are found again.
+    let id = sessionStorage.getItem("tunneltab.client");
+    if (!id) sessionStorage.setItem("tunneltab.client", (id = make()));
+    return id;
+  } catch {
+    return make();
+  }
+})();
+
+const termGroups = new Map(); // serverId → { views: [TermView], active, split }
+
+function termGroup(serverId) {
+  if (!termGroups.has(serverId)) termGroups.set(serverId, { views: [], active: null, split: false });
+  return termGroups.get(serverId);
+}
+
+const allViews = () => [...termGroups.values()].flatMap((g) => g.views);
+
+/** Forgets every terminal view (TunnelTab stopped or is restarting). */
+function dropViews() {
+  allViews().forEach((v) => v.dispose());
+  termGroups.clear();
+}
+
+function makeView(serverId, terminalId) {
+  const view = new TermView({
+    serverId, terminalId, client: CLIENT_ID,
+    onToast: (text) => toast(text, "success", null, 1500),
+    onChange: (v) => {
+      // Focus a new terminal once it's connected, if it's the one on screen.
+      if (v.state === "connected" && !v.focusedOnce && v.el.isConnected) {
+        v.focusedOnce = true;
+        v.focus();
+      }
+      renderSoon();
+    },
+  });
+  termGroup(serverId).views.push(view);
+  return view;
+}
+
+/** Opens a new terminal on the server's Terminals tab. */
+function newTerminal(server) {
+  const g = termGroup(server.id);
+  const view = makeView(server.id, null);
+  g.active = view;
+  const href = serverHref(server.id, "terminals");
+  if (location.hash === href) renderDashboard();
+  else location.hash = href;
+  view.start();
+}
+
+/** Shows the terminals this tab owns after a (re)load: e.g. after a reload. */
+function syncViews(terminals) {
+  const known = new Set(allViews().map((v) => v.terminalId));
+  for (const t of terminals) {
+    if (t.client !== CLIENT_ID || known.has(t.id)) continue;
+    const view = makeView(t.serverId, t.id);
+    termGroup(t.serverId).active ??= view;
+    // One that is popped out stays where it is until brought back.
+    if (t.attached) view.setState("elsewhere", "This terminal is open in another tab.");
+    else view.start();
+  }
+}
+
+function showTerminal(serverId, view) {
+  termGroup(serverId).active = view;
+  const href = serverHref(serverId, "terminals");
+  if (location.hash === href) renderDashboard();
+  else location.hash = href;
+  requestAnimationFrame(() => view.focus());
+}
+
+async function closeView(serverId, view) {
+  const g = termGroup(serverId);
+  if (view.state !== "ended" && !(await confirmDialog("Close terminal?",
+    "The terminal ends, along with anything still running in it.", { confirmLabel: "Close terminal", danger: true }))) return;
+  g.views = g.views.filter((v) => v !== view);
+  if (g.active === view) g.active = g.views[g.views.length - 1] || null;
+  if (g.views.length < 2) g.split = false;
+  try {
+    await view.close();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+  renderDashboard();
+}
+
+function popOut(view) {
+  if (!view?.terminalId) return;
+  window.open(`/terminal.html#${encodeURIComponent(view.serverId)}/${encodeURIComponent(view.terminalId)}`, "_blank", "noopener");
+}
+
+function toggleSplit(server) {
+  const g = termGroup(server.id);
+  g.split = !g.split;
+  if (g.split && g.views.length < 2) {
+    const active = g.active;
+    newTerminal(server); // the new one shows next to the current one
+    g.active = active;
+    renderDashboard();
+    return;
+  }
+  renderDashboard();
+}
+
+const TERM_DOT = { connected: "connected", connecting: "connecting", disconnected: "reconnecting", locked: "paused", elsewhere: "paused", ended: "failed" };
+
+function renderTerminalsTab(s) {
+  const g = termGroup(s.id);
+  if (!g.views.length) {
+    return h("section", { class: "box empty-terminals" },
+      h("p", {}, "No terminals open on this server."),
+      h("button", { class: "btn primary", onclick: () => newTerminal(s) }, "+ New terminal"),
+      h("p", { class: "hint" }, "Terminals stay open while this dashboard tab is open, even while you look at other servers or TunnelTab is locked."));
+  }
+  if (!g.views.includes(g.active)) g.active = g.views[0];
+  const second = g.split ? g.views.find((v) => v !== g.active) : null;
+  const shown = second ? [g.active, second] : [g.active];
+
+  const strip = h("div", { class: "term-strip" },
+    h("div", { class: "term-tabs", role: "tablist", "aria-label": `Terminals on ${s.name}` },
+      g.views.map((v, i) => {
+        const label = `Terminal ${i + 1}`;
+        return h("div", { class: ["term-tab", v === g.active && "active", v === second && "shown"] },
+          h("button", {
+            type: "button", role: "tab", class: "term-tab-btn", "aria-selected": String(v === g.active),
+            title: TERM_STATES[v.state]?.[1], onclick: () => showTerminal(s.id, v),
+          }, h("span", { class: ["dot", TERM_DOT[v.state]] }), label),
+          h("button", { type: "button", class: "term-tab-close", "aria-label": `Close ${label}`, onclick: () => closeView(s.id, v) }, "×"));
+      })),
+    h("button", { type: "button", class: "chip add", onclick: () => newTerminal(s) }, "+ New"),
+    h("span", { class: "grow" }),
+    h("span", { class: "hint term-hint" }, "Select, then Ctrl+C or right-click to copy · Ctrl+V or right-click to paste"),
+    h("button", { type: "button", class: "chip", "aria-pressed": String(g.split), onclick: () => toggleSplit(s), title: "Show two terminals side by side" }, "Split"),
+    h("button", { type: "button", class: "chip", disabled: !g.active.terminalId, onclick: () => popOut(g.active), title: "Move this terminal to its own browser tab" }, "Pop out ↗"));
+
+  const panes = h("div", { class: ["term-panes", second && "split"] },
+    shown.map((v) => h("div", { class: ["term-pane", second && v === g.active && "active"] }, v.el)));
+  requestAnimationFrame(() => shown.forEach((v) => v.fit()));
+  return [strip, panes];
 }
 
 async function openSettings() {

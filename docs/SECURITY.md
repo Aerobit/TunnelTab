@@ -41,7 +41,7 @@ private reporting instead: the repository's **Security** tab →
 | Someone else attaching to your terminal | A terminal is connected with a one-time ticket that expires after 30 seconds, only from the dashboard's own origin; unused tickets close their shell. |
 | Unwanted network traffic / tracking | TunnelTab contacts only your servers — except for updates in Settings, and only when you click. **Check for updates** asks GitHub's public release API; **Update now** downloads that release from TunnelTab's GitHub releases. Neither sends anything about you or your servers. |
 | A tampered update (hacked GitHub account or release page, or a swapped download) | **Update now** installs a release only if its `SHA256SUMS.txt` is signed (Ed25519) with TunnelTab's release key, whose public half is built into the program, and lists the zip for exactly that version with a matching SHA-256. The private key never touches GitHub's release pages or the repository; it is used only by the release workflow. Anything else is refused and nothing is changed. Only newer versions are installed, and only the program files, never the data folder. If the new version doesn't start, the previous one is put back. |
-| Supply-chain / CDN compromise of the UI | All web assets, including xterm.js, are bundled in the executable; nothing is loaded from the internet. The terminal page allows inline *styles* (xterm.js needs them) but never inline scripts. |
+| Supply-chain / CDN compromise of the UI | All web assets, including xterm.js, are bundled in the executable; nothing is loaded from the internet. The two pages that show terminals (the dashboard and the terminal page) allow inline *styles* (xterm.js needs them) but never inline scripts. |
 
 ### Not protected against
 

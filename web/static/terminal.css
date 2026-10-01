@@ -26,20 +26,7 @@ kbd {
 }
 .pill.connected { color: #56d364; background: rgba(46, 160, 67, .18); }
 .pill.ended { color: #ff7b72; background: rgba(248, 81, 73, .15); }
-.term-message {
-  flex: none;
-  padding: 8px 14px;
-  background: rgba(248, 81, 73, .1);
-  border-bottom: 1px solid rgba(248, 81, 73, .35);
-  font-size: 13px;
-}
-.term-view {
-  flex: 1;
-  min-height: 0;
-  padding: 6px 0 0 8px;
-}
-.term-view .xterm { height: 100%; }
-.term-view.hidden-while-locked { visibility: hidden; }
+.term-view { flex: 1; min-height: 0; display: flex; }
 
 @media (max-width: 640px) {
   .term-keys { display: none; }

@@ -123,26 +123,25 @@ function start(cmd, args) {
   await shot(page, "add-server");
   await page.getByRole("button", { name: "Cancel" }).click();
 
-  // Terminal.
+  // Terminal, inside the dashboard.
   await page.locator(".side-server", { hasText: "homelab" }).getByRole("link").click();
-  const [term] = await Promise.all([context.waitForEvent("page"), page.locator(".page-head").getByRole("button", { name: "Terminal ↗" }).click()]);
-  await term.setViewportSize({ width: 1000, height: 560 });
-  await term.locator("#term-status", { hasText: "Connected" }).waitFor();
+  await page.locator(".page-head").getByRole("button", { name: "+ New terminal" }).click();
+  await page.locator(".term-pane .xterm-rows", { hasText: "demo@homelab" }).waitFor();
   for (const cmd of ["uptime", "df -h", "docker ps"]) {
-    await term.keyboard.type(cmd, { delay: 15 });
-    await term.keyboard.press("Enter");
-    await term.waitForTimeout(250);
+    await page.keyboard.type(cmd, { delay: 15 });
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(250);
   }
-  await term.waitForTimeout(300);
-  await shot(term, "terminal");
-  await term.close();
+  await clearToasts();
+  await page.waitForTimeout(300);
+  await shot(page, "terminal");
 
   // Settings.
   await page.getByRole("button", { name: /Settings/ }).click();
   await page.getByRole("tab", { name: "Servers" }).click();
   await page.locator(".host-list code").filter({ hasText: "SHA256:" }).waitFor();
   await shot(page, "settings");
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
 
   // Unlock screen.
   await page.getByRole("button", { name: "Lock" }).click();

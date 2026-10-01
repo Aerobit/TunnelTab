@@ -492,3 +492,59 @@ a.chip { text-decoration: none; display: inline-block; }
 .list-row > * { flex: none; }
 .list-row > .grow { flex: 1; }
 .list-row > a, .list-row > span:not(.dot):not(.pill):not(.grow) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Terminal views (termview.js): the terminal page and the dashboard ---- */
+
+.termview { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #0d1117; }
+.termview-msg {
+  flex: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: rgba(210, 153, 34, .1);
+  border-bottom: 1px solid rgba(210, 153, 34, .35);
+}
+.termview-msg.bad { background: rgba(248, 81, 73, .1); border-bottom-color: rgba(248, 81, 73, .35); }
+.termview-screen { flex: 1; min-height: 0; padding: 6px 0 0 8px; }
+.termview-screen .xterm { height: 100%; }
+.termview-screen.hidden-while-locked { visibility: hidden; }
+
+/* --- Terminals tab ---------------------------------------------------------- */
+
+.pill.ended { color: #ff7b72; background: rgba(248, 81, 73, .15); }
+.empty-terminals { align-items: flex-start; }
+.term-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.term-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.term-tab {
+  display: flex; align-items: center;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(255, 255, 255, .03);
+}
+.term-tab.active { border-color: rgba(56, 139, 253, .6); background: rgba(56, 139, 253, .15); }
+.term-tab.shown { border-color: rgba(56, 139, 253, .35); }
+.term-tab-btn {
+  font: inherit; font-size: 13px;
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 4px 5px 10px;
+  color: var(--text); background: none; border: 0; cursor: pointer;
+}
+.term-tab-close {
+  font: inherit; font-size: 16px; line-height: 1;
+  padding: 4px 8px; color: var(--muted);
+  background: none; border: 0; cursor: pointer; border-radius: 0 6px 6px 0;
+}
+.term-tab-close:hover { color: var(--text); background: rgba(255, 255, 255, .08); }
+.chip[aria-pressed="true"] { color: #79c0ff; background: rgba(56, 139, 253, .2); border-color: rgba(56, 139, 253, .5); }
+.term-panes {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px;
+  height: calc(100vh - 290px); min-height: 320px;
+}
+.term-panes.split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.term-pane { display: flex; min-width: 0; min-height: 0; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
+.term-pane.active { border-color: rgba(56, 139, 253, .6); }
+
+@media (max-width: 860px) {
+  .term-panes.split { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); }
+}
+.term-hint { margin: 0; font-size: 12px; }
+@media (max-width: 1100px) { .term-hint { display: none; } }

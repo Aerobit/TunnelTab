@@ -421,7 +421,8 @@ func TestTerminalErrors(t *testing.T) {
 
 func TestTerminalPageCSP(t *testing.T) {
 	h := newHarness(t)
-	for path, wantInline := range map[string]bool{"/terminal.html": true, "/": false, "/index.html": false} {
+	// Inline styles (for xterm.js) only on the two pages that show terminals.
+	for path, wantInline := range map[string]bool{"/terminal.html": true, "/": true, "/index.html": true, "/logo.svg": false, "/js/app.js": false} {
 		resp, err := http.Get(h.base + path)
 		if err != nil {
 			t.Fatal(err)
@@ -435,4 +436,79 @@ func TestTerminalPageCSP(t *testing.T) {
 			t.Errorf("%s: unsafe-inline=%v, want %v (%s)", path, got, wantInline, csp)
 		}
 	}
+}
+
+func TestTerminalOwnedByDashboardTab(t *testing.T) {
+	h := ready(t)
+	serverID := trustedServer(t, h)
+	now := time.Now()
+	h.srv.now = func() time.Time { return now }
+	const client = "dashboard-tab-0123456789"
+
+	h.mustCall("POST", "/api/terminals", map[string]any{"serverId": serverID, "cols": 80, "rows": 24, "client": "bad id!"}, 400)
+	m := h.mustCall("POST", "/api/terminals", map[string]any{"serverId": serverID, "cols": 80, "rows": 24, "client": client}, 200)
+	c, _, err := dialTerminal(h, m["ticket"].(string), h.base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readUntil(t, c, "$ ")
+	if list := h.mustCall("GET", "/api/data", nil, 200)["terminals"].([]any); len(list) != 1 || list[0].(map[string]any)["client"] != client {
+		t.Fatalf("terminals: %v", list)
+	}
+
+	// The dashboard tab is open (its event stream): the terminal is kept with
+	// no page attached, while locked and long past the grace period.
+	stop := h.srv.watchClient(client)
+	c.CloseNow()
+	waitDetached(t, h)
+	h.mustCall("POST", "/api/vault/lock", nil, 200)
+	now = now.Add(10 * terminalDetachGrace)
+	h.srv.reapTerminalsOnce()
+	if h.srv.mgr.ShellCount() != 1 {
+		t.Fatal("closed a terminal whose dashboard tab is still open")
+	}
+
+	// The dashboard tab is closed: kept for the grace period (a reload), then closed.
+	stop()
+	h.srv.reapTerminalsOnce()
+	if h.srv.mgr.ShellCount() != 1 {
+		t.Fatal("closed before the grace period")
+	}
+	now = now.Add(terminalDetachGrace + time.Second)
+	h.srv.reapTerminalsOnce()
+	waitShells(t, h, 0)
+}
+
+func TestEventStreamWatchesClient(t *testing.T) {
+	h := ready(t)
+	const client = "dashboard-tab-0123456789"
+	streams := func() int {
+		h.srv.terms.mu.Lock()
+		defer h.srv.terms.mu.Unlock()
+		if c := h.srv.terms.clients[client]; c != nil {
+			return c.streams
+		}
+		return 0
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, "GET", h.base+"/api/events?client="+client, nil)
+	req.Header.Set("Authorization", "Bearer "+h.session)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitUntil := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for streams() != want {
+			if time.Now().After(deadline) {
+				t.Fatalf("streams %d, want %d", streams(), want)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	waitUntil(1)
+	cancel()
+	resp.Body.Close()
+	waitUntil(0)
 }

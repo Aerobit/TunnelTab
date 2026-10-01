@@ -307,11 +307,14 @@ func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		styleSrc := "'self'"
-		if r.URL.Path == "/terminal.html" {
-			// xterm.js creates <style> elements for colours and cell sizes.
-			// Allowing inline *styles* (never scripts) on this page only is
+		switch r.URL.Path {
+		case "/terminal.html", "/", "/index.html":
+			// xterm.js creates <style> elements for colours and cell sizes,
+			// and terminals show on the dashboard page as well as their own.
+			// Allowing inline *styles* (never scripts) on these pages only is
 			// the smallest exception that lets it render. Terminal output is
-			// drawn as text, not HTML, so it can't inject markup either way.
+			// drawn as text, and the dashboard never inserts HTML, so neither
+			// can inject markup or styles either way.
 			styleSrc = "'self' 'unsafe-inline'"
 		}
 		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src "+styleSrc+"; img-src 'self' data:; "+

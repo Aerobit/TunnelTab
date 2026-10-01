@@ -143,7 +143,7 @@ process.on("exit", () => {
   await page.getByText("TunnelTab 0.2.0 is available").waitFor();
   await page.getByRole("button", { name: "Update now" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${OUT}/20-update-available.png` });
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
   await clickUpdateNow(page);
   await page.screenshot({ path: `${OUT}/21-updating.png` });
   page = await newPage(await nthLink(2));

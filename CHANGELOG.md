@@ -16,6 +16,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
   windows the sidebar opens from a Menu button.
 
 ### Added
+- **Terminals inside the dashboard.** **+ New terminal** opens a shell in the
+  server's **Terminals** tab: several per server, **Split** for two side by
+  side, and **Pop out ↗** to move one to its own browser tab (and **Bring
+  back here**). They keep running while you look at other pages, through
+  locking and reloads, and end when the dashboard tab closes.
 - Each server shows how long it has been connected and how often it
   reconnected.
 - **Recent activity**: connections, tunnels and terminals since TunnelTab

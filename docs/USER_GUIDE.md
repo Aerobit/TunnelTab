@@ -173,28 +173,38 @@ ssh-ed25519 SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s
 
 ## Opening a terminal
 
-Click **Terminal ↗** on a server's page (or in the Overview's server table).
-A new browser tab opens with a shell on
-that server, logged in the same way as its tunnels (and reusing the same
-connection when one is open). Open as many as you like, side by side.
+Click **+ New terminal** on a server's page (or **Terminal** in the
+Overview's server table). A shell on that server opens in the server's
+**Terminals** tab, logged in the same way as its tunnels (and reusing the
+same connection when one is open).
+
+- **Several terminals:** each one gets a tab (*Terminal 1*, *Terminal 2*…);
+  **+ New** opens another, **×** closes one (and ends what runs in it).
+- **Split** shows two terminals side by side.
+- **Pop out ↗** moves the terminal to its own browser tab: the same session,
+  carrying on where it was. The dashboard then says *open in another tab*;
+  **Bring back here** moves it back.
+- Terminals keep running while you look at other servers or the Overview,
+  and come back after reloading the dashboard. Closing the dashboard tab
+  ends them a few seconds later, like closing a terminal window.
 
 - **Copy:** select text with the mouse, then press **Ctrl+C** or
-  right-click. *Copied* appears briefly at the top. (**Ctrl+Shift+C** and
+  right-click. *Copied* appears briefly. (**Ctrl+Shift+C** and
   **Ctrl+Insert** work too.)
 - **Paste:** **Ctrl+V**, or right-click with nothing selected → **Paste**.
   (**Ctrl+Shift+V** and **Shift+Insert** work too.)
 - With **nothing selected, Ctrl+C stops the running command**, as in any
   terminal. This works like Windows Terminal.
 - The terminal resizes with the window.
-- **Locking TunnelTab hides terminals but keeps them running.** The terminal
-  tab goes blank and says *Locked* — nobody can read it or type into it —
-  while your commands (an update, a `docker pull`…) carry on on the server.
-  After you unlock, the tab reconnects by itself and shows what happened.
-- **Reloading** the terminal tab reconnects to the same session.
-- **Closing** the terminal tab ends its session a few seconds later, like
-  closing a terminal window (programs started in it stop).
-- When the session ends (you typed `exit`, or the connection to the server
-  dropped), the top bar says why. Press **Enter** or click **New session**.
+- **Locking TunnelTab hides terminals but keeps them running.** Terminals go
+  blank and say *Locked* — nobody can read them or type into them — while
+  your commands (an update, a `docker pull`…) carry on on the server. After
+  you unlock, they reconnect by themselves and show what happened.
+- A popped-out terminal tab reconnects to the same session when reloaded.
+  Closing it leaves the terminal running in the dashboard (**Bring back
+  here**), as long as the dashboard tab is open.
+- When a session ends (you typed `exit`, or the connection to the server
+  dropped), a bar above it says why. Press **Enter** or click **New session**.
 - For jobs that must survive even a dropped connection (hours-long
   upgrades, big transfers), run them inside `tmux` or `screen` on the server,
   as with any SSH client.
