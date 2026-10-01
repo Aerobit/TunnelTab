@@ -213,9 +213,8 @@ choose another local port, or leave it blank.
 - **Change master password** — enter the current one and the new one twice.
 - **Updates** — shows your version. **Check for updates** asks GitHub for
   the latest release and, if there's a newer one, links to its release notes
-  and download. Nothing is downloaded or installed, and TunnelTab never
-  checks by itself — only when you click. See
-  [How do I update](#faq) for the steps.
+  and offers **Update now**. TunnelTab never checks or downloads by itself —
+  only when you click. See [How do I update](#faq).
 - **Confirmed servers** — every fingerprint you've trusted. **Forget**
   removes one, so the next connection asks you to confirm again.
 
@@ -343,10 +342,10 @@ run two copies of the *same* folder at the same time from different PCs
 (e.g. via cloud sync): the last one to save wins.
 
 **Does TunnelTab connect to anything besides my servers?**  
-Only when you click **Check for updates** in Settings: it then asks GitHub
-for the latest release. That's an ordinary web request (GitHub sees your IP
-address, nothing about your servers). Otherwise it contacts only your own
-servers.
+Only when you click **Check for updates** or **Update now** in Settings: it
+then asks GitHub for the latest release, or downloads it. Those are ordinary
+web requests (GitHub sees your IP address, nothing about your servers).
+Otherwise it contacts only your own servers.
 
 **Does it need an account, a server component or Tailscale?**  
 No. It talks SSH directly to your servers, like the `ssh` command does.
@@ -368,8 +367,17 @@ Delete the `data` folder and start again; your servers' own passwords and
 keys are unaffected.
 
 **How do I update TunnelTab without losing my servers?**  
-Everything you saved is in the `data` folder; the program files can be
-swapped freely.
+Everything you saved is in the `data` folder; updates only replace the
+program files.
+
+**The easy way (0.2.0 and later):** Settings → **Check for updates** →
+**Update now**. TunnelTab downloads the new version, checks that it's
+signed by TunnelTab (anything else is refused), replaces its program files
+and restarts in a new tab. Unlock with your master password as usual.
+Running tunnels and open terminals close during the restart. If the new
+version can't start, the previous one comes back by itself.
+
+**By hand** (e.g. from 0.1.0, which has no **Update now**):
 
 1. **Quit** TunnelTab (Quit button).
 2. Back up the `data` folder (copy it anywhere — it's encrypted).

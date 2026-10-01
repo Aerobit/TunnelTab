@@ -53,7 +53,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/sshx` | Connection pool, auth, host-key checks, forwards, terminals (PTY), keep-alive, reconnect | Done |
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
 | `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events, terminal WebSocket | Done |
-| `internal/update` | "Check for updates": asks GitHub's releases/latest API when the user clicks (never automatically), compares versions. Release signature format and verification (`signature.go`, for "Update now") | Done (Update now: in progress) |
+| `internal/update` | Updates, only when the user clicks: "Check for updates" (GitHub releases/latest API, version comparison) and "Update now" (download, signature + checksum verification, unpack, install with `.old` backups, rollback, cleanup). Release signature format in `signature.go` | Done |
 | `internal/platform` | Open browser, error dialog, instance file | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
 | `web/static` | The dashboard (vanilla JS modules + CSS) | Done |
@@ -270,7 +270,8 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `PUT /projects/order` | `{ids}` | new order of all projects |
 | `PUT /projects/{id}/servers/order` | `{ids}` | new order of the project's servers; servers from other projects in the list are moved in |
 | `PUT /servers/{id}/services/order` | `{ids}` | new order of the server's services |
-| `POST /updates/check` | | `{current, latest, newer, devBuild, url, publishedAt}` or `{noRelease}` — contacts GitHub, only on request |
+| `POST /updates/check` | | `{current, latest, newer, devBuild, canInstall, url, publishedAt}` or `{noRelease}` — contacts GitHub, only on request |
+| `POST /updates/install` | | "Update now": downloads, verifies and installs the latest release, answers `{status: "restarting", version}`, then restarts TunnelTab; 409 `update_unavailable` / `update_busy`, 502 `update_failed` (nothing changed) |
 | `POST /terminals` | `{serverId, cols, rows}` | opens a shell; `{terminalId, ticket, serverName}` (see Terminals) |
 | `POST /terminals/{id}/attach` | | `{ticket, …}` to re-attach to a running session; 423 while locked, 404 once ended |
 | `DELETE /terminals/{id}` | | ends a session |
@@ -401,7 +402,32 @@ endpoints, and focus returns to the moved item's grip after re-rendering.
 5. Run until Quit, Ctrl+C or SIGTERM; then stop all tunnels, end event
    streams, shut the HTTP server down and delete `instance.json`.
 
-Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`.
+6. **After "Update now"** (`restart.go`): the new files are already in place
+   (the old ones renamed to `*.old`). Shut down as in step 5, then start the
+   program again with the same arguments and wait up to 30 s for it to write
+   `instance.json` with its own PID. If it doesn't, kill it, put the `.old`
+   files back (`update.Rollback`) and start the previous version instead.
+   The new version deletes the `.old` files and `.update/` once running
+   (retrying, since Windows keeps the old program locked until it exits).
+
+### Updates (`internal/update`)
+
+`Check` reads the release's tag and assets; `canInstall` needs a newer
+release version (not a dev build) with `tunneltab-<v>.zip`,
+`SHA256SUMS.txt` and `SHA256SUMS.txt.sig`, all at
+`https://github.com/Aerobit/TunnelTab/releases/download/` (or the test
+server given with `--update-url`). `Download` fetches the checksums and
+signature, verifies the signature against `ReleasePublicKey`, requires the
+zip for exactly that version, downloads it into `.update/` next to the
+program, compares its SHA-256, and extracts only the known package files
+(`PackageFiles`) from the zip's `tunneltab/` folder. The running program
+receives this OS's binary even if it was renamed. `Install` renames each
+file it replaces to `<name>.old` (possible even for a running `.exe`) and
+moves the new one in; any failure rolls back.
+
+Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`,
+`--update-url <url>` (tests: a fake release API; downloads may then come
+from that server).
 
 ## Packaging (`scripts/`, `packaging/`)
 
@@ -427,7 +453,7 @@ vault would be lost with it).
 | Add a Go dependency | also check `go run ./scripts/notices` finds its license |
 | Change CI or releases | `.github/workflows/` |
 | Add a command-line flag | `cmd/tunneltab/main.go` |
-| Change how "Check for updates" works | `internal/update` (GitHub API, version comparison), `web/static/js/forms.js` (Settings) |
+| Change how updates work | `internal/update` (GitHub API, version comparison, download + verification, install), `cmd/tunneltab/restart.go` (restart, rollback), `web/static/js/forms.js` (Settings), `tests/e2e/update.js`. Keep CLAUDE.md invariant 9. |
 | Add an API endpoint | `internal/server/api.go` (`routes` + handler) and a test in `server_test.go`; document it in the API table above |
 | Add an event type | `internal/server/events.go` and the events table above |
 | Change the dashboard look | `web/static/app.css` |

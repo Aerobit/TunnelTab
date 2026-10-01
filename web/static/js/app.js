@@ -86,6 +86,15 @@ function showStopped() {
   screen("TunnelTab has stopped", h("p", {}, "All tunnels are closed. You can close this tab."));
 }
 
+function showUpdating(version) {
+  stopEvents?.();
+  stopEvents = null;
+  closeDialogs();
+  screen("Updating TunnelTab",
+    h("p", {}, `TunnelTab ${version} is starting and opens in a new tab. You can close this tab.`),
+    h("p", { class: "hint" }, "If it doesn't open within a minute, start TunnelTab again. If the new version can't start, the previous one comes back by itself."));
+}
+
 /** Rough password strength: 0 (weak) to 4 (strong). */
 function strength(pw) {
   let score = 0;
@@ -575,7 +584,10 @@ function openTerminal(server) {
 
 async function openSettings() {
   try {
-    await settingsDialog({ knownHosts: state.data?.knownHosts || [], minPasswordLen: state.minPasswordLen, version: state.version });
+    await settingsDialog({
+      knownHosts: state.data?.knownHosts || [], minPasswordLen: state.minPasswordLen, version: state.version,
+      runningTunnels: state.forwards.size, onRestarting: showUpdating,
+    });
   } catch (err) {
     toast(err.message, "error");
   }

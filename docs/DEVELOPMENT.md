@@ -87,10 +87,16 @@ cd tests/e2e
 npm ci
 npx playwright install --with-deps chromium   # once; drop --with-deps without admin rights
 node run.js
+node update.js    # "Update now": real 0.1.0 → signed 0.2.0 update, then a rollback
 ```
 
-CI runs it on every push (job *Browser end-to-end*); the screenshots are
-attached to the run as an artifact. Run it after any dashboard change.
+`update.js` builds two versions with a throwaway release key, serves a
+signed release from a fake GitHub (`--update-url`), clicks **Update now**
+and checks the restart, the vault, the cleanup and (on Linux) the rollback
+of a release that can't start.
+
+CI runs both on every push (job *Browser end-to-end*); the screenshots are
+attached to the run as an artifact. Run them after any dashboard change.
 
 ### README screenshots
 
@@ -197,7 +203,7 @@ Follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). In short:
 
 ### Release signing key
 
-"Update now" (planned for 0.2.0) installs only a zip whose SHA-256 is listed
+"Update now" installs only a zip whose SHA-256 is listed
 in a `SHA256SUMS.txt` signed with TunnelTab's release key. The key is an
 Ed25519 key pair:
 

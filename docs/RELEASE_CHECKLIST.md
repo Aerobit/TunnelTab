@@ -51,6 +51,9 @@ it yourself with `.\scripts\build.ps1 x.y.z`.
       ↑/↓ on a focused grip; drag a server into another project.
 - [ ] Settings → **Check for updates** reports the right thing (after the
       release: "up to date").
+- [ ] **Update now** from the previous release (Windows): it restarts on the
+      new version, the vault unlocks, and no `*.old` files remain in the
+      folder a minute later.
 - [ ] Disconnect the network briefly (or sleep the PC): tunnels show
       *Reconnecting…* and recover.
 - [ ] Quit: tunnels stop, the process exits, `data/instance.json` is gone.

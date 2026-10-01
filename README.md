@@ -165,7 +165,8 @@ OpenSSH, sshpass, Node.js or a browser extension. Details:
 | 🏠 **Local only** | The dashboard and every tunnel listen on `127.0.0.1`. Other devices and websites can't use them. |
 | 🔍 **Verified servers** | New server fingerprints must be confirmed. Changed fingerprints are blocked. |
 | 🔒 **Auto-lock** | The vault locks after inactivity (15 min by default) and the key is wiped from memory. |
-| 📡 **No phoning home** | TunnelTab contacts only your servers, plus GitHub when *you* click **Check for updates**. |
+| 📡 **No phoning home** | TunnelTab contacts only your servers, plus GitHub when *you* click **Check for updates** or **Update now**. |
+| ✍️ **Signed updates** | **Update now** installs a new version only if it's signed with TunnelTab's release key. Your data folder is never touched. |
 
 Read [SECURITY.md](docs/SECURITY.md) for the full threat model, including
 what TunnelTab does **not** protect against, and
@@ -203,9 +204,10 @@ portable, and you get your browser's tabs and zoom.
 <details>
 <summary><b>How do I update without losing my servers?</b></summary>
 <br>
-Everything you saved is in the <code>data</code> folder. Quit TunnelTab,
-replace the program files with the ones from the new zip, and leave
-<code>data</code> alone. Step-by-step: <a href="docs/USER_GUIDE.md#faq">User guide → FAQ</a>.
+Open <b>Settings → Check for updates → Update now</b>. TunnelTab downloads
+the new version, checks its signature and restarts. Everything you saved
+stays in the <code>data</code> folder, which updates never touch. Manual
+steps: <a href="docs/USER_GUIDE.md#faq">User guide → FAQ</a>.
 </details>
 
 <details>

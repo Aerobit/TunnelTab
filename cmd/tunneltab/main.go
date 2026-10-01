@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -121,6 +122,11 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// "Update now" replaces the files next to the running program, then
+	// shuts down like Quit and starts the new version (restart.go).
+	var restart atomic.Bool
+	exe, appDir := programPath()
+
 	srv, err := server.New(server.Config{
 		Paths:          paths,
 		BaseDir:        filepath.Dir(dataDir),
@@ -130,6 +136,12 @@ func run() int {
 		InstanceSecret: inst.Secret,
 		OnQuit:         stop,
 		UpdateURL:      *updateURL,
+		AppDir:         appDir,
+		ExeName:        filepath.Base(exe),
+		OnUpdateInstalled: func() {
+			restart.Store(true)
+			stop()
+		},
 	})
 	if err != nil {
 		return fail("Can't open the vault", err)
@@ -154,6 +166,9 @@ func run() int {
 	go srv.RunAutoLock(autoLockStop)
 
 	show(srv.LaunchURL(), *noBrowser, log)
+	if appDir != "" {
+		go cleanupAfterUpdate(appDir, log)
+	}
 
 	<-ctx.Done()
 	log.Info("shutting down")
@@ -163,6 +178,10 @@ func run() int {
 	defer cancel()
 	httpSrv.Shutdown(shutdownCtx)
 	log.Info("stopped")
+	if restart.Load() {
+		platform.RemoveInstance(paths.Instance)
+		return restartAfterUpdate(exe, paths.Instance, log)
+	}
 	return 0
 }
 
@@ -178,4 +197,17 @@ func show(url string, noBrowser bool, log *slog.Logger) {
 	}
 	fmt.Println("Open this link in your browser (valid for 2 minutes, one use):")
 	fmt.Println(url)
+}
+
+// programPath returns the running program and its folder, or "" if unknown
+// (then "Update now" is off).
+func programPath() (exe, dir string) {
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe)
+	}
+	if err != nil {
+		return "", ""
+	}
+	return exe, filepath.Dir(exe)
 }

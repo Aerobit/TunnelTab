@@ -102,6 +102,10 @@ jobs:
         working-directory: tests/e2e
         run: node run.js
 
+      - name: Run "Update now" test
+        working-directory: tests/e2e
+        run: node update.js
+
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v5

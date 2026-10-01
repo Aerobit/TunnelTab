@@ -7,8 +7,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Update now** (Settings → Check for updates): downloads the new version,
+  checks that it's signed by TunnelTab, replaces the program files and
+  restarts. Nothing happens unless you click; your data folder is never
+  touched; if the new version can't start, the previous one comes back.
+  Updating *to* 0.2.0 from 0.1.0 is still done by hand.
 - Releases are signed: the release workflow publishes `SHA256SUMS.txt.sig`,
-  an Ed25519 signature of `SHA256SUMS.txt` (groundwork for **Update now**).
+  an Ed25519 signature of `SHA256SUMS.txt`.
 
 ### Changed
 - **Terminal copy and paste work like Windows Terminal:** Ctrl+C copies

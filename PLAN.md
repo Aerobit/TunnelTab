@@ -190,7 +190,7 @@ Testing environment: everything through phase 6 is built and tested in the dev c
 
 System tray icon · macOS build · Linux ARM build · "Open in system terminal" (would need TunnelTab's host-key checks and vault keys handed to an external ssh) · jump hosts / ProxyJump · SOCKS proxy mode · SFTP file browser · import from local.browser or `~/.ssh/config` · code signing.
 
-## 11. v0.2.0 — "Update now" (planned)
+## 11. v0.2.0 — "Update now" (built; ships in 0.2.0)
 
 Today **Check for updates** only reports a newer version and links to the
 release page; you download, extract and replace the files yourself. v0.2.0
@@ -232,8 +232,8 @@ one last time. From 0.2.0 onward, **Update now** works.
 
 | # | Phase | Done when |
 |---|---|---|
-| U1 | **Release signing** — signing tool (`scripts/` or `internal/devtools`), release workflow signs `SHA256SUMS.txt`, key setup documented in `docs/RELEASE_CHECKLIST.md` / `DEVELOPMENT.md` | A test tag produces `SHA256SUMS.txt.sig` that verifies with the committed public key |
-| U2 | **Download + verify** (`internal/update`) — fetch assets, size/time limits, signature + hash check, safe unzip | Tests with a fake release server: good release accepted; bad signature, wrong hash, wrong host, oversized, older version, path-traversal zip all rejected |
-| U3 | **Install + restart** — rename/swap, relaunch, wait for port, cleanup of `.old`, rollback on failed start | Tests on Linux in the container; you test on Windows with a real 0.2.0 → 0.2.1 update |
-| U4 | **UI** — Update now button, confirm dialog listing open terminals/tunnels, progress and errors | `tests/e2e` walkthrough with the fake release server |
-| U5 | **Docs + security** — update CLAUDE.md invariant ("never downloads or runs anything" → "only on click, only signed releases"), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE (Updates + FAQ), ARCHITECTURE (API `POST /updates/install`), CHANGELOG | Docs match behaviour; security review of the new code done |
+| U1 ✅ | **Release signing** — signing tool (`scripts/` or `internal/devtools`), release workflow signs `SHA256SUMS.txt`, key setup documented in `docs/RELEASE_CHECKLIST.md` / `DEVELOPMENT.md` | A test tag produces `SHA256SUMS.txt.sig` that verifies with the committed public key |
+| U2 ✅ | **Download + verify** (`internal/update`) — fetch assets, size/time limits, signature + hash check, safe unzip | Tests with a fake release server: good release accepted; bad signature, wrong hash, wrong host, oversized, older version, path-traversal zip all rejected |
+| U3 ✅ | **Install + restart** — rename/swap, relaunch, wait for port, cleanup of `.old`, rollback on failed start | Tests on Linux in the container; you test on Windows with a real 0.2.0 → 0.2.1 update |
+| U4 ✅ | **UI** — Update now button, confirm dialog listing open terminals/tunnels, progress and errors | `tests/e2e` walkthrough with the fake release server |
+| U5 ✅ | **Docs + security** — update CLAUDE.md invariant ("never downloads or runs anything" → "only on click, only signed releases"), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE (Updates + FAQ), ARCHITECTURE (API `POST /updates/install`), CHANGELOG | Docs match behaviour; security review of the new code done |

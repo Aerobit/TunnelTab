@@ -1,7 +1,8 @@
-// Package update checks GitHub for a newer TunnelTab release. It runs only
-// when the user asks (Settings → Check for updates): TunnelTab never
-// contacts anything except your servers on its own. It never downloads or
-// runs anything; it only reports the latest version and links to it.
+// Package update checks GitHub for a newer TunnelTab release and installs
+// it. Everything here runs only when the user asks (Settings → Check for
+// updates, Update now): TunnelTab never contacts anything except your
+// servers on its own. An update is installed only if its checksum file is
+// signed with the release key (signature.go); see Download and Install.
 package update
 
 import (
@@ -31,8 +32,11 @@ type Result struct {
 	Latest      string `json:"latest"`      // newest release, e.g. "0.2.0"
 	Newer       bool   `json:"newer"`       // Latest is newer than Current
 	DevBuild    bool   `json:"devBuild"`    // Current isn't a release version
+	CanInstall  bool   `json:"canInstall"`  // Newer, and "Update now" can install it
 	URL         string `json:"url"`         // release page (download + notes)
 	PublishedAt string `json:"publishedAt"` // RFC 3339
+
+	assets map[string]string // file name → download URL (TunnelTab's own only)
 }
 
 // ErrNoRelease means GitHub has no published release yet.
@@ -67,6 +71,10 @@ func Check(ctx context.Context, client *http.Client, url, current string) (Resul
 		PublishedAt string `json:"published_at"`
 		Draft       bool   `json:"draft"`
 		Prerelease  bool   `json:"prerelease"`
+		Assets      []struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		} `json:"assets"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(&rel); err != nil {
 		return Result{}, errors.New("GitHub sent an unexpected answer")
@@ -83,6 +91,14 @@ func Check(ctx context.Context, client *http.Client, url, current string) (Resul
 	r := Result{Current: current, Latest: latest.String(), URL: rel.HTMLURL, PublishedAt: rel.PublishedAt}
 	if cur, ok := parse(current); ok {
 		r.Newer = latest.newerThan(cur)
+		r.assets = map[string]string{}
+		prefix := downloadPrefix(url)
+		for _, a := range rel.Assets {
+			if strings.HasPrefix(a.URL, prefix) {
+				r.assets[a.Name] = a.URL
+			}
+		}
+		r.CanInstall = r.Newer && r.assets[ZipName(r.Latest)] != "" && r.assets[SumsName] != "" && r.assets[SigName] != ""
 	} else {
 		r.DevBuild = true
 	}

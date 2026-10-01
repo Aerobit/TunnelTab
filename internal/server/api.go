@@ -29,6 +29,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("GET /api/events", s.handleEvents)
 	a("POST /api/quit", s.handleQuit)
 	a("POST /api/updates/check", s.handleCheckUpdates)
+	a("POST /api/updates/install", s.handleInstallUpdate)
 	a("GET /api/settings", s.handleGetSettings)
 	a("PUT /api/settings", s.handlePutSettings)
 

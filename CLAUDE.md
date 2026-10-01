@@ -44,17 +44,23 @@ one, stop and ask the user instead.
    (`UnknownHostKeyError.Key`); changed keys are blocked. Never use
    `ssh.InsecureIgnoreHostKey()`, even in tests (use `sshtest`).
 7. **No local shell is invoked.** SSH is done in-process with
-   `golang.org/x/crypto/ssh`. The only external program launched is the
-   browser opener (`internal/platform`), with arguments passed as a slice.
-   When the vault locks, terminal pages are detached and blanked (the shells
+   `golang.org/x/crypto/ssh`. The only external programs launched are the
+   browser opener (`internal/platform`) and, after "Update now", TunnelTab's
+   own program (`cmd/tunneltab/restart.go`), with arguments passed as a
+   slice. When the vault locks, terminal pages are detached and blanked (the shells
    keep running); re-attaching needs the vault unlocked.
 8. **IDs are generated server-side** and all input is validated in
    `internal/model` before use.
 9. **No network access except SSH to the user's servers** — with one
-   exception: "Check for updates" (`internal/update`) asks GitHub's release
-   API, and only when the user clicks it; never add automatic checks. It
-   only reports versions and links to TunnelTab's release pages; it never
-   downloads or runs anything. The web UI loads nothing from the internet:
+   exception: updates (`internal/update`), and only when the user clicks.
+   "Check for updates" asks GitHub's release API; it only links to
+   TunnelTab's release pages. "Update now" downloads that release's files
+   from TunnelTab's GitHub releases and installs them **only** if
+   `SHA256SUMS.txt` is signed with the release key (`ReleasePublicKey`)
+   and lists the zip for exactly that version with a matching SHA-256.
+   Never add automatic checks or downloads, never skip or weaken these
+   checks, and never replace anything but the program files (never the
+   data folder). The web UI loads nothing from the internet:
    all assets (including xterm.js) are vendored in `web/static/` and
    embedded. Strict CSP, no inline scripts.
 10. **Portable mode:** all data lives in the data folder (default `data/` next

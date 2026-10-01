@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Aerobit/TunnelTab/internal/config"
@@ -46,6 +48,15 @@ type Config struct {
 	OnQuit         func()        // called after the Quit request is answered
 	UpdateURL      string        // releases/latest API for "Check for updates" (default: GitHub)
 
+	// "Update now". AppDir is the folder with the running program and
+	// ExeName its file name; an empty AppDir or a nil OnUpdateInstalled
+	// (e.g. tests, dev builds) turns it off. OnUpdateInstalled restarts
+	// TunnelTab; it is called after the request is answered.
+	AppDir            string
+	ExeName           string
+	OnUpdateInstalled func()
+	ReleaseKey        ed25519.PublicKey // nil = update.PublicKey() (tests use their own)
+
 	// Timing overrides for tests (zero = defaults).
 	UnlockBaseDelay time.Duration
 	Now             func() time.Time
@@ -53,12 +64,13 @@ type Config struct {
 
 // Server is the local web server: dashboard files, JSON API and event stream.
 type Server struct {
-	cfg    Config
-	log    *slog.Logger
-	now    func() time.Time
-	static http.Handler
-	events *broker
-	mgr    *sshx.Manager
+	cfg        Config
+	installing atomic.Bool // "Update now" is running
+	log        *slog.Logger
+	now        func() time.Time
+	static     http.Handler
+	events     *broker
+	mgr        *sshx.Manager
 
 	addrMu sync.RWMutex
 	hosts  map[string]bool // allowed Host headers, e.g. "127.0.0.1:47811"

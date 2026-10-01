@@ -14,8 +14,9 @@ import (
 // installs only downloads that match a checksum file signed with it.
 //
 // To change it, see docs/DEVELOPMENT.md → Release signing key. Builds with a
-// different key can't install releases signed with the old one.
-const ReleasePublicKey = ""
+// different key can't install releases signed with the old one. It is a var
+// only so the browser test can build with a test key (-ldflags -X).
+var ReleasePublicKey = "Oohw9X83lvojAGUEtCjwJwIj3dzVRttWSOfm1uk2wCU="
 
 // signContext is put in front of the checksum file before signing, so a
 // TunnelTab release signature can't be mistaken for any other signature.

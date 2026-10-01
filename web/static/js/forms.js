@@ -293,7 +293,7 @@ export async function serviceDialog(serverId, service) {
 
 // --- Settings ---------------------------------------------------------------
 
-export async function settingsDialog({ knownHosts, minPasswordLen, version }) {
+export async function settingsDialog({ knownHosts, minPasswordLen, version, runningTunnels = 0, onRestarting }) {
   const current = await api("GET", "/settings");
   const lock = select(
     [["0", "Never"], ["5", "5 minutes"], ["15", "15 minutes"], ["30", "30 minutes"], ["60", "1 hour"], ["240", "4 hours"]],
@@ -331,7 +331,8 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version }) {
     }
   });
 
-  // Updates: checked only when the user clicks (TunnelTab never checks by itself).
+  // Updates: checked, and installed, only when the user clicks (TunnelTab
+  // never checks by itself). "Update now" installs only signed releases.
   const updateBtn = h("button", { type: "button", class: "btn secondary" }, "Check for updates");
   const updateStatus = h("span", { class: "inline-status", role: "status" });
   updateBtn.addEventListener("click", async () => {
@@ -350,6 +351,11 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version }) {
         const date = r.publishedAt ? ` (released ${new Date(r.publishedAt).toLocaleDateString()})` : "";
         updateStatus.classList.add("ok");
         updateStatus.replaceChildren(`TunnelTab ${r.latest} is available${date}. `, releaseLink("Release notes and download"));
+        if (r.canInstall) {
+          const installBtn = h("button", { type: "button", class: "btn primary small" }, "Update now");
+          installBtn.addEventListener("click", () => installUpdate(r.latest, installBtn));
+          updateStatus.append(" ", installBtn);
+        }
       } else if (r.devBuild) {
         updateStatus.replaceChildren(`This is a development build. The latest release is ${r.latest}. `, releaseLink("View it"));
       } else {
@@ -363,6 +369,27 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version }) {
       updateBtn.disabled = false;
     }
   });
+
+  async function installUpdate(latest, installBtn) {
+    const tunnels = runningTunnels
+      ? `${runningTunnels} running tunnel${runningTunnels === 1 ? "" : "s"} and any open terminals will close. `
+      : "Any open terminals will close. ";
+    if (!(await confirmDialog("Update TunnelTab",
+      `TunnelTab will download ${latest}, check that it's signed by TunnelTab, and restart. ` +
+      tunnels + "Afterwards, unlock with your master password as usual. Your data isn't changed.",
+      { confirmLabel: "Update now" }))) return;
+    installBtn.disabled = updateBtn.disabled = true;
+    updateStatus.className = "inline-status";
+    updateStatus.replaceChildren("Downloading and checking the update…");
+    try {
+      const res = await api("POST", "/updates/install");
+      onRestarting?.(res.version);
+    } catch (err) {
+      updateStatus.classList.add("bad");
+      updateStatus.replaceChildren(err.message);
+      installBtn.disabled = updateBtn.disabled = false;
+    }
+  }
 
   const hostList = h("ul", { class: "host-list" });
   if (knownHosts.length === 0) hostList.appendChild(h("li", { class: "hint" }, "No servers confirmed yet."));
@@ -398,7 +425,7 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version }) {
       h("div", { class: "row" }, field("Current", oldPw), field("New", newPw), field("Repeat new", newPw2)),
       h("div", { class: "inline-actions" }, changePw, pwStatus),
       h("h3", {}, "Updates"),
-      h("p", { class: "hint" }, `You're running TunnelTab ${version}. Checking asks GitHub for the latest release; nothing is downloaded or installed, and TunnelTab never checks on its own.`),
+      h("p", { class: "hint" }, `You're running TunnelTab ${version}. Checking asks GitHub for the latest release. An update is downloaded only when you click Update now, and installed only if it's signed by TunnelTab. TunnelTab never checks on its own.`),
       h("div", { class: "inline-actions" }, updateBtn, updateStatus),
       h("h3", {}, "Confirmed servers"),
       h("p", { class: "hint" }, "Server fingerprints you have trusted. They are stored inside the encrypted vault."),
