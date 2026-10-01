@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-01
+
 ### Fixed
 - Auto-lock never locked while a dashboard tab was open, even if nobody
   used it: the background server-health round (every 30 s) counted as
@@ -165,7 +167,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.2
 [0.4.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.0
 [0.3.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.3.1
