@@ -296,7 +296,7 @@ https://claude.ai/artifact/J8Tm3ZRyoxxjK41uDUoRoz.
 | D3 ✅ | **Ping, traffic, notes** — keep-alive RTT, per-tunnel byte counters (today + last hour chart), server notes in the vault | 0.4.0 | Unit tests (counters, vault round-trip with notes, older vault without notes); browser test |
 | D4 ✅ | **Server health (opt-in)** — Settings → Server health tab with a switch per server (plus one on the server's Overview tab), the fixed read-only command, strict parser, 30 s polling only while connected and the dashboard is open | 0.4.0 | Parser tests with real `/proc` samples and hostile output (huge, malformed); test server answers the command; browser test: off by default, on, off again stops polling; SECURITY.md + SECURITY_REVIEW.md updated |
 
-## 13. v0.5.0 — Service discovery (built, not yet released)
+## 13. v0.5.0 — Service discovery (released)
 
 Built as proposed below (S1, S2, S4). Decisions taken: the command runs
 `ss -tlnp`, `netstat -tln` and `docker ps` (three fields, JSON); ports on
@@ -354,7 +354,7 @@ tick the ones to add — nothing is added without your choice.
 
 ## 14. Future — Smaller ideas (backlog)
 
-### Progress bar while updating (built for v0.5.0, not yet released)
+### Progress bar while updating (released in v0.5.0)
 
 Built as described. The *Updating* screen tells the restart by the old
 session being refused, then asks the new tab's session which version runs

@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-02
+
 ### Added
 - **Find services**: on a server's **Services** tab, **Find services…**
   lists the web apps the server runs, so you don't need to know their
@@ -194,7 +196,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.5.0
 [0.4.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.3
 [0.4.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.2
 [0.4.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.1
