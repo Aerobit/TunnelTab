@@ -6,6 +6,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Overview → Running now** no longer cuts the server name, address and
+  traffic short on a normal-width window: each row shows what runs and
+  where, with the address and today's traffic on a second line.
+
 ## [0.6.0] - 2026-10-02
 
 ### Changed

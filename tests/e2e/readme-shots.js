@@ -40,8 +40,10 @@ function start(cmd, args) {
 (async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tunneltab-shots-"));
   const exe = process.platform === "win32" ? ".exe" : "";
+  // Shown in the footer: the latest released version in CHANGELOG.md.
+  const version = fs.readFileSync(path.join(repo, "CHANGELOG.md"), "utf8").match(/^## \[(\d+\.\d+\.\d+)\]/m)[1];
   for (const [out, pkg] of [["tunneltab", "./cmd/tunneltab"], ["fakessh", "./internal/devtools/fakessh"]]) {
-    execFileSync("go", ["build", "-ldflags", "-X main.version=0.1.0", "-o", path.join(tmp, out + exe), pkg], { cwd: repo, stdio: "inherit" });
+    execFileSync("go", ["build", "-ldflags", "-X main.version=" + version, "-o", path.join(tmp, out + exe), pkg], { cwd: repo, stdio: "inherit" });
   }
   const fake = start(path.join(tmp, "fakessh" + exe), ["-demo", "-port", "2222"]);
   const [, webPort] = await fake.waitFor(/remote port (\d+)/);
@@ -77,14 +79,12 @@ function start(cmd, args) {
     const web = await call("POST", "/servers", { projectId: clients.id, name: "Web VPS", host: "vps1.example.com", port: 22, username: "deploy", auth: { type: "keyFile", keyPath: "keys/web-vps_ed25519" } });
     const staging = await call("POST", "/servers", { projectId: clients.id, name: "Staging", host: "staging.example.com", port: 2200, username: "deploy", auth: { type: "agent" } });
     const n8n = await call("POST", "/services", { serverId: homelab.id, label: "n8n", remotePort: Number(webPort), localPort: 5678 });
-    const grafana = await call("POST", "/services", { serverId: homelab.id, label: "Grafana", remotePort: 3000, localPort: 3000 });
     await call("PUT", `/servers/${homelab.id}/health`, { enabled: true });
     await call("PUT", `/servers/${homelab.id}/notes`, { notes: "Backups run nightly at 02:00 (restic → offsite).\nPortainer admin login is in the password manager.\nReboot window: Sunday 04:00." });
-    await call("POST", "/services", { serverId: homelab.id, label: "Portainer", remotePort: 9443, protocol: "https" });
     await call("POST", "/services", { serverId: nas.id, label: "File browser", remotePort: 8080 });
     await call("POST", "/services", { serverId: web.id, label: "Admin panel", remotePort: 8080, path: "/admin" });
     await call("POST", "/services", { serverId: staging.id, label: "Analytics", remotePort: 8000 });
-    return { homelab: homelab.id, n8n: n8n.id, grafana: grafana.id };
+    return { homelab: homelab.id, n8n: n8n.id };
   }, webPort);
   await page.getByRole("heading", { name: "Client sites" }).waitFor();
 
@@ -97,6 +97,20 @@ function start(cmd, args) {
   await shot(page, "fingerprint");
   await page.getByRole("button", { name: "Trust and connect" }).click();
   await page.getByText("Connected to homelab.").waitFor();
+
+  // Find services: Grafana and Portainer are added from what the demo server
+  // runs (n8n is already added, on the demo web app's port).
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
+  await page.getByRole("button", { name: "Find services…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Find services" }).click();
+  const found = page.getByRole("dialog");
+  await found.getByRole("heading", { name: "Services found on homelab" }).waitFor();
+  await clearToasts();
+  await page.mouse.move(0, 0);
+  await shot(page, "find-services");
+  await found.getByLabel("Add port 5678", { exact: true }).uncheck(); // n8n is there already
+  await found.getByRole("button", { name: "Add selected" }).click();
+  await page.locator(".service", { hasText: "Portainer" }).waitFor();
 
   // Two running tunnels (Services tab), then the server page and the Overview.
   await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();

@@ -627,22 +627,27 @@ function problemText(st) {
   return `couldn't connect${st.error ? ": " + st.error : "."}`;
 }
 
+/** Running now: what runs and where on the first line, details below. */
+const runningText = (title, details) =>
+  h("div", { class: "running-text" }, h("div", {}, title), h("div", { class: "muted" }, details));
+
 function renderRunningNow() {
   const d = state.data;
   const rows = [];
   for (const svc of [...d.services].sort(byOrder)) {
     const fwd = state.forwards.get(svc.id);
     if (!fwd) continue;
+    const traffic = todayText(trafficOf([svc.id]));
     const open = h("button", { class: "chip open" }, "Open ↗");
     open.addEventListener("click", () => openService(svc, open));
     rows.push(h("li", { class: "list-row" },
       h("span", { class: ["dot", fwd.state === "active" ? "connected" : fwd.state] }),
-      h("strong", {}, svc.label),
-      h("a", { class: "muted", href: serverHref(svc.serverId, "services") }, serverName(svc.serverId)),
-      fwd.state === "active"
-        ? h("a", { class: "mono", href: serviceURL(svc, fwd), target: "_blank", rel: "noopener noreferrer" }, `localhost:${fwd.localPort}`)
-        : h("span", { class: "muted" }, STATE_TEXT[fwd.state] || fwd.state),
-      h("span", { class: "muted" }, todayText(trafficOf([svc.id]))),
+      runningText(
+        [h("strong", {}, svc.label), " ", h("a", { class: "muted", href: serverHref(svc.serverId, "services") }, serverName(svc.serverId))],
+        [fwd.state === "active"
+          ? h("a", { class: "mono", href: serviceURL(svc, fwd), target: "_blank", rel: "noopener noreferrer" }, `localhost:${fwd.localPort}`)
+          : STATE_TEXT[fwd.state] || fwd.state,
+        traffic && ` · ${traffic}`]),
       h("span", { class: "grow" }),
       h("button", { class: "chip stop", onclick: () => stopService(svc) }, "Stop"),
       open));
@@ -651,9 +656,9 @@ function renderRunningNow() {
     const view = allViews().find((v) => v.terminalId === t.id);
     rows.push(h("li", { class: "list-row" },
       h("span", { class: "dot connected" }),
-      h("strong", {}, "Terminal"),
-      h("a", { class: "muted", href: serverHref(t.serverId) }, serverName(t.serverId)),
-      h("span", { class: "muted" }, `opened ${clock(t.openedAt)}`),
+      runningText(
+        [h("strong", {}, "Terminal"), " ", h("a", { class: "muted", href: serverHref(t.serverId) }, serverName(t.serverId))],
+        `opened ${clock(t.openedAt)}`),
       h("span", { class: "grow" }),
       view
         ? h("button", { class: "chip open", onclick: () => showTerminal(t.serverId, view) }, "Show")

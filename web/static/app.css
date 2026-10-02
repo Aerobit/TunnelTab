@@ -492,6 +492,9 @@ a.chip { text-decoration: none; display: inline-block; }
 .list-row { flex-wrap: nowrap; }
 .list-row > * { flex: none; }
 .list-row > .grow { flex: 1; }
+.list-row > .running-text { flex: 0 1 auto; min-width: 0; line-height: 1.4; }
+.running-text > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.running-text .muted { font-size: 12.5px; }
 .list-row > a, .list-row > span:not(.dot):not(.pill):not(.grow) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* --- Terminal views (termview.js): the terminal page and the dashboard ---- */

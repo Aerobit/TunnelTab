@@ -17,11 +17,13 @@ A portable SSH terminal and web-UI launcher for your own VPSs.<br>
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/built%20with-Go-00ADD8?logo=go&logoColor=white)](https://go.dev)
 
-[Features](#-features) · [Screenshots](#-screenshots) · [Quick start](#-quick-start) · [Security](#-security) · [FAQ](#-faq) · [User guide](docs/USER_GUIDE.md)
+[Features](#-features) · [Screenshots](#-screenshots) · [Quick start](#-quick-start) · [Security](#-security) · [FAQ](#-faq) · [User guide](docs/USER_GUIDE.md) · [Changelog](CHANGELOG.md)
 
 <br>
 
 <img src="docs/images/dashboard.png" alt="TunnelTab Overview: sidebar with projects and servers; totals, running tunnels, recent activity and all servers" width="900">
+
+<sub><b>Overview</b>: what's online, what's running and what just happened, across all your servers.</sub>
 
 </div>
 
@@ -35,7 +37,7 @@ means remembering `ssh -L 5678:localhost:5678 …` commands, keeping terminal
 windows open, and starting over after every Wi-Fi drop.
 
 **TunnelTab turns all of that into buttons.** Add your servers once, then
-click **Open ↗** to reach a web app or **Terminal ↗** to get a shell, right
+click **Open ↗** to reach a web app or **+ New terminal** to get a shell, right
 in your browser.
 
 ## ✨ Features
@@ -44,24 +46,47 @@ in your browser.
 <tr>
 <td width="33%" valign="top">
 
-### 🖥️ Terminal in a tab
-A real SSH shell in your browser. Click a server, get a terminal. Open as
-many as you like.
+### 🖥️ Terminals in the page
+Real SSH shells inside the dashboard: several per server, **Split** side
+by side, or **Pop out** to their own tab. They reconnect by themselves
+after a network drop.
 
 </td>
 <td width="33%" valign="top">
 
 ### 🚀 One-click web UIs
-Click **Open** on a service. TunnelTab starts the SSH tunnel and opens the
-page for you. **Find services** lists the web apps a server runs, so you
-don't need to know their ports.
+Click **Open ↗** on a service. TunnelTab starts the SSH tunnel and opens
+the page for you, on `localhost` only.
 
 </td>
 <td width="33%" valign="top">
 
+### 🔎 Find services
+Don't know the port? **Find services** lists the web apps a server runs
+(n8n, Grafana, Portainer, Home Assistant…) and adds the ones you tick.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 📊 See how a server is doing
+Ping, uptime, reconnects and the traffic through each tunnel. Click
+**Connect** to see CPU load, memory and disk use live.
+
+</td>
+<td valign="top">
+
 ### 🗂️ Organised by project
-Group servers and their services. Drag (or use the keyboard) to reorder
-them.
+Group servers into projects and keep notes on each one (stored
+encrypted). Drag, or use the keyboard, to reorder.
+
+</td>
+<td valign="top">
+
+### 🔄 Stays connected
+Tunnels and terminals recover after Wi-Fi drops or sleep. Auto-lock
+protects a PC you walk away from.
 
 </td>
 </tr>
@@ -82,9 +107,9 @@ and carry on.
 </td>
 <td valign="top">
 
-### 🔄 Stays connected
-Tunnels reconnect by themselves after network drops or sleep. Auto-lock
-protects an unattended PC.
+### ✍️ Signed updates
+**Update now** installs a new version in one click, only if it's signed
+by TunnelTab. It never checks by itself.
 
 </td>
 </tr>
@@ -96,38 +121,55 @@ protects an unattended PC.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/server.png" alt="A server's page: connection details and its apps"></td>
-<td width="50%"><img src="docs/images/services.png" alt="A server's Services tab: start, stop, open and reorder web apps"></td>
+<td width="50%"><img src="docs/images/server.png" alt="A server's page: connection, services, health, traffic and notes"></td>
+<td width="50%"><img src="docs/images/terminal.png" alt="An SSH terminal inside the dashboard"></td>
 </tr>
 <tr>
-<td align="center"><b>Server page</b><br><sub>Connection details and apps, in tabs</sub></td>
+<td align="center"><b>Server page</b><br><sub>Connection, services, health, traffic and notes</sub></td>
+<td align="center"><b>Terminal</b><br><sub>A real SSH shell in the page; split it or pop it out</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/find-services.png" alt="Find services: web apps found on a server, ready to add"></td>
+<td><img src="docs/images/services.png" alt="A server's Services tab: start, stop, open and reorder web apps"></td>
+</tr>
+<tr>
+<td align="center"><b>Find services</b><br><sub>Recognised apps are ticked already</sub></td>
 <td align="center"><b>Services</b><br><sub>Start, stop, open and reorder</sub></td>
 </tr>
+</table>
+
+<details>
+<summary><b>More screenshots</b>: fingerprint check, adding a server, settings, first run, unlock</summary>
+<br>
+
+<table>
 <tr>
-<td width="50%"><img src="docs/images/terminal.png" alt="In-browser SSH terminal"></td>
 <td width="50%"><img src="docs/images/fingerprint.png" alt="Confirming a new server's fingerprint"></td>
+<td width="50%"><img src="docs/images/add-server.png" alt="Adding a server"></td>
 </tr>
 <tr>
-<td align="center"><b>Terminal</b><br><sub>A real SSH shell, right in the dashboard (or popped out)</sub></td>
 <td align="center"><b>Fingerprint check</b><br><sub>Nothing is sent until you confirm the server</sub></td>
-</tr>
-<tr>
-<td><img src="docs/images/add-server.png" alt="Adding a server"></td>
-<td><img src="docs/images/settings.png" alt="Settings"></td>
-</tr>
-<tr>
 <td align="center"><b>Add a server</b><br><sub>Agent, stored key, key file or password</sub></td>
-<td align="center"><b>Settings</b><br><sub>Auto-lock, master password, confirmed servers</sub></td>
 </tr>
 <tr>
+<td><img src="docs/images/settings.png" alt="Settings, Servers tab: health and fingerprint per server"></td>
 <td><img src="docs/images/setup.png" alt="First run"></td>
-<td><img src="docs/images/unlock.png" alt="Unlock"></td>
 </tr>
 <tr>
+<td align="center"><b>Settings</b><br><sub>Health and fingerprint for each server</sub></td>
 <td align="center"><b>First run</b><br><sub>Choose a master password</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/unlock.png" alt="Unlock"></td>
+<td></td>
+</tr>
+<tr>
 <td align="center"><b>Unlock</b><br><sub>Everything stays encrypted until you do</sub></td>
+<td></td>
 </tr>
 </table>
+
+</details>
 
 <sub>Screenshots use made-up demo data (see [docs/images](docs/images/README.md)).</sub>
 
@@ -143,7 +185,7 @@ protects an unattended PC.
    - **Windows:** double-click `tunneltab.exe`
    - **Linux:** `./tunneltab-linux-amd64`
 3. **Set up:** your browser opens the dashboard. Create a master password,
-   add a server, and click **Terminal ↗** or **Open ↗**.
+   add a server, and click **+ New terminal** or **Open ↗**.
 
 > [!NOTE]
 > On Windows, SmartScreen may warn you because the app isn't code-signed.
@@ -176,7 +218,7 @@ OpenSSH, sshpass, Node.js or a browser extension. Details:
 | 🔒 **Auto-lock** | The vault locks after inactivity (15 min by default) and the key is wiped from memory. |
 | 📡 **No phoning home** | TunnelTab contacts only your servers, plus GitHub when *you* click **Check for updates** or **Update now**. |
 | ✍️ **Signed updates** | **Update now** installs a new version only if it's signed with TunnelTab's release key. Your data folder is never touched. |
-| 🩺 **Opt-in server health** | Off by default. Switched on per server, it reads load, memory and disk with one read-only command, only over a connection that is already open. |
+| 🩺 **Health only when you ask** | Load, memory and disk are read with one fixed, read-only command, only after you click **Connect** or tick the server in Settings. **Find services** runs another read-only command, only when you click it. |
 
 Read [SECURITY.md](docs/SECURITY.md) for the full threat model, including
 what TunnelTab does **not** protect against, and
