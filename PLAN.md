@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.6.1 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.7.0 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -305,7 +305,7 @@ Built as proposed below (S1, S2, S4). Decisions taken: the command runs
 loopback or all addresses tunnel to `127.0.0.1`, ports bound to one other
 address are offered with that address (marked *only on …*), ports open on
 all addresses are marked *open on all addresses*; recognised web apps are
-ticked already. **S3 (web check)** was built after 0.6.1 and extended to
+ticked already. **S3 (web check)** was built in 0.7.0 and extended to
 added services ("service checks": after Start, on Check, on Open when the
 last check failed); see ARCHITECTURE.md → Service checks. Ports that answer
 are ticked and get the protocol they answered on.

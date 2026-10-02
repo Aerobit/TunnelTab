@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-02
+
 ### Added
 - **Service checks: does the app answer?** Starting a tunnel now checks
   that the app behind it answers, and the service shows **✓ App answers**,
@@ -17,6 +19,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - **Find services checks what it finds**: each port that may be a web app
   is checked; those that answer are ticked and set to http or https as they
   answered, those that don't are left unticked.
+- **Update now from test builds**: the zips GitHub Actions builds are now
+  named after the last release (e.g. `0.6.1-3-g652f29e`) instead of `ci`,
+  and Settings → Updates offers them **Update now** to the next official
+  release, with the same signature checks. Going back to the release a
+  test build was made after is never offered.
 
 ## [0.6.1] - 2026-10-02
 
@@ -236,7 +243,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.0
 [0.6.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.6.1
 [0.6.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.5.0
