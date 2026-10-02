@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-02
+
 ### Fixed
 - **Update now finishes even if quitting hangs.** If shutting down took
   more than 15 seconds, the previous version used to exit without starting
@@ -279,7 +281,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.3
 [0.7.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.2
 [0.7.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.0
