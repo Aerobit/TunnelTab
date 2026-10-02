@@ -6,6 +6,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Keyboard focus stays put.** When something changed in the background
+  (a health reading, a service check, a change from another tab), the
+  dashboard redrew itself and the keyboard focus jumped back to the top of
+  the page. It now stays on the button or field you were on, also when a
+  button changes (Start becomes Stop).
+
 ## [0.7.3] - 2026-10-02
 
 ### Fixed

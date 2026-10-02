@@ -54,3 +54,61 @@ export function debounce(fn, ms) {
     t = setTimeout(() => fn(...args), ms);
   };
 }
+
+// Redrawing a page replaces its elements, which drops the keyboard focus to
+// the top of the page. focusKey remembers the focused control by what it is
+// (tag, label, attributes) and by where it is; restoreFocus focuses the
+// matching control in the redrawn page, or the one in the same place if the
+// control changed (e.g. Start became Stop).
+
+const FOCUSABLE = "a[href], button, input, select, textarea, summary, [tabindex]";
+
+function signature(el) {
+  const attrs = [...el.attributes]
+    .filter((a) => ["id", "name", "type", "href", "role", "aria-label"].includes(a.name) || a.name.startsWith("data-"))
+    .map((a) => `${a.name}=${a.value}`);
+  const text = el.tagName === "TEXTAREA" ? "" : el.textContent.trim().slice(0, 80);
+  return `${el.tagName}|${attrs.join("|")}|${text}`;
+}
+
+function sameAs(container, tag, sig) {
+  return [...container.querySelectorAll(tag)].filter((e) => signature(e) === sig);
+}
+
+/** Describes the focused element inside container, or returns null. */
+export function focusKey(container) {
+  const el = document.activeElement;
+  if (!el || el === document.body || !container.contains(el)) return null;
+  const sig = signature(el);
+  const path = [];
+  for (let n = el; n !== container; n = n.parentElement) path.unshift([...n.parentElement.children].indexOf(n));
+  let caret = null;
+  try {
+    if (typeof el.selectionStart === "number") caret = [el.selectionStart, el.selectionEnd];
+  } catch { /* inputs like checkboxes have no caret */ }
+  const same = sameAs(container, el.tagName, sig);
+  return { el, sig, path, caret, nth: same.indexOf(el), count: same.length };
+}
+
+/** Focuses the element matching key (from focusKey) inside container. */
+export function restoreFocus(container, key) {
+  if (!key) return;
+  let atPath = container;
+  for (const i of key.path) atPath = atPath?.children[i];
+  if (atPath && !(atPath.matches(FOCUSABLE) && !atPath.disabled)) atPath = null;
+  const same = sameAs(container, key.el.tagName, key.sig);
+  // The same element (kept across the redraw), the same control in the same
+  // place, the same control elsewhere (only if it is unambiguous: as many
+  // identical ones as before), or whatever control is now in its place.
+  const el = [
+    key.el.isConnected && container.contains(key.el) ? key.el : null,
+    atPath && signature(atPath) === key.sig ? atPath : null,
+    same.length === key.count ? same[key.nth] : null,
+    atPath,
+  ].find(Boolean);
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  if (key.caret && signature(el) === key.sig) {
+    try { el.setSelectionRange(...key.caret); } catch { /* not a text field */ }
+  }
+}

@@ -516,6 +516,10 @@ endpoints, and focus returns to the moved item's grip after re-rendering.
 - Pages opened for services get no `window.opener` access.
 - Messages that must be seen while a dialog is open go *inside* the dialog
   (toasts sit behind the modal backdrop).
+- Live events redraw the whole page, so `renderDashboard` keeps the keyboard
+  focus: `focusKey`/`restoreFocus` (`dom.js`) find the same control again
+  (or the one that replaced it, e.g. Start → Stop). Disable a focused button
+  with `setBusy`, not `disabled = true`, so its focus survives too.
 
 ## Startup and shutdown (`cmd/tunneltab`)
 

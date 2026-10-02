@@ -3,7 +3,7 @@
 // and keeps it live with the event stream.
 
 import { api, ApiError, currentSession, probe, signIn, streamEvents, whenSignedOut } from "./api.js";
-import { debounce, h, replace } from "./dom.js";
+import { debounce, focusKey, h, replace, restoreFocus } from "./dom.js";
 import { confirmDialog, field, toast } from "./dialogs.js";
 import {
   projectDialog, serverDialog, serviceDialog, settingsDialog, testServer, withHostKeys,
@@ -428,6 +428,9 @@ function renderDashboard() {
   const typingIn = allViews().find((v) => v.el.contains(document.activeElement));
   const editing = [...noteEditors.values()].find((e) => e.textarea === document.activeElement)?.textarea;
   const caret = editing ? [editing.selectionStart, editing.selectionEnd] : null;
+  // Any other control keeps the focus too (live events redraw the page).
+  const focused = sameRoute ? focusKey(root) ?? focusBeforeBusy : null;
+  focusBeforeBusy = null;
   replace(root, h("div", { class: ["shell", state.sidebarOpen && "nav-open"] },
     renderSidebar(r),
     h("div", { class: "content" },
@@ -446,8 +449,18 @@ function renderDashboard() {
     focusGripAfterRender = null;
   } else if (!sameRoute && lastRouteKey) {
     root.querySelector("main h1")?.focus(); // so screen readers announce the new page
+  } else {
+    restoreFocus(root, focused);
   }
   lastRouteKey = routeKey;
+}
+
+// Disabling the focused button while it works drops the keyboard focus;
+// the next redraw puts it back there (or on what replaced it: Start → Stop).
+let focusBeforeBusy = null;
+function setBusy(button) {
+  if (button === document.activeElement) focusBeforeBusy = focusKey(root);
+  button.disabled = true;
 }
 
 // Durations ("connected 2h 14m") are refreshed now and then, unless the
@@ -884,7 +897,7 @@ function renderServerOverview(s, st, services) {
 
 /** Connect: connect to the server and keep it connected, reading its health. */
 async function connectServer(server, btn) {
-  btn.disabled = true;
+  setBusy(btn);
   btn.textContent = "Connecting…";
   try {
     await withHostKeys(() => api("POST", `/servers/${encodeURIComponent(server.id)}/connect`));
@@ -1251,7 +1264,7 @@ function checkNote(svc) {
 
 /** The Check button: checks now (this may connect to the server). */
 async function checkService(svc, button) {
-  button.disabled = true;
+  setBusy(button);
   button.textContent = "Checking…";
   try {
     const res = await withHostKeys(() => api("POST", `/services/${svc.id}/check`));
@@ -1284,7 +1297,7 @@ async function recheckOnOpen(svc) {
 // --- Actions ----------------------------------------------------------------
 
 async function startService(svc, quiet, button) {
-  if (button) button.disabled = true;
+  if (button) setBusy(button);
   try {
     const res = await withHostKeys(() => api("POST", `/services/${svc.id}/start`));
     if (res) {
@@ -1319,7 +1332,7 @@ async function openService(svc, button) {
     return;
   }
   // Starting the tunnel checks the app too (the result shows on the Services tab).
-  button.disabled = true;
+  setBusy(button);
   button.textContent = "Starting…";
   const res = await startService(svc, false, null);
   button.disabled = false;

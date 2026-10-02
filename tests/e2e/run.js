@@ -468,6 +468,37 @@ function start(cmd, args, opts) {
   const serverNames = () => labels(".side-project >> nth=0 >> .side-name");
   assert.deepStrictEqual(await serviceNames(), ["Demo app", "Second app"]);
 
+  // A live event redraws the page; the keyboard focus stays where it was.
+  const focusedName = () => page.evaluate(() => {
+    const el = document.activeElement;
+    return `${el?.closest(".service")?.querySelector("strong")?.textContent}/${el?.textContent}`;
+  });
+  const redrawn = async (change) => {
+    await page.evaluate(() => { window.oldMain = document.querySelector("main"); });
+    await change();
+    await page.waitForFunction(() => document.querySelector("main") !== window.oldMain);
+  };
+  await page.locator(".service", { hasText: "Demo app" }).getByRole("button", { name: "Stop" }).focus();
+  await redrawn(() => page.evaluate(async () => {
+    const token = localStorage.getItem("tunneltab.session");
+    const headers = { Authorization: "Bearer " + token, "Content-Type": "application/json" };
+    const data = (await (await fetch("/api/data", { headers })).json()).data;
+    for (const notes of ["focus test", ""]) { // leaves no notes behind
+      const r = await fetch(`/api/servers/${data.servers[0].id}/notes`, { method: "PUT", headers, body: JSON.stringify({ notes }) });
+      if (!r.ok) throw new Error("notes: " + r.status);
+    }
+  }));
+  assert.strictEqual(await focusedName(), "Demo app/Stop", "focus lost after a live redraw");
+  // A control that changes (Start → Stop) keeps the focus at its place.
+  await page.locator(".service", { hasText: "Second app" }).getByRole("button", { name: "Start" }).focus();
+  await redrawn(() => page.keyboard.press("Enter"));
+  await page.locator(".service", { hasText: "Second app" }).getByRole("button", { name: "Stop" }).waitFor();
+  assert.strictEqual(await focusedName(), "Second app/Stop", "focus lost after Start");
+  await page.keyboard.press("Enter");
+  await page.locator(".service", { hasText: "Second app" }).getByRole("button", { name: "Start" }).waitFor();
+  assert.strictEqual(await focusedName(), "Second app/Start", "focus lost after Stop");
+  step("keyboard focus stays on its control when live events redraw the page");
+
   // Keyboard: focus a grip and press ↑.
   await page.getByRole("button", { name: "Move service Second app" }).focus();
   await page.keyboard.press("ArrowUp");
