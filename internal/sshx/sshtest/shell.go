@@ -43,7 +43,7 @@ func handleSession(nc ssh.NewChannel, opts Options) {
 
 	go func() {
 		for req := range reqs {
-			ok := false
+			ok, start := false, false
 			switch req.Type {
 			case "pty-req":
 				// string term, uint32 cols, uint32 rows, ...
@@ -61,21 +61,24 @@ func handleSession(nc ssh.NewChannel, opts Options) {
 					ok = true
 				}
 			case "shell":
-				ok = true
-				once.Do(func() { close(started) })
+				ok, start = true, true
 			case "exec":
 				if cmd, _, good := readString(req.Payload); good {
 					mu.Lock()
 					execCmd, hasExec = string(cmd), true
 					mu.Unlock()
-					ok = true
-					once.Do(func() { close(started) })
+					ok, start = true, true
 				}
 			case "env":
 				ok = true
 			}
 			if req.WantReply {
 				req.Reply(ok, nil)
+			}
+			// Only after the reply: an exec's output, exit status and close
+			// must not overtake it (the client would see EOF).
+			if start {
+				once.Do(func() { close(started) })
 			}
 		}
 		once.Do(func() { close(started) })
