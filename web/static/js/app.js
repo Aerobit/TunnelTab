@@ -300,6 +300,10 @@ function onEvent(ev) {
       // "Update now" progress, for the Settings dialog that started it.
       window.dispatchEvent(new CustomEvent("tunneltab-update", { detail: ev }));
       break;
+    case "discover":
+      // "Find services" progress, for the dialog that started it.
+      window.dispatchEvent(new CustomEvent("tunneltab-discover", { detail: ev }));
+      break;
     case "resync":
     case "data":
       if (ev.type === "resync") loadState().then(route).catch(() => {});

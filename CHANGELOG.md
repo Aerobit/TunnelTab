@@ -6,6 +6,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Find services shows its progress**: a bar and the current step
+  (connecting, listing ports and containers, then "checking whether each
+  app answers (3 of 8)") instead of a dialog that seems to hang.
+
 ## [0.7.0] - 2026-10-02
 
 ### Added

@@ -42,7 +42,13 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 		s.writeDataError(w, err)
 		return
 	}
-	// The scan and the checks of what it found share one connection.
+	// The scan and the checks of what it found share one connection. Each
+	// step is reported to the dashboards (discoverEvent), so the dialog can
+	// show how far it has got.
+	progress := func(step string, done, total int) {
+		s.events.publish(discoverEvent{Type: "discover", ServerID: id, Step: step, Done: done, Total: total})
+	}
+	progress("connecting", 0, 0)
 	var (
 		runErr error
 		res    discover.Result
@@ -50,12 +56,13 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 		checks []*webcheck.Result
 	)
 	if err := s.mgr.Through(id, func(dial func(string, int) (net.Conn, error)) {
+		progress("scanning", 0, 0)
 		var out []byte
 		if out, runErr = s.mgr.Run(id, discover.Command, discover.MaxOutput, discoverTimeout); runErr != nil {
 			return
 		}
 		if res, err = discover.Parse(out); err == nil {
-			checks = checkCandidates(dial, res.Candidates)
+			checks = checkCandidates(dial, res.Candidates, func(done, total int) { progress("checking", done, total) })
 		}
 	}); err != nil {
 		s.writeSSHError(w, err)
@@ -103,6 +110,16 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"candidates": found, "docker": res.Docker, "truncated": res.Truncated})
 }
 
+// discoverEvent reports how far a "Find services" scan has got: step
+// "connecting", "scanning", then "checking" (done of total candidates).
+type discoverEvent struct {
+	Type     string `json:"type"` // "discover"
+	ServerID string `json:"serverId"`
+	Step     string `json:"step"`
+	Done     int    `json:"done,omitempty"`
+	Total    int    `json:"total,omitempty"`
+}
+
 // maxCandidateChecks and candidateCheckers bound the checks after a scan
 // (most likely web pages first, as Parse sorts them).
 const (
@@ -112,17 +129,28 @@ const (
 
 // checkCandidates checks, in parallel, whether each candidate that may be a
 // web page answers like one (and on https or http). The result has one
-// entry per candidate; nil for those not checked.
-func checkCandidates(dial func(string, int) (net.Conn, error), cands []discover.Candidate) []*webcheck.Result {
+// entry per candidate; nil for those not checked. progress is called with
+// (0, total) before the first check and after each one.
+func checkCandidates(dial func(string, int) (net.Conn, error), cands []discover.Candidate, progress func(done, total int)) []*webcheck.Result {
 	out := make([]*webcheck.Result, len(cands))
-	sem := make(chan struct{}, candidateCheckers)
-	var wg sync.WaitGroup
-	n := 0
+	var todo []int
 	for i, c := range cands {
-		if c.Kind == discover.KindOther || n == maxCandidateChecks {
-			continue
+		if c.Kind != discover.KindOther && len(todo) < maxCandidateChecks {
+			todo = append(todo, i)
 		}
-		n++
+	}
+	if len(todo) == 0 {
+		return out
+	}
+	progress(0, len(todo))
+	sem := make(chan struct{}, candidateCheckers)
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		done int
+	)
+	for _, i := range todo {
+		c := cands[i]
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -130,6 +158,10 @@ func checkCandidates(dial func(string, int) (net.Conn, error), cands []discover.
 			defer func() { <-sem }()
 			r := webcheck.Check(func() (net.Conn, error) { return dial(c.Host, c.Port) }, c.Path, checkTimeout)
 			out[i] = &r
+			mu.Lock()
+			done++
+			progress(done, len(todo))
+			mu.Unlock()
 		}()
 	}
 	wg.Wait()

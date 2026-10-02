@@ -591,10 +591,18 @@ function start(cmd, args, opts) {
   await dialog.getByText("run one read-only command").waitFor();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   assert.strictEqual(await page.getByRole("dialog").count(), 0, "Cancel left a dialog open");
+  await page.evaluate(() => {
+    window.scanSteps = [];
+    window.addEventListener("tunneltab-discover", (e) => window.scanSteps.push(`${e.detail.step} ${e.detail.done || 0}/${e.detail.total || 0}`));
+  });
   await page.getByRole("button", { name: "Find services…" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Find services" }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByRole("heading", { name: "Services found on Demo VPS (renamed)" }).waitFor();
+  // The dialog was told each step: connecting, scanning, then every check.
+  const scanSteps = await page.evaluate(() => window.scanSteps);
+  assert.deepStrictEqual(scanSteps.slice(0, 2), ["connecting 0/0", "scanning 0/0"], "scan steps: " + scanSteps);
+  assert.match(scanSteps[scanSteps.length - 1], /^checking (\d+)\/\1$/, "the checks didn't finish: " + scanSteps);
   for (const port of [5678, 3000, 9443]) {
     assert.ok(await dialog.getByLabel(`Add port ${port}`, { exact: true }).isChecked(), `port ${port} not ticked`);
   }

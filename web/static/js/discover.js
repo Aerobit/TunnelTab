@@ -15,6 +15,7 @@ const DOCKER_NOTE = {
 /** Asks first, then scans the server and shows the results. */
 export async function findServices(server) {
   let result = null;
+  const progress = scanProgress(server);
   await openDialog({
     title: `Find services on ${server.name}`,
     body: [
@@ -23,20 +24,65 @@ export async function findServices(server) {
         h("code", {}, "ss"), " or ", h("code", {}, "netstat"), ", and ", h("code", {}, "docker ps"), ")."),
       h("p", { class: "hint" }, "Then it checks whether each port that may be a web app answers, with one request for its front page (a HEAD request: nothing is sent to log in or change anything)."),
       h("p", { class: "hint" }, "Nothing is changed on the server, the list isn't saved, and nothing is added until you tick it."),
+      progress.el,
     ],
     actions: [
       { label: "Cancel" },
       {
         label: "Find services", kind: "primary", submit: true,
         onClick: async () => {
-          const r = await withHostKeys(() => api("POST", `/servers/${encodeURIComponent(server.id)}/discover`));
-          if (!r) return false; // fingerprint not confirmed
-          result = r;
+          progress.start();
+          try {
+            const r = await withHostKeys(() => api("POST", `/servers/${encodeURIComponent(server.id)}/discover`));
+            if (!r) return false; // fingerprint not confirmed
+            result = r;
+          } finally {
+            progress.stop();
+          }
         },
       },
     ],
   });
   if (result) await resultsDialog(server, result);
+}
+
+/**
+ * The progress line shown while a scan runs: a bar and the current step,
+ * from the program's "discover" events (connecting, scanning, then each
+ * port checked). Hidden until start().
+ */
+function scanProgress(server) {
+  const bar = h("progress", { class: "update-progress", "aria-label": "Find services progress" }); // no value: busy
+  const text = h("span", {}, "");
+  const el = h("p", { class: "update-step scan-progress", role: "status", hidden: true }, bar, text);
+  const show = (step, done = 0, total = 0) => {
+    if (step === "checking" && total > 0) {
+      bar.max = total;
+      bar.value = done;
+      text.textContent = `Checking whether each app answers (${done} of ${total})…`;
+      return;
+    }
+    bar.removeAttribute("value");
+    text.textContent = step === "scanning"
+      ? "Listing open ports and Docker containers…"
+      : `Connecting to ${server.name}…`;
+  };
+  const onEvent = (e) => {
+    const p = e.detail;
+    if (p.serverId === server.id) show(p.step, p.done, p.total);
+  };
+  return {
+    el,
+    start() {
+      show("connecting");
+      el.hidden = false;
+      window.addEventListener("tunneltab-discover", onEvent);
+    },
+    stop() {
+      window.removeEventListener("tunneltab-discover", onEvent);
+      el.hidden = true;
+    },
+  };
 }
 
 /**

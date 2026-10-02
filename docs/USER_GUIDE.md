@@ -303,7 +303,9 @@ background.
 Don't know an app's port? On the **Services** tab click **Find services…**.
 TunnelTab asks first, then connects to the server and runs one read-only
 command that lists its open ports and Docker containers (`ss` or
-`netstat`, and `docker ps`). Nothing on the server is changed.
+`netstat`, and `docker ps`). Nothing on the server is changed. A
+progress bar shows what it's doing (connecting, listing ports, then checking
+each app); checking can take up to half a minute on a busy server.
 
 You get a list of what it found:
 

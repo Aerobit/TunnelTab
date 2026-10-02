@@ -312,6 +312,7 @@ sent). Each `data:` line is JSON:
 | `activity` | `at`, `kind` (server/forward/terminal/discover), `id`, `serverId`, `state`, `error`, `reconnects`, `reason` | a line for "Recent activity" (see below) |
 | `health` | `serverId`, `reading` (`{health?, error?, at}`, or null when switched off or disconnected) | a server health reading |
 | `check` | `serviceId`, `check` (as above, or null when the service changed) | a service check result |
+| `discover` | `serverId`, `step` (connecting, scanning, checking), `done`, `total` (checking only) | how far a Find services scan has got, for the dialog that started it |
 | `update` | `step` (checking, verifying, downloading, unpacking, installing, restarting, failed), `done`, `total` (bytes, while downloading), `version` | how far "Update now" has got (see Updates) |
 | `vault` | `state` (locked/unlocked) | lock state changed |
 | `data` | | stored data changed: re-fetch `/api/data` |

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -117,7 +118,27 @@ LISTEN 0      4096           0.0.0.0:22          0.0.0.0:*
 	m := h.mustCall("POST", path, nil, http.StatusConflict)
 	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": m["token"]}, 200)
 
+	dashboard := h.srv.events.subscribe()
+	defer h.srv.events.unsubscribe(dashboard)
 	m = h.mustCall("POST", path, nil, 200)
+
+	// Progress went to the dashboards: connecting, scanning, then each check.
+	var steps []string
+	for len(dashboard) > 0 {
+		var ev struct {
+			Type, ServerID, Step string
+			Done, Total          int
+		}
+		json.Unmarshal(<-dashboard, &ev)
+		if ev.Type == "discover" && ev.ServerID == serverID {
+			steps = append(steps, fmt.Sprintf("%s %d/%d", ev.Step, ev.Done, ev.Total))
+		}
+	}
+	// 3 candidates may be web pages (http, https, closed); ssh isn't checked.
+	if want := []string{"connecting 0/0", "scanning 0/0", "checking 0/3", "checking 1/3", "checking 2/3", "checking 3/3"}; fmt.Sprint(steps) != fmt.Sprint(want) {
+		t.Errorf("progress %v, want %v", steps, want)
+	}
+
 	checks := map[int]any{}
 	for _, c := range m["candidates"].([]any) {
 		c := c.(map[string]any)

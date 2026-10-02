@@ -607,6 +607,8 @@ a.chip { text-decoration: none; display: inline-block; }
 
 /* Update now progress */
 .update-step { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.scan-progress { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 12px 0 0; }
+.scan-progress progress { width: 100%; }
 .update-progress { width: 180px; height: 8px; accent-color: var(--accent, #388bfd); }
 .update-step.ok { color: #56d364; }
 .update-step.bad { color: var(--warning); }
