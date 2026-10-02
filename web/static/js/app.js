@@ -355,7 +355,6 @@ function onEvent(ev) {
 
 function onStreamStatus(connected) {
   state.connected = connected;
-  document.getElementById("conn")?.classList.toggle("offline", !connected);
   const banner = document.getElementById("offline-banner");
   if (banner) banner.hidden = connected;
 }
@@ -465,8 +464,7 @@ function renderSidebar(r) {
   const projects = [...state.data.projects].sort(byOrder);
   return h("aside", { class: "sidebar", id: "sidebar", "aria-label": "Projects and servers" },
     h("div", { class: "side-brand" },
-      logo(), h("span", {}, "TunnelTab"),
-      h("span", { id: "conn", class: ["conn", !state.connected && "offline"], title: "Connection to the TunnelTab program" })),
+      logo(), h("span", {}, "TunnelTab")),
     h("nav", { class: "side-nav", "aria-label": "Pages" },
       h("a", { class: "side-link", href: "#/", "aria-current": r.page === "overview" ? "page" : null }, overviewIcon(), "Overview"),
       projects.map((p) => renderSideProject(p, r)),

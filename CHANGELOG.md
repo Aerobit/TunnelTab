@@ -6,7 +6,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The green dot next to the TunnelTab name in the sidebar is gone. It only
+  showed that the dashboard could reach the TunnelTab program; when it
+  can't, the red "Lost connection" banner already says so.
+
 ### Fixed
+- The tabs on a server's page (Overview, Services, Terminals…) no longer
+  show a small scrollbar on Windows.
 - **Overview → Running now** no longer cuts the server name, address and
   traffic short on a normal-width window: each row shows what runs and
   where, with the address and today's traffic on a second line.

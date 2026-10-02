@@ -543,6 +543,9 @@ function start(cmd, args, opts) {
   await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
   await page.locator(".notes-preview", { hasText: "Backups run nightly at 02:00." }).waitFor();
   await shot("15-server-overview");
+  // Nothing may stick out of the side-scrolling tab bar: on Windows that shows a scrollbar.
+  const tabsBox = await page.locator(".page-tabs").evaluate((n) => [n.scrollHeight, n.clientHeight]);
+  assert.ok(tabsBox[0] <= tabsBox[1], "the server page tabs overflow (scrollbar on Windows): " + tabsBox);
   await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   step("ping (servers table and server page), traffic counted and charted, notes saved in the vault");
 
