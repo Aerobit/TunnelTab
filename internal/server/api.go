@@ -692,6 +692,7 @@ func (s *Server) addPendingKey(address string, key ssh.PublicKey, known []string
 			delete(s.pendingKeys, k)
 		}
 	}
+	// No confirmed keys means a "new server" question; any means "key changed".
 	s.pendingKeys[tok] = pendingKey{address: address, key: key, known: known, changed: len(known) > 0, expires: now.Add(pendingKeyTTL)}
 	return tok
 }
@@ -754,6 +755,10 @@ func (s *Server) handleForgetHostKey(w http.ResponseWriter, r *http.Request) {
 // was shown, so its answer no longer applies.
 var errStaleHostKeyQuestion = errors.New("host key question is stale")
 
+// errHostKeyAlreadyConfirmed stops vault.Update without saving: the key is
+// already the confirmed one.
+var errHostKeyAlreadyConfirmed = errors.New("host key already confirmed")
+
 // sameFingerprints reports whether a and b hold the same fingerprints.
 func sameFingerprints(a, b []string) bool {
 	a, b = slices.Sorted(slices.Values(a)), slices.Sorted(slices.Values(b))
@@ -786,7 +791,7 @@ func (s *Server) handleConfirmHostKey(w http.ResponseWriter, r *http.Request) {
 	err := s.update(func(d *model.Data) error {
 		current := sshx.KnownFingerprints(d.HostKeysFor(p.address))
 		if slices.Equal(current, []string{p.key.Type() + " " + ssh.FingerprintSHA256(p.key)}) {
-			return nil // already confirmed (e.g. in another tab)
+			return errHostKeyAlreadyConfirmed // e.g. in another tab; nothing to save
 		}
 		if !sameFingerprints(current, p.known) {
 			return errStaleHostKeyQuestion
@@ -794,6 +799,9 @@ func (s *Server) handleConfirmHostKey(w http.ResponseWriter, r *http.Request) {
 		_, err := d.SetHostKey(p.address, p.key)
 		return err
 	})
+	if errors.Is(err, errHostKeyAlreadyConfirmed) {
+		err = nil // saving anyway would only replace the vault backup
+	}
 	if errors.Is(err, errStaleHostKeyQuestion) {
 		s.pendingMu.Lock()
 		delete(s.pendingKeys, req.Token)

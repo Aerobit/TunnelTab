@@ -448,6 +448,53 @@ function start(cmd, args, opts) {
   await page.locator(".pill.active").waitFor();
   step("edit server keeps the saved password, and a rename keeps the tunnel running");
 
+  // A "Confirm new server" question answered after another key was
+  // confirmed for that server (e.g. in another tab): the dialog closes and
+  // it connects again by itself. A second fake SSH server, restarted on the
+  // same port, presents a new key.
+  const fakeFor = async (port) => {
+    const p = start(path.join(tmp, "fakessh" + exe), ["-port", String(port)], {});
+    const [, , newPort] = await p.waitFor(/Host:\s+(\S+)\n\s+SSH port:\s+(\d+)/);
+    return [p, newPort];
+  };
+  const stopFake = (p) => new Promise((resolve) => { p.once("exit", resolve); p.kill(); });
+  let [sideFake, sidePort] = await fakeFor(0);
+  const asAnotherTab = (what) => page.evaluate(async (what) => {
+    const token = localStorage.getItem("tunneltab.session");
+    const call = async (method, p, body) => {
+      const r = await fetch("/api" + p, { method, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      return { status: r.status, body: r.status === 204 ? null : await r.json() };
+    };
+    const side = (await call("GET", "/data")).body.data.servers.find((s) => s.name === "Side door");
+    if (what === "confirm") {
+      const q = await call("POST", `/servers/${side.id}/test`);
+      if ((await call("POST", "/hostkeys/confirm", { token: q.body.token })).status !== 200) throw new Error("confirm");
+    } else if ((await call("DELETE", `/servers/${side.id}`)).status >= 300) {
+      throw new Error("delete");
+    }
+  }, what);
+  await page.getByRole("button", { name: /^More actions for project / }).first().click();
+  await page.getByRole("menuitem", { name: "Add server" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Side door");
+  await page.getByLabel("Host", { exact: true }).fill(host);
+  await page.getByLabel("SSH port").fill(sidePort);
+  await page.getByLabel("Username").fill("demo");
+  await page.getByLabel("Log in with").selectOption("password");
+  await page.getByLabel("Password", { exact: true }).fill("demo-password");
+  await page.getByRole("button", { name: "Add server" }).click();
+  const trust = page.getByRole("button", { name: "Trust and connect" });
+  await trust.waitFor();
+  await stopFake(sideFake);
+  [sideFake] = await fakeFor(sidePort);
+  await asAnotherTab("confirm"); // the new key
+  await trust.click(); // the old question, about the previous key
+  await page.getByText("Connected to Side door.").waitFor();
+  assert.strictEqual(await page.locator("dialog[open]").count(), 0, "the stale question stayed open");
+  await asAnotherTab("delete");
+  await page.locator(".side-server", { hasText: "Side door" }).waitFor({ state: "detached" });
+  await stopFake(sideFake);
+  step("a stale \"Confirm new server\" answer closes the question and connects again");
+
   // Reordering. Add a second service, a second server and a second project.
   await page.evaluate(async () => {
     const token = localStorage.getItem("tunneltab.session");

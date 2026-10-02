@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -607,7 +608,18 @@ func TestStaleHostKeyQuestion(t *testing.T) {
 	// nothing left to do and changes nothing.
 	first, second := ask("unknown_host_key"), ask("unknown_host_key")
 	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": first}, 200)
+	vaultFile := func() []byte {
+		b, err := os.ReadFile(h.srv.cfg.Paths.Vault)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	before := vaultFile()
 	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": second}, 200)
+	if !bytes.Equal(vaultFile(), before) {
+		t.Fatal("confirming the already confirmed key saved the vault (and replaced its backup)")
+	}
 	if got := keys(); len(got) != 1 || got[0] != keyLine(sshSrv.HostKey.PublicKey()) {
 		t.Fatalf("known hosts %v", got)
 	}

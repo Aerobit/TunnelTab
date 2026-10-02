@@ -306,8 +306,10 @@ are cleared when the vault locks. A token also remembers the keys that were
 confirmed when it was issued: if they changed since (another tab confirmed
 or replaced a key), confirming it fails with 409
 `host_key_question_stale` and changes nothing, so an old "new server"
-question can never replace a key without the "key changed" warning. A
-token for a key that is already the confirmed one succeeds without change.
+question can never replace a key without the "key changed" warning; the
+dashboard then closes the question and connects again, which asks what
+fits now. A token for a key that is already the confirmed one succeeds
+without saving the vault (a save would replace its one backup).
 
 ### Events (`GET /api/events`)
 

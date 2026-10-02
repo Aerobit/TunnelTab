@@ -11,9 +11,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   key.** If a key was confirmed or replaced for a server (for example in
   another tab) while an earlier question was still open, answering that
   earlier question used to replace the newer key without the "server
-  identity changed" warning. Now it is refused with "this server's
-  confirmed key changed since this question was shown"; connect again to
-  get the right question.
+  identity changed" warning. Now that answer is refused: the question
+  closes and TunnelTab connects again, so you get the question that fits
+  the key confirmed now (or it just connects). Answering the same question
+  in two tabs no longer saves the vault twice, which replaced its backup.
 
 ### Fixed
 - **Keyboard focus stays put.** When something changed in the background

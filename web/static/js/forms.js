@@ -29,6 +29,15 @@ function int(input, fallback = 0) {
  * needs confirming, asks the user and retries. Returns fn's result, or null
  * if the user declined.
  */
+// The confirmed key changed while a question was open (e.g. in another tab),
+// so its answer no longer applies. Treat it like an answer: the dialog
+// closes and withHostKeys connects again, which asks what fits now.
+function confirmHostKey(body) {
+  return api("POST", "/hostkeys/confirm", body).catch((err) => {
+    if (!(err instanceof ApiError && err.code === "host_key_question_stale")) throw err;
+  });
+}
+
 export async function withHostKeys(fn) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -59,7 +68,7 @@ async function hostKeyDialog(info) {
       actions: [
         { label: "Cancel" },
         { label: "Trust and connect", kind: "primary", submit: true,
-          onClick: () => api("POST", "/hostkeys/confirm", { token: info.token }) },
+          onClick: () => confirmHostKey({ token: info.token }) },
       ],
     });
     return label === "Trust and connect";
@@ -81,7 +90,7 @@ async function hostKeyDialog(info) {
       { label: "Replace key and connect", kind: "danger",
         onClick: async () => {
           if (!understand.input.checked) throw new Error("Tick the box to confirm you know why the key changed.");
-          await api("POST", "/hostkeys/confirm", { token: info.token, replace: true });
+          await confirmHostKey({ token: info.token, replace: true });
         } },
     ],
   });
