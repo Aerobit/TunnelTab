@@ -7,6 +7,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Update now finishes even if quitting hangs.** If shutting down took
+  more than 15 seconds, the previous version used to exit without starting
+  the new one or checking that it starts, and the backup of the previous
+  version was then deleted on the next start. Now it still starts the new
+  version and puts the previous one back if the new one doesn't start.
 - **Only one TunnelTab can use a data folder.** It now locks the folder
   while it runs. Before, two copies could open the same vault (for example
   when `instance.json` was missing, as it briefly is during Update now) and

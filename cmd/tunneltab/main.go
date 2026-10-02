@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -177,12 +178,30 @@ func run() int {
 
 	<-ctx.Done()
 	log.Info("shutting down")
-	// Quitting must end the program, and with it every tunnel, even if
-	// something below hangs.
-	watchdog := time.AfterFunc(15*time.Second, func() {
-		log.Error("shutdown is taking too long; exiting anyway")
+	// finish runs once the server has stopped: after "Update now" it hands
+	// the data folder to the new version and waits for it to start (rolling
+	// back if it doesn't). It runs once, from whichever gets there first:
+	// the shutdown below or the watchdog.
+	finish := sync.OnceValue(func() int {
 		platform.RemoveInstance(paths.Instance)
-		os.Exit(1)
+		if !restart.Load() {
+			return 0
+		}
+		dataLock.Close()
+		return restartAfterUpdate(exe, paths.Instance, log)
+	})
+	// Quitting must end the program, and with it every tunnel, even if
+	// something below hangs. After "Update now" a hang must not leave the
+	// new files in place unchecked, so the update is still finished.
+	watchdog := time.AfterFunc(shutdownTimeout, func() {
+		if !restart.Load() {
+			log.Error("shutdown is taking too long; exiting anyway")
+			platform.RemoveInstance(paths.Instance)
+			os.Exit(1)
+		}
+		log.Error("shutdown is taking too long; finishing the update anyway")
+		httpSrv.Close() // no more requests (or vault saves) from this copy
+		os.Exit(finish())
 	})
 	close(autoLockStop)
 	srv.Close() // stops tunnels and ends event streams so Shutdown doesn't wait on them
@@ -191,15 +210,11 @@ func run() int {
 	httpSrv.Shutdown(shutdownCtx)
 	watchdog.Stop()
 	log.Info("stopped")
-	if restart.Load() {
-		// The new version needs the data folder; this process only waits
-		// for it to start (and rolls back if it doesn't).
-		platform.RemoveInstance(paths.Instance)
-		dataLock.Close()
-		return restartAfterUpdate(exe, paths.Instance, log)
-	}
-	return 0
+	return finish()
 }
+
+// How long shutting down may take before the watchdog ends the program.
+const shutdownTimeout = 15 * time.Second
 
 // How long a launch keeps trying while another copy holds the data folder
 // but doesn't answer yet: it may still be starting, or quitting (which can

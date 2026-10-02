@@ -534,16 +534,19 @@ endpoints, and focus returns to the moved item's grip after re-rendering.
    browser at the launch link (`--no-browser` prints it instead).
 5. Run until Quit, Ctrl+C or SIGTERM; then stop all tunnels, end event
    streams, shut the HTTP server down and delete `instance.json`. The lock
-   is released when the process exits.
+   is released when the process exits. If this takes more than 15 s, a
+   watchdog ends the program anyway.
 
 6. **After "Update now"** (`restart.go`): the new files are already in place
    (the old ones renamed to `*.old`). Shut down as in step 5, delete
    `instance.json` and release the data folder lock (the new version needs
-   it), then start the program again with the same arguments and wait up to
-   30 s for it to write `instance.json` with its own PID *and* answer
-   `/api/instance/started`
-   (so it has opened the vault and serves the dashboard; the file alone is
-   written before that). If it doesn't, kill it, wait for it to exit, put
+   it), even if the watchdog fired (it then closes the dashboard server
+   first, so a hang can't leave the new files in place unchecked); then
+   start the program again with the same arguments and wait up to 30 s
+   for it to write `instance.json` with its own PID *and* answer
+   `/api/instance/started` (so it has opened the vault and serves the
+   dashboard; the file alone is written before that). If it doesn't, kill
+   it, wait for it to exit, put
    the `.old` files back (`update.Rollback`, retried for up to 10 s while
    Windows still holds them) and start the previous version instead.
    The new version deletes the `.old` files and `.update/` only after that
