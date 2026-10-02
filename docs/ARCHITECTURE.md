@@ -1,3 +1,4 @@
+| `POST /instance/started` | header `X-TunnelTab-Instance` | 204 (the previous version confirms the start after "Update now") |
 # Architecture
 
 How TunnelTab is put together, and where to make changes.
@@ -235,7 +236,8 @@ every API call: Authorization: Bearer <session>
 
 1. `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding).
 2. `Origin`, when present, must be that same address; POST/PUT/DELETE must
-   have one (exception: `/api/instance/launch`, which uses the instance secret).
+   have one (exception: `/api/instance/launch` and `/api/instance/started`,
+   which use the instance secret).
 3. `Sec-Fetch-Site` other than `same-origin`/`none` is refused.
 4. `OPTIONS` is refused; no CORS headers are ever sent.
 5. Security headers: strict CSP (no inline scripts), `nosniff`, `DENY`
@@ -244,7 +246,7 @@ every API call: Authorization: Bearer <session>
 
 ### API reference
 
-All paths are under `/api`; all except the first two need a session.
+All paths are under `/api`; all except the first three need a session.
 Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 
 | Method & path | Body | Result |
@@ -528,10 +530,15 @@ endpoints, and focus returns to the moved item's grip after re-rendering.
 6. **After "Update now"** (`restart.go`): the new files are already in place
    (the old ones renamed to `*.old`). Shut down as in step 5, then start the
    program again with the same arguments and wait up to 30 s for it to write
-   `instance.json` with its own PID. If it doesn't, kill it, put the `.old`
-   files back (`update.Rollback`) and start the previous version instead.
-   The new version deletes the `.old` files and `.update/` once running
-   (retrying, since Windows keeps the old program locked until it exits).
+   `instance.json` with its own PID *and* answer `/api/instance/started`
+   (so it has opened the vault and serves the dashboard; the file alone is
+   written before that). If it doesn't, kill it, wait for it to exit, put
+   the `.old` files back (`update.Rollback`, retried for up to 10 s while
+   Windows still holds them) and start the previous version instead.
+   The new version deletes the `.old` files and `.update/` only after that
+   confirmation (or after 60 s without one, e.g. when started by hand), so
+   a rollback always finds them; it retries, since Windows keeps the old
+   program locked until it exits.
 
 ### Updates (`internal/update`)
 

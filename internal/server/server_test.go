@@ -317,7 +317,7 @@ func TestInstanceLaunch(t *testing.T) {
 	if _, err := RequestLaunchURL(port, "wrong"); err == nil {
 		t.Fatal("wrong instance secret accepted")
 	}
-	// The Origin exemption applies only to this endpoint.
+	// The Origin exemption applies only to the instance endpoints.
 	status, _ := h.request("POST", "/api/vault/lock", nil, map[string]string{instanceHeader: instanceSecret})
 	if status != http.StatusForbidden {
 		t.Fatalf("Origin-less POST elsewhere: %d", status)
@@ -986,4 +986,27 @@ func TestServerConnect(t *testing.T) {
 		t.Fatal("hold kept with no dashboard open")
 	}
 	waitFor("disconnect", func() bool { return sshSrv.ActiveConnections() == 0 })
+}
+
+func TestInstanceStarted(t *testing.T) {
+	h := newHarness(t)
+	port := h.ts.Listener.Addr().(*net.TCPAddr).Port
+	if err := ConfirmStarted(port, "wrong"); err == nil {
+		t.Fatal("wrong instance secret accepted")
+	}
+	select {
+	case <-h.srv.UpdateConfirmed():
+		t.Fatal("confirmed without the instance secret")
+	default:
+	}
+	for i := 0; i < 2; i++ { // a repeated confirmation is harmless
+		if err := ConfirmStarted(port, instanceSecret); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case <-h.srv.UpdateConfirmed():
+	default:
+		t.Fatal("not confirmed")
+	}
 }

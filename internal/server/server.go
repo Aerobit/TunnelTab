@@ -98,6 +98,11 @@ type Server struct {
 	checks     checkStore  // service check results, in memory only
 	stopReaper chan struct{}
 	closeOnce  sync.Once
+
+	// Closed once the previous version, after "Update now", has seen this
+	// one serve (POST /api/instance/started).
+	started     chan struct{}
+	startedOnce sync.Once
 }
 
 // New creates a Server. It opens the vault if one exists (locked).
@@ -130,6 +135,7 @@ func New(cfg Config) (*Server, error) {
 		health:       healthStore{readings: map[string]healthReading{}, running: map[string]bool{}},
 		checks:       checkStore{readings: map[string]checkReading{}},
 		stopReaper:   make(chan struct{}),
+		started:      make(chan struct{}),
 	}
 	s.mgr = sshx.NewManager(sshx.Config{
 		Targets: s.target,
@@ -351,10 +357,11 @@ func (s *Server) guard(next http.Handler) http.Handler {
 				writeError(w, http.StatusForbidden, "bad_origin", "cross-origin requests are not allowed")
 				return
 			}
-		} else if r.Method != http.MethodGet && r.Method != http.MethodHead && r.URL.Path != "/api/instance/launch" {
+		} else if r.Method != http.MethodGet && r.Method != http.MethodHead && !instancePaths[r.URL.Path] {
 			// Browsers always send Origin on POST/PUT/DELETE. The one
-			// exception is the program's own second launch, which is not a
-			// browser and authenticates with the instance secret instead.
+			// exception is the program talking to itself (a second launch, or
+			// the previous version after "Update now"), which is not a browser
+			// and authenticates with the instance secret instead.
 			writeError(w, http.StatusForbidden, "bad_origin", "missing Origin header")
 			return
 		}

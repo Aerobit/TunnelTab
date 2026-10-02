@@ -6,6 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Update now rolls back more reliably.** The previous version now waits
+  until the new one has opened your vault and shows its dashboard (before,
+  it only waited for the new version to write `instance.json`, which
+  happens earlier). The new version keeps the previous files until that
+  check is done, so they can always be put back. On Windows, a rollback
+  now waits for the stopped new version to exit and retries restoring the
+  files while Windows still holds them.
+
 ## [0.7.2] - 2026-10-02
 
 ### Fixed

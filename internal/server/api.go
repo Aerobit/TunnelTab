@@ -23,6 +23,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// No session needed: these create one.
 	mux.HandleFunc("POST /api/session", s.handleSession)
 	mux.HandleFunc("POST /api/instance/launch", s.handleInstanceLaunch)
+	mux.HandleFunc("POST /api/instance/started", s.handleInstanceStarted)
 
 	a := func(pattern string, fn http.HandlerFunc) { mux.HandleFunc(pattern, s.authed(fn)) }
 	a("GET /api/state", s.handleState)
@@ -184,8 +185,28 @@ func (s *Server) handleInstanceLaunch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"url": s.LaunchURL()})
 }
 
-// instanceHeader carries the instance secret on /api/instance/launch.
+// handleInstanceStarted is called by the previous version after "Update
+// now", once this version answers: from then on the update is not rolled
+// back, so the previous version's files may be removed (UpdateConfirmed).
+func (s *Server) handleInstanceStarted(w http.ResponseWriter, r *http.Request) {
+	if !s.checkInstanceSecret(r.Header.Get(instanceHeader)) {
+		writeError(w, http.StatusForbidden, "forbidden", "forbidden")
+		return
+	}
+	s.startedOnce.Do(func() { close(s.started) })
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// UpdateConfirmed is closed once the previous version has confirmed that
+// this one started (handleInstanceStarted).
+func (s *Server) UpdateConfirmed() <-chan struct{} { return s.started }
+
+// instanceHeader carries the instance secret on /api/instance/*.
 const instanceHeader = "X-TunnelTab-Instance"
+
+// instancePaths are the endpoints the program itself calls, authenticated
+// with the instance secret; they are exempt from the Origin check.
+var instancePaths = map[string]bool{"/api/instance/launch": true, "/api/instance/started": true}
 
 // --- State, settings, quit --------------------------------------------------
 

@@ -34,3 +34,24 @@ func RequestLaunchURL(port int, secret string) (string, error) {
 	}
 	return out.URL, nil
 }
+
+// ConfirmStarted tells the TunnelTab on port, started by "Update now", that
+// the previous version saw it answer and won't roll the update back. It
+// fails until that instance serves requests, i.e. has opened its vault.
+func ConfirmStarted(port int, secret string) error {
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:"+strconv.Itoa(port)+"/api/instance/started", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set(instanceHeader, secret)
+	c := &http.Client{Timeout: 3 * time.Second}
+	resp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("new instance answered %s", resp.Status)
+	}
+	return nil
+}

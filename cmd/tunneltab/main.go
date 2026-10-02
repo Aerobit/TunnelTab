@@ -167,7 +167,7 @@ func run() int {
 
 	show(srv.LaunchURL(), *noBrowser, log)
 	if appDir != "" {
-		go cleanupAfterUpdate(appDir, log)
+		go cleanupAfterUpdate(appDir, srv.UpdateConfirmed(), log)
 	}
 
 	<-ctx.Done()
