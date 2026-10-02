@@ -271,11 +271,21 @@ func (s *Server) handleDirectTCPIP(nc ssh.NewChannel) {
 		return
 	}
 	go ssh.DiscardRequests(reqs)
+	// Like OpenSSH: an end-of-stream from the client only half-closes the
+	// target; the channel stays open until the target closes too.
+	toClient := make(chan struct{})
 	go func() {
 		io.Copy(ch, target)
 		ch.CloseWrite()
+		close(toClient)
 	}()
 	io.Copy(target, ch)
+	if tc, ok := target.(*net.TCPConn); ok {
+		tc.CloseWrite()
+	} else {
+		target.Close()
+	}
+	<-toClient
 	target.Close()
 	ch.Close()
 }

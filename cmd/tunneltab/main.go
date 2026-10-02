@@ -172,11 +172,19 @@ func run() int {
 
 	<-ctx.Done()
 	log.Info("shutting down")
+	// Quitting must end the program, and with it every tunnel, even if
+	// something below hangs.
+	watchdog := time.AfterFunc(15*time.Second, func() {
+		log.Error("shutdown is taking too long; exiting anyway")
+		platform.RemoveInstance(paths.Instance)
+		os.Exit(1)
+	})
 	close(autoLockStop)
 	srv.Close() // stops tunnels and ends event streams so Shutdown doesn't wait on them
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	httpSrv.Shutdown(shutdownCtx)
+	watchdog.Stop()
 	log.Info("stopped")
 	if restart.Load() {
 		platform.RemoveInstance(paths.Instance)

@@ -43,6 +43,7 @@ type forward struct {
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
 	done  bool
+	stop  chan struct{} // closed by close
 	wg    sync.WaitGroup
 }
 
@@ -90,7 +91,7 @@ func (m *Manager) StartForward(svc model.Service) (ForwardStatus, error) {
 		return ForwardStatus{}, err
 	}
 
-	f := &forward{m: m, svc: svc, sc: sc, ln: ln, port: ln.Addr().(*net.TCPAddr).Port, conns: map[net.Conn]struct{}{}}
+	f := &forward{m: m, svc: svc, sc: sc, ln: ln, port: ln.Addr().(*net.TCPAddr).Port, conns: map[net.Conn]struct{}{}, stop: make(chan struct{})}
 	m.mu.Lock()
 	closed := m.closed
 	if !closed {
@@ -243,8 +244,18 @@ func (f *forward) handle(local net.Conn) {
 	toBrowser := countingWriter{local, func(n int) { f.m.traffic.add(id, n, true) }}
 	go func() { io.Copy(toServer, local); closeWrite(remote); done <- struct{}{} }()
 	go func() { io.Copy(toBrowser, remote); closeWrite(local); done <- struct{}{} }()
-	<-done
-	<-done
+	stop := f.stop
+	for finished := 0; finished < 2; {
+		select {
+		case <-done:
+			finished++
+		case <-stop:
+			// The forward is stopping. A service may keep its side open after
+			// the end-of-stream (an idle websocket, say); don't wait for it.
+			remote.Close()
+			stop = nil
+		}
+	}
 }
 
 // closeWrite half-closes c if it supports it (TCP and SSH channels do),
@@ -278,6 +289,7 @@ func (f *forward) untrack(c net.Conn) {
 func (f *forward) close() {
 	f.mu.Lock()
 	f.done = true
+	close(f.stop)
 	f.ln.Close()
 	for c := range f.conns {
 		c.Close()

@@ -6,6 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-02
+
+### Fixed
+- **Quit now really stops TunnelTab and its tunnels.** A web UI with an open
+  connection that it never closes (such as a websocket) made Quit hang, so
+  TunnelTab kept running in the background and its tunnels stayed usable.
+  Stopping a tunnel now closes such connections at once, and TunnelTab exits
+  after at most 15 seconds even if something else hangs.
+
 ## [0.7.1] - 2026-10-02
 
 ### Added

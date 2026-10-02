@@ -523,6 +523,58 @@ func TestLargeTransfer(t *testing.T) {
 	}
 }
 
+// A service that keeps its connections open (a web UI's websocket, say)
+// must not keep a stopped forward, or TunnelTab on Quit, from finishing.
+func TestStopWithIdleConnectionToStubbornService(t *testing.T) {
+	e := newEnv()
+	_, s := passwordServer(t, e)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		// Accepts, then never writes and ignores the end-of-stream.
+		if c, err := ln.Accept(); err == nil {
+			accepted <- c
+		}
+	}()
+	m := newManager(t, e, nil)
+	addr := ln.Addr().(*net.TCPAddr)
+	svc := service(s.ID, "127.0.0.1", addr.Port)
+	st, err := m.StartForward(svc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browser, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(st.LocalPort)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	var service net.Conn
+	select {
+	case service = <-accepted:
+		defer service.Close()
+	case <-time.After(5 * time.Second):
+		t.Fatal("the connection never reached the service")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		m.StopForward(svc.ID)
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("StopForward hangs on an idle connection")
+	}
+	if _, err := get(st.LocalPort); err == nil {
+		t.Fatal("stopped forward still answers")
+	}
+}
+
 func TestPortInUse(t *testing.T) {
 	e := newEnv()
 	srv, s := passwordServer(t, e)
