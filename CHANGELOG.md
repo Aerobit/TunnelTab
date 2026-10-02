@@ -6,6 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- **An old "Trust this server?" question can no longer replace a newer
+  key.** If a key was confirmed or replaced for a server (for example in
+  another tab) while an earlier question was still open, answering that
+  earlier question used to replace the newer key without the "server
+  identity changed" warning. Now it is refused with "this server's
+  confirmed key changed since this question was shown"; connect again to
+  get the right question.
+
 ### Fixed
 - **Keyboard focus stays put.** When something changed in the background
   (a health reading, a service check, a change from another tab), the

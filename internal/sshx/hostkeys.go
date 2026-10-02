@@ -28,11 +28,7 @@ func hostKeyCallback(address string, known []model.KnownHost) ssh.HostKeyCallbac
 		if len(keys) == 0 {
 			return &UnknownHostKeyError{Address: address, Key: presented, Fingerprint: ssh.FingerprintSHA256(presented)}
 		}
-		known := make([]string, len(keys))
-		for i, k := range keys {
-			known[i] = k.Type() + " " + ssh.FingerprintSHA256(k)
-		}
-		return &HostKeyChangedError{Address: address, Key: presented, Fingerprint: ssh.FingerprintSHA256(presented), Known: known}
+		return &HostKeyChangedError{Address: address, Key: presented, Fingerprint: ssh.FingerprintSHA256(presented), Known: fingerprints(keys)}
 	}
 }
 
@@ -63,4 +59,24 @@ func hostKeyAlgorithms(known []model.KnownHost) []string {
 		}
 	}
 	return algos
+}
+
+// KnownFingerprints returns the fingerprints of the confirmed keys, in the
+// form HostKeyChangedError.Known uses ("ssh-ed25519 SHA256:…").
+func KnownFingerprints(known []model.KnownHost) []string {
+	var keys []ssh.PublicKey
+	for _, k := range known {
+		if pk, _, _, _, err := ssh.ParseAuthorizedKey([]byte(k.Key)); err == nil {
+			keys = append(keys, pk)
+		}
+	}
+	return fingerprints(keys)
+}
+
+func fingerprints(keys []ssh.PublicKey) []string {
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = k.Type() + " " + ssh.FingerprintSHA256(k)
+	}
+	return out
 }

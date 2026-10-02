@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -670,14 +671,18 @@ func (s *Server) handleStopService(w http.ResponseWriter, r *http.Request) {
 // pendingKey is a host key shown to the user and waiting for confirmation.
 // The key itself stays on the server; the dashboard only sends back the
 // token, so the key stored is exactly the one that was shown.
+// known lists the keys that were confirmed when it was shown (the
+// question depends on them: "new server" or "key changed"), so a stale
+// question can't replace a key confirmed since.
 type pendingKey struct {
 	address string
 	key     ssh.PublicKey
+	known   []string // fingerprints, as sshx.KnownFingerprints
 	changed bool
 	expires time.Time
 }
 
-func (s *Server) addPendingKey(address string, key ssh.PublicKey, changed bool) string {
+func (s *Server) addPendingKey(address string, key ssh.PublicKey, known []string) string {
 	tok := randomToken()
 	s.pendingMu.Lock()
 	defer s.pendingMu.Unlock()
@@ -687,7 +692,7 @@ func (s *Server) addPendingKey(address string, key ssh.PublicKey, changed bool) 
 			delete(s.pendingKeys, k)
 		}
 	}
-	s.pendingKeys[tok] = pendingKey{address: address, key: key, changed: changed, expires: now.Add(pendingKeyTTL)}
+	s.pendingKeys[tok] = pendingKey{address: address, key: key, known: known, changed: len(known) > 0, expires: now.Add(pendingKeyTTL)}
 	return tok
 }
 
@@ -701,13 +706,13 @@ func (s *Server) writeSSHError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error": "unknown_host_key", "message": err.Error(),
 			"address": unknown.Address, "keyType": unknown.Key.Type(), "fingerprint": unknown.Fingerprint,
-			"token": s.addPendingKey(unknown.Address, unknown.Key, false),
+			"token": s.addPendingKey(unknown.Address, unknown.Key, nil),
 		})
 	case errors.As(err, &changed):
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error": "host_key_changed", "message": err.Error(),
 			"address": changed.Address, "keyType": changed.Key.Type(), "fingerprint": changed.Fingerprint,
-			"known": changed.Known, "token": s.addPendingKey(changed.Address, changed.Key, true),
+			"known": changed.Known, "token": s.addPendingKey(changed.Address, changed.Key, changed.Known),
 		})
 	case errors.Is(err, sshx.ErrAuthFailed):
 		writeError(w, http.StatusBadGateway, "auth_failed", err.Error())
@@ -745,6 +750,16 @@ func (s *Server) handleForgetHostKey(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// errStaleHostKeyQuestion: the confirmed keys changed after the question
+// was shown, so its answer no longer applies.
+var errStaleHostKeyQuestion = errors.New("host key question is stale")
+
+// sameFingerprints reports whether a and b hold the same fingerprints.
+func sameFingerprints(a, b []string) bool {
+	a, b = slices.Sorted(slices.Values(a)), slices.Sorted(slices.Values(b))
+	return slices.Equal(a, b)
+}
+
 func (s *Server) handleConfirmHostKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token   string `json:"token"`
@@ -768,7 +783,26 @@ func (s *Server) handleConfirmHostKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "replace_required", "this server's key changed: replacing it must be confirmed explicitly")
 		return
 	}
-	if err := s.update(func(d *model.Data) error { _, err := d.SetHostKey(p.address, p.key); return err }); err != nil {
+	err := s.update(func(d *model.Data) error {
+		current := sshx.KnownFingerprints(d.HostKeysFor(p.address))
+		if slices.Equal(current, []string{p.key.Type() + " " + ssh.FingerprintSHA256(p.key)}) {
+			return nil // already confirmed (e.g. in another tab)
+		}
+		if !sameFingerprints(current, p.known) {
+			return errStaleHostKeyQuestion
+		}
+		_, err := d.SetHostKey(p.address, p.key)
+		return err
+	})
+	if errors.Is(err, errStaleHostKeyQuestion) {
+		s.pendingMu.Lock()
+		delete(s.pendingKeys, req.Token)
+		s.pendingMu.Unlock()
+		writeError(w, http.StatusConflict, "host_key_question_stale",
+			"this server's confirmed key changed since this question was shown: close it and connect again")
+		return
+	}
+	if err != nil {
 		s.writeDataError(w, err)
 		return
 	}

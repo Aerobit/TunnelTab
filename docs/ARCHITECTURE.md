@@ -302,7 +302,12 @@ confirmation needed, port in use), 413 too large, 423 vault locked, 429 wait,
 `fingerprint` and a `token`. The key stays on the server; after the user
 confirms, the dashboard sends `{token}` (plus `replace: true` for a changed
 key) to `/hostkeys/confirm` and retries. Tokens expire after 10 minutes and
-are cleared when the vault locks.
+are cleared when the vault locks. A token also remembers the keys that were
+confirmed when it was issued: if they changed since (another tab confirmed
+or replaced a key), confirming it fails with 409
+`host_key_question_stale` and changes nothing, so an old "new server"
+question can never replace a key without the "key changed" warning. A
+token for a key that is already the confirmed one succeeds without change.
 
 ### Events (`GET /api/events`)
 

@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/Aerobit/TunnelTab/internal/config"
 	"github.com/Aerobit/TunnelTab/internal/health"
 	"github.com/Aerobit/TunnelTab/internal/model"
@@ -569,6 +571,73 @@ func TestChangedHostKeyNeedsExplicitReplace(t *testing.T) {
 	if m := h.mustCall("POST", "/api/servers/"+serverID+"/test", nil, http.StatusConflict); m["error"] != "unknown_host_key" {
 		t.Fatalf("got %v", m)
 	}
+}
+
+// A "trust this server?" question answered after the server's confirmed key
+// changed (e.g. in another tab) must not replace that key: invariant 6.
+func TestStaleHostKeyQuestion(t *testing.T) {
+	h := ready(t)
+	sshSrv, serverID, _ := sshSetup(t, h)
+	addr := model.HostKeyAddress(sshSrv.Host, sshSrv.Port)
+	setKey := func(key ssh.PublicKey) {
+		t.Helper()
+		if err := h.srv.currentVault().Update(func(d *model.Data) error { _, err := d.SetHostKey(addr, key); return err }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keys := func() []string {
+		data := h.mustCall("GET", "/api/data", nil, 200)
+		var out []string
+		for _, k := range data["data"].(map[string]any)["knownHosts"].([]any) {
+			out = append(out, k.(map[string]any)["key"].(string))
+		}
+		return out
+	}
+	ask := func(want string) any {
+		t.Helper()
+		m := h.mustCall("POST", "/api/servers/"+serverID+"/test", nil, http.StatusConflict)
+		if m["error"] != want {
+			t.Fatalf("got %v, want %s", m, want)
+		}
+		return m["token"]
+	}
+	keyLine := func(k ssh.PublicKey) string { return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(k))) }
+
+	// Two "new server" questions; the first is answered: the second has
+	// nothing left to do and changes nothing.
+	first, second := ask("unknown_host_key"), ask("unknown_host_key")
+	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": first}, 200)
+	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": second}, 200)
+	if got := keys(); len(got) != 1 || got[0] != keyLine(sshSrv.HostKey.PublicKey()) {
+		t.Fatalf("known hosts %v", got)
+	}
+
+	// A "new server" question, then another key is confirmed: answering the
+	// old question must not replace it without the "key changed" warning.
+	h.mustCall("POST", "/api/hostkeys/forget", map[string]string{"host": addr}, 204)
+	stale := ask("unknown_host_key")
+	other := sshtest.NewHostKey(t).PublicKey()
+	setKey(other)
+	if m := h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": stale}, http.StatusConflict); m["error"] != "host_key_question_stale" {
+		t.Fatalf("got %v", m)
+	}
+	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": stale}, 404) // used up
+	if got := keys(); len(got) != 1 || got[0] != keyLine(other) {
+		t.Fatalf("stale answer changed the known hosts: %v", got)
+	}
+
+	// The same for "key changed": its answer applies only to the key it named.
+	changed := ask("host_key_changed")
+	third := sshtest.NewHostKey(t).PublicKey()
+	setKey(third)
+	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": changed, "replace": true}, http.StatusConflict)
+	if got := keys(); len(got) != 1 || got[0] != keyLine(third) {
+		t.Fatalf("stale replace changed the known hosts: %v", got)
+	}
+
+	// Asked again, the current question works.
+	h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": ask("host_key_changed"), "replace": true}, 200)
+	h.mustCall("POST", "/api/servers/"+serverID+"/test", nil, 200)
 }
 
 func TestSSHErrors(t *testing.T) {
