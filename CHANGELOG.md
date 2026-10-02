@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-02
+
 ### Changed
 - The green dot next to the TunnelTab name in the sidebar is gone. It only
   showed that the dashboard could reach the TunnelTab program; when it
@@ -222,7 +224,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.6.1
 [0.6.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.5.0
 [0.4.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.3

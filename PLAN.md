@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.6.0 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15 and §16.
+> Status: **v0.6.1 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15 and §16.
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
