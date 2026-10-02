@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.1.0 released** (2026-09-30). All phases complete; later ideas are listed under Out of scope.
+> Status: **v0.6.0 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15 and §16.
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -238,7 +238,7 @@ one last time. From 0.2.0 onward, **Update now** works.
 | U4 ✅ | **UI** — Update now button, confirm dialog listing open terminals/tunnels, progress and errors | `tests/e2e` walkthrough with the fake release server |
 | U5 ✅ | **Docs + security** — update CLAUDE.md invariant ("never downloads or runs anything" → "only on click, only signed releases"), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE (Updates + FAQ), ARCHITECTURE (API `POST /updates/install`), CHANGELOG | Docs match behaviour; security review of the new code done |
 
-## 12. v0.3.0 / v0.4.0 — Dashboard redesign (released)
+## 12. v0.3.0 / v0.4.0 — Dashboard redesign (released 2026-10-01)
 
 The dashboard is one long list today. The redesign uses a **sidebar** with
 an **Overview** home and a **page per server** with tabs, and moves
@@ -271,7 +271,9 @@ https://claude.ai/artifact/J8Tm3ZRyoxxjK41uDUoRoz.
   (`#/server/<id>/terminals`), so a reload comes back to the same place.
 - **Server health** (CPU load, memory, disk, server uptime): **off by
   default**; switched on or off per server at any time in **Settings →
-  Server health** (and from the server's Overview tab).
+  Server health** (and from the server's Overview tab). *(Changed in
+  0.6.0, see §14: the Overview tab has Connect/Disconnect instead of the
+  switch, and the setting moved to Settings → Servers.)*
 
 ### Decisions
 
@@ -284,7 +286,7 @@ https://claude.ai/artifact/J8Tm3ZRyoxxjK41uDUoRoz.
 | Connection details | "Connected since", reconnect count and ping are measured by the SSH engine (ping = keep-alive round trip). |
 | Traffic | Counted on the PC as data passes through each tunnel: today's total and per-minute buckets for the last hour, in memory only. |
 | Notes | A new `notes` field on servers, stored **inside the encrypted vault**. Older versions keep but don't show it. |
-| Server health | **Opt-in per server**, stored in the vault (`healthEnabled`). Runs only while that server is already connected for something else (it never opens a connection by itself), every 30 s while the dashboard is open. One SSH exec of a fixed, read-only command (`cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k`) — no user input in the command; output size-limited and parsed strictly; Linux servers only (others show "not available"). Switching it off stops it immediately. Documented in SECURITY.md. |
+| Server health | **Opt-in per server**, stored in the vault (`healthEnabled`). Runs only while that server is already connected for something else (it never opens a connection by itself), every 30 s while the dashboard is open. One SSH exec of a fixed, read-only command (`cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k`) — no user input in the command; output size-limited and parsed strictly; Linux servers only (others show "not available"). Switching it off stops it immediately. Documented in SECURITY.md. *0.6.0 adds a second way: **Connect** on the Health box (see §14).* |
 | Invariants | No change to "no local shell" or "network only to your servers": health runs a command **on your server** over the existing SSH connection. CLAUDE.md invariant 7 gets a line naming the health command as the only remote command TunnelTab runs by itself. |
 
 ### Build phases
@@ -296,7 +298,7 @@ https://claude.ai/artifact/J8Tm3ZRyoxxjK41uDUoRoz.
 | D3 ✅ | **Ping, traffic, notes** — keep-alive RTT, per-tunnel byte counters (today + last hour chart), server notes in the vault | 0.4.0 | Unit tests (counters, vault round-trip with notes, older vault without notes); browser test |
 | D4 ✅ | **Server health (opt-in)** — Settings → Server health tab with a switch per server (plus one on the server's Overview tab), the fixed read-only command, strict parser, 30 s polling only while connected and the dashboard is open | 0.4.0 | Parser tests with real `/proc` samples and hostile output (huge, malformed); test server answers the command; browser test: off by default, on, off again stops polling; SECURITY.md + SECURITY_REVIEW.md updated |
 
-## 13. v0.5.0 — Service discovery (released)
+## 13. v0.5.0 — Service discovery (released 2026-10-02)
 
 Built as proposed below (S1, S2, S4). Decisions taken: the command runs
 `ss -tlnp`, `netstat -tln` and `docker ps` (three fields, JSON); ports on
@@ -331,7 +333,7 @@ tick the ones to add — nothing is added without your choice.
 3. **Add selected** creates the services in one go (same validation as the
    service dialog). Nothing starts automatically.
 
-### Decisions (to confirm before building)
+### Decisions (as proposed; what was built is summarised above)
 
 | Topic | Proposal |
 |---|---|
@@ -352,7 +354,35 @@ tick the ones to add — nothing is added without your choice.
 | S3 | **Web check (optional)**: HEAD probe through the tunnel to label web UIs and pick http/https | Tests with HTTP, HTTPS and non-HTTP backends |
 | S4 | **Docs + security**: CLAUDE.md invariant 7 names this command too (on click only), SECURITY.md, SECURITY_REVIEW.md, USER_GUIDE | Review done; docs match behaviour |
 
-## 14. Future — Smaller ideas (backlog)
+## 14. v0.6.0 — Health box Connect, one Servers tab (released 2026-10-02)
+
+Two changes the user asked for after using 0.5.0:
+
+### What the user sees
+
+- **Health box: Connect instead of Turn on/off.** On a server's Overview
+  tab, **Connect** (labelled **Show health** when the server is already
+  connected for a service or terminal) connects and shows live health until
+  **Disconnect** or until the dashboard is closed, whether or not the server
+  is ticked in Settings. Ticked servers still show health whenever a service
+  or terminal keeps them connected, and never connect just for it.
+- **Settings → Servers:** the old *Servers* (fingerprints) and *Server
+  health* tabs are one tab: a row per server with its project, its
+  **Health** tick box and its confirmed fingerprint with **Forget**.
+  Fingerprints for addresses no server uses any more are listed underneath.
+
+### Decisions
+
+| Topic | Decision |
+|---|---|
+| Keeping the connection | `sshx.Manager.Hold` / `Unhold`: a hold is one more user of the server's shared connection, in memory only, shown as `held` in the server status. `POST`/`DELETE /api/servers/{id}/connect`. Host keys are checked as for a tunnel (unknown or changed keys need confirmation). |
+| Forgotten Connect | A hold is dropped on Disconnect, on server edit/delete, on lock with "close tunnels on lock", when the server can't be reconnected, and on the first 30 s health round with no dashboard open. |
+| Invariants | CLAUDE.md invariant 7 reworded: health runs for ticked servers (existing connection only) or held ones (connected by the user's click); `Manager.Hold` is never called in the background. Same fixed read-only command, limits and parser. |
+
+Tests: `TestHold` (sshx), `TestServerConnect` (server), and the browser
+test (Show health → Disconnect, tick and untick in Settings → Servers).
+
+## 15. Future — Smaller ideas (backlog)
 
 ### Progress bar while updating (released in v0.5.0)
 
@@ -379,7 +409,22 @@ same checks and limits as today.
 **Done when:** a browser test (`tests/e2e/update.js`, with a slowed-down
 fake release server) sees the steps in order and the bar move; docs updated.
 
-## 15. Future — Remote desktop (VNC) (idea, not scheduled)
+### Recommended next (from the 2026-10-01 review)
+
+Not scheduled; in the suggested order:
+
+1. **Tests for `cmd/tunneltab`**, above all the update rollback (old files
+   put back when the new version doesn't start).
+2. **CI hardening:** pin GitHub Actions to commit SHAs; keep the signing key
+   in a protected GitHub Environment that only the release workflow uses.
+3. **Split `web/static/js/app.js`** into smaller modules (overview, server
+   page, health, sidebar), like `discover.js` and `termview.js`.
+4. **Accessibility pass:** keyboard focus order, labels and live regions
+   for status changes, checked with a screen reader.
+5. **Bring `docs/SECURITY_REVIEW.md` up to date** as a full review of the
+   current version, not only per-feature rows.
+
+## 16. Future — Remote desktop (VNC) (idea, not scheduled)
 
 See a server's (or a home PC's) graphical desktop from the dashboard, over
 the same SSH connection — no VNC port exposed to the internet.
