@@ -546,25 +546,36 @@ function start(cmd, args, opts) {
   await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   step("ping (servers table and server page), traffic counted and charted, notes saved in the vault");
 
-  // D4: server health is off by default; on from the server page; off from Settings.
+  // D4: server health is off by default. Connect (here "Show health": a service
+  // keeps the server connected) shows it until Disconnect; ticking it in
+  // Settings shows it while connected; unticking hides it again.
   await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
   const healthBox = page.locator(".box", { has: page.getByRole("heading", { name: "Health" }) });
-  await healthBox.getByText("Off. When on").waitFor();
-  await healthBox.getByRole("button", { name: "Turn on" }).click();
+  await healthBox.getByText("Show health to see").waitFor();
+  await healthBox.getByRole("button", { name: "Show health" }).click();
   await healthBox.locator("meter").first().waitFor();
   await healthBox.getByText("Disk /srv/data").waitFor();
   await healthBox.getByText("of 3.8 GB").waitFor(); // memory: 2.3 GB of 3.8 GB
   await shot("16-health");
+  await healthBox.getByRole("button", { name: "Disconnect" }).click();
+  await healthBox.getByText("Show health to see").waitFor();
   await page.getByRole("button", { name: /Settings/ }).click();
   await page.getByRole("tab", { name: "Server health" }).click();
   const healthSwitch = page.getByRole("dialog").getByLabel("Demo VPS (renamed)");
-  assert.ok(await healthSwitch.isChecked(), "Settings doesn't show health as on");
+  assert.ok(!(await healthSwitch.isChecked()), "Settings shows health as on");
+  await healthSwitch.check();
+  await page.getByRole("dialog").locator(".inline-status.ok", { hasText: "health on" }).waitFor();
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+  await healthBox.locator("meter").first().waitFor();
+  assert.equal(await healthBox.getByRole("button", { name: "Disconnect" }).count(), 0, "Disconnect shown without Connect");
+  await page.getByRole("button", { name: /Settings/ }).click();
+  await page.getByRole("tab", { name: "Server health" }).click();
   await healthSwitch.uncheck();
   await page.getByRole("dialog").locator(".inline-status.ok", { hasText: "health off" }).waitFor();
   await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
-  await healthBox.getByText("Off. When on").waitFor();
+  await healthBox.getByText("Show health to see").waitFor();
   await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
-  step("server health: off by default, on from the server page (readings shown), off from Settings");
+  step("server health: off by default, Show health/Disconnect on the server page, on and off from Settings");
 
   // §13: Find services asks first, then lists what the server runs; only ticked ones are added.
   await page.locator(".service", { hasText: "Demo app" }).waitFor();

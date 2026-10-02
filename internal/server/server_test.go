@@ -915,3 +915,75 @@ func TestServerHealth(t *testing.T) {
 		t.Fatal("read with no dashboard open")
 	}
 }
+
+func TestServerConnect(t *testing.T) {
+	h := ready(t)
+	sshSrv, serverID, serviceID := sshSetup(t, h)
+	dashboard := h.srv.events.subscribe() // a dashboard is open
+	defer h.srv.events.unsubscribe(dashboard)
+	readings := func() map[string]any { return h.mustCall("GET", "/api/data", nil, 200)["health"].(map[string]any) }
+	held := func() bool {
+		for _, s := range h.mustCall("GET", "/api/data", nil, 200)["servers"].([]any) {
+			if st := s.(map[string]any); st["id"] == serverID {
+				return st["held"] == true
+			}
+		}
+		return false
+	}
+	waitFor := func(what string, ok func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !ok() {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s", what)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+
+	// An unknown host key asks for confirmation, like starting a service.
+	if code, body := h.call("POST", "/api/servers/"+serverID+"/connect", nil); code != 409 || body["error"] != "unknown_host_key" {
+		t.Fatalf("connect to an unconfirmed server: %d", code)
+	}
+	h.srv.currentVault().Update(func(d *model.Data) error {
+		_, err := d.SetHostKey(model.HostKeyAddress(sshSrv.Host, sshSrv.Port), sshSrv.HostKey.PublicKey())
+		return err
+	})
+	h.mustCall("POST", "/api/servers/nope/connect", nil, 404)
+
+	// Connect: connects and reads health, though it's off in Settings.
+	h.mustCall("POST", "/api/servers/"+serverID+"/connect", nil, 204)
+	if !held() {
+		t.Fatal("not held after Connect")
+	}
+	waitFor("a reading", func() bool { r, ok := readings()[serverID].(map[string]any); return ok && r["health"] != nil })
+
+	// Disconnect: reading dropped and the connection closed.
+	h.mustCall("DELETE", "/api/servers/"+serverID+"/connect", nil, 204)
+	if len(readings()) != 0 || held() {
+		t.Fatal("reading or hold kept after Disconnect")
+	}
+	waitFor("disconnect", func() bool { return sshSrv.ActiveConnections() == 0 })
+
+	// With a tunnel open and health off, Disconnect keeps the tunnel's
+	// connection but stops reading.
+	h.mustCall("POST", "/api/services/"+serviceID+"/start", nil, 200)
+	h.mustCall("POST", "/api/servers/"+serverID+"/connect", nil, 204)
+	waitFor("a reading", func() bool { _, ok := readings()[serverID]; return ok })
+	h.mustCall("DELETE", "/api/servers/"+serverID+"/connect", nil, 204)
+	h.srv.checkAllHealth()
+	time.Sleep(200 * time.Millisecond)
+	if len(readings()) != 0 || len(h.srv.mgr.Servers()) != 1 {
+		t.Fatalf("readings %v, connections %v", readings(), h.srv.mgr.Servers())
+	}
+	h.mustCall("POST", "/api/services/"+serviceID+"/stop", nil, 204)
+
+	// No dashboard open: the hold is let go.
+	h.mustCall("POST", "/api/servers/"+serverID+"/connect", nil, 204)
+	h.srv.events.unsubscribe(dashboard)
+	h.srv.checkAllHealth()
+	if len(h.srv.mgr.Held()) != 0 {
+		t.Fatal("hold kept with no dashboard open")
+	}
+	waitFor("disconnect", func() bool { return sshSrv.ActiveConnections() == 0 })
+}

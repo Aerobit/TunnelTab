@@ -514,7 +514,7 @@ function renderHealthSettings(servers, projects) {
       })
       : h("li", { class: "hint" }, "No servers yet."));
   return [
-    h("p", { class: "hint" }, "Switched on, TunnelTab reads a server's CPU load, memory, disk use and uptime every 30 seconds — only while that server is already connected (for a service or a terminal) and this dashboard is open. It never connects just for this. Off by default; switch it off again at any time."),
+    h("p", { class: "hint" }, "Switched on, TunnelTab reads a server's CPU load, memory, disk use and uptime every 30 seconds — only while that server is already connected (for a service or a terminal) and this dashboard is open. It never connects just for this. Off by default; switch it off again at any time. To look at a server without a service or terminal, use Connect on its Health box."),
     h("p", { class: "hint" }, "It runs one fixed, read-only command (Linux servers): ",
       h("code", {}, "cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k"),
       ". The readings stay in memory and are never saved."),

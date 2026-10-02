@@ -346,7 +346,7 @@ function onEvent(ev) {
         }
       } else if (ev.kind === "server") {
         if (ev.state === "stopped") state.servers.delete(ev.id);
-        else state.servers.set(ev.id, { id: ev.id, state: ev.state, error: ev.error, since: ev.since, reconnects: ev.reconnects, pingMs: ev.pingMs, reason: ev.reason });
+        else state.servers.set(ev.id, { id: ev.id, state: ev.state, error: ev.error, since: ev.since, reconnects: ev.reconnects, pingMs: ev.pingMs, reason: ev.reason, held: ev.held });
       }
       renderSoon();
       break;
@@ -835,7 +835,7 @@ function renderServerOverview(s, st, services) {
     ["Status", statusPill(st)],
     ["Connected", st?.since && connected
       ? `${duration(Date.now() - Date.parse(st.since))}, since ${clock(st.since)}`
-      : h("span", { class: "muted" }, "Not right now. Starting a service or a terminal connects.")],
+      : h("span", { class: "muted" }, "Not right now. Starting a service or a terminal connects, or Connect under Health.")],
     ["Ping", st?.pingMs && connected ? fmtPing(st.pingMs) : "—"],
     ["Reconnects", st?.since ? String(st.reconnects || 0) : "—"],
     ["Address", h("span", { class: "mono" }, address(s))],
@@ -864,11 +864,26 @@ function renderServerOverview(s, st, services) {
   ];
 }
 
-// --- Server health (opt-in) ---------------------------------------------------
+// --- Server health ------------------------------------------------------------
+// Shown while the server is connected and either health is switched on in
+// Settings, or the user connected it with the card's Connect button (held).
 
-async function setHealth(server, enabled) {
+/** Connect: connect to the server and keep it connected, reading its health. */
+async function connectServer(server, btn) {
+  btn.disabled = true;
+  btn.textContent = "Connecting…";
   try {
-    await api("PUT", `/servers/${encodeURIComponent(server.id)}/health`, { enabled });
+    await withHostKeys(() => api("POST", `/servers/${encodeURIComponent(server.id)}/connect`));
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    renderSoon();
+  }
+}
+
+async function disconnectServer(server) {
+  try {
+    await api("DELETE", `/servers/${encodeURIComponent(server.id)}/connect`);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -894,17 +909,22 @@ function uptimeText(sec) {
 }
 
 function renderHealthBox(s, st) {
+  const connected = st?.state === "connected";
   const head = h("div", { class: "box-head" }, h("h2", {}, "Health"),
-    s.healthEnabled ? h("button", { class: "chip", onclick: () => setHealth(s, false) }, "Turn off") : null);
-  if (!s.healthEnabled) {
+    st?.held ? h("button", { class: "chip", onclick: () => disconnectServer(s),
+      title: "Stop reading health. The connection closes unless a service or terminal uses it." }, "Disconnect") : null);
+  if (!st?.held && !(s.healthEnabled && connected)) {
     return h("section", { class: "box" }, head,
-      h("p", { class: "hint" }, "Off. When on, TunnelTab reads this server's load, memory, disk use and uptime every 30 seconds while it's connected and this dashboard is open. It runs one read-only command; Linux servers only."),
-      h("div", {}, h("button", { class: "btn secondary small", onclick: () => setHealth(s, true) }, "Turn on")));
+      h("p", { class: "hint" }, s.healthEnabled
+        ? "Shown while this server is connected for a service or a terminal. Connect to see it now."
+        : `${connected ? "Show health" : "Connect"} to see this server's load, memory, disk use and uptime, read every 30 seconds until you disconnect or close the dashboard. To see it whenever a service or terminal is open, tick this server in Settings → Server health.`),
+      h("p", { class: "hint" }, "It runs one read-only command; Linux servers only."),
+      h("div", {}, h("button", { class: "btn secondary small", onclick: (e) => connectServer(s, e.currentTarget) },
+        connected ? "Show health" : "Connect")));
   }
   const reading = state.health.get(s.id);
   if (!reading) {
-    return h("section", { class: "box" }, head, h("p", { class: "hint" },
-      st?.state === "connected" ? "Reading…" : "Shown while the server is connected (starting a service or a terminal connects)."));
+    return h("section", { class: "box" }, head, h("p", { class: "hint" }, connected ? "Reading…" : "Connecting…"));
   }
   if (reading.error || !reading.health) {
     return h("section", { class: "box" }, head, h("p", { class: "hint" }, reading.error || "No reading."));

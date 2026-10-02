@@ -51,6 +51,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("POST /api/servers/{id}/clear-passphrase", s.handleClearPassphrase)
 	a("PUT /api/servers/{id}/notes", s.handleServerNotes)
 	a("PUT /api/servers/{id}/health", s.handleServerHealth)
+	a("POST /api/servers/{id}/connect", s.handleServerConnect)
+	a("DELETE /api/servers/{id}/connect", s.handleServerDisconnect)
 	a("POST /api/servers/{id}/test", s.handleTestServer)
 	a("POST /api/servers/{id}/discover", s.handleDiscover)
 	a("POST /api/servers/{id}/services", s.handleAddServices)

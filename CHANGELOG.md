@@ -6,6 +6,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Health box: Connect instead of Turn on.** On a server's page, **Connect**
+  (**Show health** if it's already connected) connects and shows the
+  server's health until you click **Disconnect** or close the dashboard,
+  whether or not health is ticked in Settings. Ticking a server in
+  **Settings → Server health** still shows it whenever a service or
+  terminal is open; that is now the only on/off switch.
+
 ## [0.5.0] - 2026-10-02
 
 ### Added

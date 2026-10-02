@@ -91,9 +91,9 @@ Each time TunnelTab starts, enter your master password to unlock it.
   activity**; and a table of **all servers** with their status and ping.
 - **A server's page** (click it in the sidebar) has tabs:
   - **Overview**: the connection (connected for how long, ping,
-    reconnects, address, login method), its services, its **health** (if
-    you switched it on), the traffic through its tunnels in the last hour,
-    and your notes.
+    reconnects, address, login method), its services, its **health** (after
+    **Connect**, or if you ticked it in Settings), the traffic through its
+    tunnels in the last hour, and your notes.
   - **Services**: start, stop, open, edit and reorder its web apps, or
     let TunnelTab [find them](#find-services).
   - **Terminals**: terminals on this server (see [Opening a terminal](#opening-a-terminal)).
@@ -115,15 +115,21 @@ it quits. Nothing extra is sent to your servers to measure them.
 ### Server health
 
 A server's **Health** box shows its CPU load, memory, disk use and uptime.
-It is **off by default**: turn it on with **Turn on** in that box, or in
-**Settings → Server health**, and off again the same way at any time.
+There are two ways to see it:
 
-While it's on, and only while the server is already connected (for a
-service or a terminal) and the dashboard is open, TunnelTab runs one
+- **Connect** in that box (**Show health** if the server is already
+  connected) connects to the server and shows its health until you click
+  **Disconnect** or close the dashboard. The connection then closes, unless
+  a service or terminal still uses it.
+- To see it whenever a service or terminal is open, tick the server in
+  **Settings → Server health** (off by default). Then it never connects
+  just for this: it shows only while the server is already connected.
+
+Either way, and only while the dashboard is open, TunnelTab runs one
 read-only command on the server every 30 seconds:
-`cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k`. It never
-connects to a server just for this, and the readings are never saved. It
-needs a Linux server; on others the box says so.
+`cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k`. The
+readings are never saved. It needs a Linux server; on others the box says
+so.
 
 ## Projects
 
@@ -317,8 +323,8 @@ is listed in the server's **Activity**.
   by itself — only when you click. See [How do I update](#faq).
 - **Servers** — every fingerprint you've trusted. **Forget** removes one, so
   the next connection asks you to confirm again.
-- **Server health** — switch the health check on or off for each server
-  (see [Server health](#server-health)).
+- **Server health** — tick a server to see its health whenever a service
+  or terminal is open (see [Server health](#server-health)).
 
 ## Backups and moving to another PC
 

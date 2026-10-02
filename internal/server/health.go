@@ -11,9 +11,12 @@ import (
 	"github.com/Aerobit/TunnelTab/internal/sshx"
 )
 
-// Opt-in server health: for servers where it is switched on, while the
-// server is connected (for a tunnel or terminal — it never connects by
-// itself) and a dashboard is open, health.Command runs every healthEvery.
+// Server health: health.Command runs every healthEvery while a dashboard is
+// open, for servers that are connected and either
+//   - have health switched on in Settings (it never connects by itself: only
+//     while a tunnel or terminal keeps the server connected), or
+//   - were connected with the Health card's Connect button (sshx.Manager.Hold,
+//     dropped by Disconnect or once no dashboard is open).
 // Readings are kept in memory only.
 
 var (
@@ -53,11 +56,16 @@ func (s *Server) runHealth(stop <-chan struct{}) {
 	}
 }
 
-// checkAllHealth checks every server with health switched on, if a
+// checkAllHealth checks every server with health switched on or held, if a
 // dashboard is open (nobody to show it to otherwise) and the vault is
-// unlocked (the setting is in the vault).
+// unlocked. With no dashboard open, held servers are let go: Connect is
+// for looking at them.
 func (s *Server) checkAllHealth() {
 	if s.events.count() == 0 {
+		for _, id := range s.mgr.Held() {
+			s.log.Info("disconnecting: no dashboard open", "server", id)
+			s.mgr.Unhold(id)
+		}
 		return
 	}
 	for _, id := range s.healthServers() {
@@ -65,18 +73,29 @@ func (s *Server) checkAllHealth() {
 	}
 }
 
-// healthServers lists the servers with health switched on.
+// healthServers lists the servers with health switched on or held; none
+// while the vault is locked.
 func (s *Server) healthServers() []string {
+	held := s.mgr.Held()
 	var ids []string
-	s.peek(func(d *model.Data) error {
+	if err := s.peek(func(d *model.Data) error {
+		ids = append(ids, held...)
 		for _, srv := range d.Servers {
-			if srv.HealthEnabled {
+			if srv.HealthEnabled && !s.mgr.IsHeld(srv.ID) {
 				ids = append(ids, srv.ID)
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil
+	}
 	return ids
+}
+
+// healthWanted reports whether the server's health should be read: switched
+// on or held.
+func (s *Server) healthWanted(id string) bool {
+	return s.mgr.IsHeld(id) || s.healthEnabled(id)
 }
 
 func (s *Server) healthEnabled(id string) bool {
@@ -123,8 +142,8 @@ func (s *Server) checkHealth(id string) {
 		s.log.Info("health check failed", "server", id, "reason", sshx.ErrorKind(err))
 		reading.Error = "Couldn't read the server's health."
 	}
-	// Switched off while the check ran: drop it.
-	if !s.healthEnabled(id) {
+	// Switched off or disconnected while the check ran: drop it.
+	if !s.healthWanted(id) {
 		s.setHealth(id, nil)
 		return
 	}
@@ -173,16 +192,52 @@ func (s *Server) handleServerHealth(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("server health switched", "server", id, "on", req.Enabled)
 	if req.Enabled {
 		go s.checkHealth(id)
-	} else {
+	} else if !s.mgr.IsHeld(id) {
 		s.setHealth(id, nil)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // onServerConnected checks a newly connected server's health right away,
-// if it is switched on, instead of waiting for the next round.
+// if it is wanted, instead of waiting for the next round.
 func (s *Server) onServerConnected(id string) {
-	if s.events.count() > 0 && s.healthEnabled(id) {
+	if s.events.count() > 0 && s.healthWanted(id) {
 		go s.checkHealth(id)
 	}
+}
+
+// handleServerConnect (the Health card's Connect button) connects to the
+// server and keeps it connected, reading its health, until Disconnect or
+// until no dashboard is open. It may connect, so only on the user's click.
+func (s *Server) handleServerConnect(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.view(func(d *model.Data) error {
+		if _, ok := d.Server(id); !ok {
+			return model.ErrNotFound
+		}
+		return nil
+	}); err != nil {
+		s.writeDataError(w, err)
+		return
+	}
+	if err := s.mgr.Hold(id); err != nil {
+		s.writeSSHError(w, err)
+		return
+	}
+	s.log.Info("server connected from the dashboard", "server", id)
+	go s.checkHealth(id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleServerDisconnect drops the hold made by Connect. The connection
+// closes unless a tunnel or terminal still uses it; the health reading stays
+// only if health is switched on in Settings.
+func (s *Server) handleServerDisconnect(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s.mgr.Unhold(id)
+	s.log.Info("server disconnected from the dashboard", "server", id)
+	if !s.healthEnabled(id) {
+		s.setHealth(id, nil)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

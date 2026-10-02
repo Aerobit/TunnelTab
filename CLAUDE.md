@@ -51,14 +51,17 @@ one, stop and ask the user instead.
    keep running); re-attaching needs the vault unlocked.
    **On servers**, the only command TunnelTab runs by itself is the opt-in
    health check: the constant `internal/health.Command` (read-only), only
-   for servers where the user switched it on, only over an existing
-   connection (`Manager.RunIfConnected` never connects), and only while a
-   dashboard is open. The only other command TunnelTab runs on a server is
-   "Find services": the constant `internal/discover.Command` (read-only:
-   lists listening ports and Docker containers), only when the user clicks
-   **Find services** and confirms (`Manager.Run`, which may connect). Never
-   put user input into either command, never run "Find services" in the
-   background, and never add other remote commands.
+   while a dashboard is open, and only for servers where the user switched
+   it on (then only over an existing connection: `Manager.RunIfConnected`
+   never connects) or clicked **Connect** on the Health box (`Manager.Hold`,
+   which may connect, and is dropped on Disconnect or once no dashboard is
+   open). Never call `Manager.Hold` in the background. The only other
+   command TunnelTab runs on a server is "Find services": the constant
+   `internal/discover.Command` (read-only: lists listening ports and Docker
+   containers), only when the user clicks **Find services** and confirms
+   (`Manager.Run`, which may connect). Never put user input into either
+   command, never run "Find services" in the background, and never add
+   other remote commands.
 8. **IDs are generated server-side** and all input is validated in
    `internal/model` before use.
 9. **No network access except SSH to the user's servers** — with one

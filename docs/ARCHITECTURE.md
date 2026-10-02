@@ -260,12 +260,14 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `POST /vault/unlock` | `{password}` | 401 `wrong_password`, 429 `too_many_attempts` (+ `retryAfterMs`) |
 | `POST /vault/lock` | | |
 | `POST /vault/password` | `{old, new}` | |
-| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached, client}], activity: [activity entry], health: {serverId: reading}}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects`, `reason` (`sshx.ErrorKind`) and `pingMs` (last keep-alive round trip; the first keep-alive goes out right after connecting) |
+| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached, client}], activity: [activity entry], health: {serverId: reading}}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects`, `reason` (`sshx.ErrorKind`), `held` (kept connected by the Health box's Connect) and `pingMs` (last keep-alive round trip; the first keep-alive goes out right after connecting) |
 | `POST /projects` · `PUT`/`DELETE /projects/{id}` | `{name, description}` | project; delete cascades |
 | `POST /servers` · `PUT`/`DELETE /servers/{id}` | `model.Server` | `PublicServer` (never secrets); blank secrets are kept on update |
 | `POST /servers/{id}/move` | `{projectId}` | |
 | `PUT /servers/{id}/notes` | `{notes}` | 204; free text (≤ 10 000 characters, line breaks allowed), stored in the vault; `PublicServer` includes `notes` |
 | `PUT /servers/{id}/health` | `{enabled}` | 204; switches the opt-in health check on (checked at once if connected) or off (reading dropped at once); stored in the vault, `PublicServer.healthEnabled` |
+| `POST /servers/{id}/connect` | | 204; the Health box's Connect: connects (409 `unknown_host_key`/`host_key_changed` as for a tunnel) and holds the connection, reading health, until Disconnect or no dashboard is open |
+| `DELETE /servers/{id}/connect` | | 204; Disconnect: drops the hold (the connection closes unless a tunnel or terminal uses it) and the reading unless health is switched on |
 | `POST /servers/{id}/clear-passphrase` | | |
 | `POST /servers/{id}/test` | | connects once (drives host-key confirmation) |
 | `POST /servers/{id}/discover` | | "Find services", only on the user's click: connects if needed (drives host-key confirmation), runs `discover.Command`, answers `{candidates: [{name, host, port, protocol, path, kind (web/maybe/other), app, process, container, image, listen (local/all/other), added}], docker (ok/none/denied/stopped/error), truncated}`; 422 `discover_failed` if neither `ss` nor `netstat` answered. Nothing is saved |
@@ -332,6 +334,15 @@ into load, cores, memory, uptime and up to 5 disks. Readings are kept in
 memory, sent as `health` events and in `GET /api/data`; a server that
 disconnects or is switched off loses its reading at once. A server that
 connects is checked right away.
+
+The Health box's **Connect** (`POST /servers/{id}/connect`) calls
+`Manager.Hold`: it connects (host-key errors as for a tunnel) and keeps
+the connection open with nothing else using it, and the server is checked
+like an enabled one. **Disconnect** (`DELETE /servers/{id}/connect`) calls
+`Manager.Unhold`. Holds are in memory only, shown as `held` in
+`ServerStatus`, and dropped by `StopServer` (edit/delete), `StopAll` (lock
+with "close tunnels on lock"), a server that can't be reconnected, and the
+first 30 s round with no dashboard open.
 
 **Find services** (`internal/server/discover.go`, `internal/discover`):
 only when the user clicks **Find services** and confirms.

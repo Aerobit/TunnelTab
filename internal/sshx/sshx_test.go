@@ -1007,3 +1007,62 @@ func TestRun(t *testing.T) {
 		t.Fatalf("existing connection changed: %+v", list)
 	}
 }
+
+func TestHold(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	host, port := backend(t, "x")
+	m := newManager(t, e, nil)
+
+	if err := m.Hold(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Hold(s.ID); err != nil { // holding again does nothing
+		t.Fatal(err)
+	}
+	if !m.IsHeld(s.ID) || srv.ActiveConnections() != 1 {
+		t.Fatalf("held %v, %d connections", m.IsHeld(s.ID), srv.ActiveConnections())
+	}
+	if st := m.Servers(); len(st) != 1 || !st[0].Held || st[0].State != StateConnected {
+		t.Fatalf("status %+v", st)
+	}
+
+	// A forward shares the held connection; unholding leaves it open.
+	if _, err := m.StartForward(service(s.ID, host, port)); err != nil {
+		t.Fatal(err)
+	}
+	m.Unhold(s.ID)
+	if m.IsHeld(s.ID) || len(m.Servers()) != 1 || m.Servers()[0].Held {
+		t.Fatalf("after Unhold: held %v, status %+v", m.IsHeld(s.ID), m.Servers())
+	}
+	m.StopAll()
+	waitFor(t, "connection to close", func() bool { return srv.ActiveConnections() == 0 })
+
+	// Unholding the only user closes the connection.
+	if err := m.Hold(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	m.Unhold(s.ID)
+	waitFor(t, "held connection to close", func() bool { return srv.ActiveConnections() == 0 })
+	if !e.sawEvent("server", s.ID, StateStopped) {
+		t.Fatal("no stopped event")
+	}
+
+	// StopServer and StopAll drop holds.
+	for _, stop := range []func(){func() { m.StopServer(s.ID) }, m.StopAll} {
+		if err := m.Hold(s.ID); err != nil {
+			t.Fatal(err)
+		}
+		stop()
+		if len(m.Held()) != 0 {
+			t.Fatal("hold kept")
+		}
+		waitFor(t, "connection to close", func() bool { return srv.ActiveConnections() == 0 })
+	}
+
+	// Errors are those of TestConnection.
+	s2 := e.addServer(srv, model.Auth{Type: model.AuthPassword, Password: "nope-nope"})
+	if err := m.Hold(s2.ID); !errors.Is(err, ErrAuthFailed) || m.IsHeld(s2.ID) {
+		t.Fatalf("got %v, held %v", err, m.IsHeld(s2.ID))
+	}
+}

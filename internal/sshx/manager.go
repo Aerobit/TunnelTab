@@ -74,6 +74,8 @@ type Event struct {
 	// PingMs is the last keep-alive round trip in milliseconds (0 = not
 	// measured yet).
 	PingMs float64 `json:"pingMs,omitempty"`
+	// Held: kept connected by the Connect button (see Manager.Hold).
+	Held bool `json:"held,omitempty"`
 }
 
 // ServerStatus describes one server connection.
@@ -90,6 +92,8 @@ type ServerStatus struct {
 	// PingMs is the last keep-alive round trip in milliseconds (0 = not
 	// measured yet).
 	PingMs float64 `json:"pingMs,omitempty"`
+	// Held: kept connected by the Connect button (see Manager.Hold).
+	Held bool `json:"held,omitempty"`
 }
 
 // Manager owns all SSH connections and port forwards. One SSH connection per
@@ -103,6 +107,7 @@ type Manager struct {
 	servers  map[string]*serverConn
 	forwards map[string]*forward // by service ID; nil value = starting
 	shells   map[*Shell]struct{}
+	holds    map[string]*serverConn // by server ID; see Hold
 	closed   bool
 
 	traffic *trafficMeter
@@ -126,7 +131,7 @@ func NewManager(cfg Config) *Manager {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, shells: map[*Shell]struct{}{}, traffic: newTrafficMeter()}
+	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, shells: map[*Shell]struct{}{}, holds: map[string]*serverConn{}, traffic: newTrafficMeter()}
 }
 
 func (m *Manager) emit(e Event) {
@@ -167,6 +172,7 @@ func (m *Manager) Resume() {
 // StopServer stops every forward using the server and closes its connection.
 // Call it when a server is edited or deleted.
 func (m *Manager) StopServer(serverID string) {
+	m.Unhold(serverID)
 	for _, f := range m.forwardsFor(serverID) {
 		m.StopForward(f.svc.ID)
 	}
@@ -183,9 +189,11 @@ func (m *Manager) StopServer(serverID string) {
 	}
 }
 
-// StopAll stops every forward (and so every connection). The Manager stays
-// usable. Called when the vault locks with "close tunnels on lock" enabled.
+// StopAll stops every forward and drops every hold (and so closes every
+// connection terminals don't use). The Manager stays usable. Called when
+// the vault locks with "close tunnels on lock" enabled.
 func (m *Manager) StopAll() {
+	m.UnholdAll()
 	for _, f := range m.allForwards() {
 		m.StopForward(f.svc.ID)
 	}
@@ -219,6 +227,7 @@ func (m *Manager) Close() {
 		m.StopForward(id)
 	}
 	m.CloseShells()
+	m.UnholdAll()
 }
 
 // --- Server connections -----------------------------------------------------
@@ -239,6 +248,7 @@ type serverConn struct {
 	err    error
 	users  int
 	done   bool
+	held   bool // in m.holds
 
 	since      time.Time     // first successful connect
 	reconnects int           // successful connects after the first
@@ -348,7 +358,7 @@ func (sc *serverConn) status() ServerStatus {
 }
 
 func (sc *serverConn) statusLocked() ServerStatus {
-	st := ServerStatus{ID: sc.id, State: sc.state, Error: errString(sc.err), Reconnects: sc.reconnects, Reason: ErrorKind(sc.err), PingMs: pingMs(sc.ping)}
+	st := ServerStatus{ID: sc.id, State: sc.state, Error: errString(sc.err), Reconnects: sc.reconnects, Reason: ErrorKind(sc.err), PingMs: pingMs(sc.ping), Held: sc.held}
 	if !sc.since.IsZero() {
 		since := sc.since
 		st.Since = &since
@@ -359,7 +369,7 @@ func (sc *serverConn) statusLocked() ServerStatus {
 // event is a "server" event for the given status.
 func (st ServerStatus) event() Event {
 	return Event{Kind: "server", ID: st.ID, ServerID: st.ID, State: st.State, Error: st.Error,
-		Since: st.Since, Reconnects: st.Reconnects, Reason: st.Reason, PingMs: st.PingMs}
+		Since: st.Since, Reconnects: st.Reconnects, Reason: st.Reason, PingMs: st.PingMs, Held: st.Held}
 }
 
 func (sc *serverConn) setState(st State, err error) {
@@ -557,12 +567,14 @@ func (sc *serverConn) watch(client *ssh.Client) bool {
 	}
 }
 
-// failServer stops all forwards of a server that can't be reconnected.
+// failServer stops all forwards (and the hold) of a server that can't be
+// reconnected.
 // (Terminals end by themselves when their connection drops.)
 func (m *Manager) failServer(serverID string, err error) {
 	for _, f := range m.forwardsFor(serverID) {
 		m.stopForward(f.svc.ID, StateFailed, err)
 	}
+	m.Unhold(serverID)
 }
 
 func errString(err error) string {
