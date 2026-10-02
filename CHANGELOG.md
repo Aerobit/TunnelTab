@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-02
+
 ### Added
 - **Find services shows its progress**: a bar and the current step
   (connecting, listing ports and containers, then "checking whether each
@@ -248,7 +250,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.0
 [0.6.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.6.1
 [0.6.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.6.0
