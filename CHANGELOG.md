@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-10-02
+
 ### Security
 - **An old "Trust this server?" question can no longer replace a newer
   key.** If a key was confirmed or replaced for a server (for example in
@@ -298,7 +300,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.4...HEAD
+[0.7.4]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.4
 [0.7.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.3
 [0.7.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.2
 [0.7.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.1
