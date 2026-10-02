@@ -6,6 +6,18 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Service checks: does the app answer?** Starting a tunnel now checks
+  that the app behind it answers, and the service shows **✓ App answers**,
+  **✗ Nothing answers on port …**, **✗ Answers, but not as a web page**, or
+  that it answers on https instead of http (or the other way round). A
+  **Check** button checks again; **Open** re-checks when the last check
+  failed and says so. One `HEAD` request through the SSH connection, only
+  after a click, never in the background.
+- **Find services checks what it finds**: each port that may be a web app
+  is checked; those that answer are ticked and set to http or https as they
+  answered, those that don't are left unticked.
+
 ## [0.6.1] - 2026-10-02
 
 ### Changed

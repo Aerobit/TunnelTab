@@ -1066,3 +1066,36 @@ func TestHold(t *testing.T) {
 		t.Fatalf("got %v, held %v", err, m.IsHeld(s2.ID))
 	}
 }
+
+func TestThrough(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	host, port := backend(t, "hello")
+	m := newManager(t, e, nil)
+
+	var body string
+	err := m.Through(s.ID, func(dial func(string, int) (net.Conn, error)) {
+		c, err := dial(host, port)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer c.Close()
+		io.WriteString(c, "GET / HTTP/1.0\r\n\r\n")
+		b, _ := io.ReadAll(c)
+		body = string(b)
+		if srv.ActiveConnections() != 1 {
+			t.Error("not connected while fn runs")
+		}
+	})
+	if err != nil || !strings.HasSuffix(body, "hello") {
+		t.Fatalf("err %v, body %q", err, body)
+	}
+	waitFor(t, "connection to close", func() bool { return srv.ActiveConnections() == 0 })
+
+	s2 := e.addServer(srv, model.Auth{Type: model.AuthPassword, Password: "nope-nope"})
+	called := false
+	if err := m.Through(s2.ID, func(func(string, int) (net.Conn, error)) { called = true }); !errors.Is(err, ErrAuthFailed) || called {
+		t.Fatalf("got %v, called %v", err, called)
+	}
+}

@@ -6,10 +6,12 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Aerobit/TunnelTab/internal/discover"
 	"github.com/Aerobit/TunnelTab/internal/model"
+	"github.com/Aerobit/TunnelTab/internal/webcheck"
 )
 
 // "Find services": on the user's click (never by itself), run the constant
@@ -24,6 +26,9 @@ const discoverTimeout = 20 * time.Second
 type foundService struct {
 	discover.Candidate
 	Added bool `json:"added,omitempty"` // a service for this port exists
+	// Check: whether it answers like a web page; nil when not checked
+	// (ports known not to be web pages, or beyond maxCandidateChecks).
+	Check *webcheck.Result `json:"check,omitempty"`
 }
 
 func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
@@ -37,12 +42,29 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 		s.writeDataError(w, err)
 		return
 	}
-	out, err := s.mgr.Run(id, discover.Command, discover.MaxOutput, discoverTimeout)
-	if err != nil {
+	// The scan and the checks of what it found share one connection.
+	var (
+		runErr error
+		res    discover.Result
+		err    error
+		checks []*webcheck.Result
+	)
+	if err := s.mgr.Through(id, func(dial func(string, int) (net.Conn, error)) {
+		var out []byte
+		if out, runErr = s.mgr.Run(id, discover.Command, discover.MaxOutput, discoverTimeout); runErr != nil {
+			return
+		}
+		if res, err = discover.Parse(out); err == nil {
+			checks = checkCandidates(dial, res.Candidates)
+		}
+	}); err != nil {
 		s.writeSSHError(w, err)
 		return
 	}
-	res, err := discover.Parse(out)
+	if runErr != nil {
+		s.writeSSHError(w, runErr)
+		return
+	}
 	if err != nil {
 		s.recordActivity(activityEntry{Kind: "discover", ID: model.NewID(), ServerID: id, State: "failed"})
 		msg := "Couldn't read what the server printed."
@@ -68,8 +90,8 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	found := make([]foundService, 0, len(res.Candidates))
-	for _, c := range res.Candidates {
-		f := foundService{Candidate: c}
+	for i, c := range res.Candidates {
+		f := foundService{Candidate: c, Check: checks[i]}
 		for _, x := range services {
 			if x.RemotePort == c.Port && sameHost(x.RemoteHost, c.Host) {
 				f.Added = true
@@ -79,6 +101,39 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 		found = append(found, f)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"candidates": found, "docker": res.Docker, "truncated": res.Truncated})
+}
+
+// maxCandidateChecks and candidateCheckers bound the checks after a scan
+// (most likely web pages first, as Parse sorts them).
+const (
+	maxCandidateChecks = 24
+	candidateCheckers  = 8
+)
+
+// checkCandidates checks, in parallel, whether each candidate that may be a
+// web page answers like one (and on https or http). The result has one
+// entry per candidate; nil for those not checked.
+func checkCandidates(dial func(string, int) (net.Conn, error), cands []discover.Candidate) []*webcheck.Result {
+	out := make([]*webcheck.Result, len(cands))
+	sem := make(chan struct{}, candidateCheckers)
+	var wg sync.WaitGroup
+	n := 0
+	for i, c := range cands {
+		if c.Kind == discover.KindOther || n == maxCandidateChecks {
+			continue
+		}
+		n++
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			r := webcheck.Check(func() (net.Conn, error) { return dial(c.Host, c.Port) }, c.Path, checkTimeout)
+			out[i] = &r
+		}()
+	}
+	wg.Wait()
+	return out
 }
 
 // sameHost compares remote hosts, counting every loopback name as one.

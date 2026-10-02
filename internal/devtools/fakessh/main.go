@@ -22,6 +22,7 @@ import (
 	"html"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/signal"
 	"strings"
@@ -57,6 +58,25 @@ func main() {
 	opts.Exec = map[string]string{
 		health.Command:   demoHealth,
 		discover.Command: fmt.Sprintf(demoDiscover, web.Addr().(*net.TCPAddr).Port),
+	}
+	// The containers it lists answer too (so service checks find them):
+	// small stand-ins, Portainer on https with a self-signed certificate.
+	opts.Redirect = map[int]string{}
+	for port, app := range map[int]struct {
+		name  string
+		https bool
+	}{5678: {"n8n", false}, 3000: {"Grafana", false}, 9443: {"Portainer", true}} {
+		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			fmt.Fprintf(w, "<!doctype html><title>%s (demo)</title><h1>%s</h1><p>A stand-in for the real app, from fakessh.</p>", app.name, app.name)
+		})
+		s := httptest.NewUnstartedServer(h)
+		if app.https {
+			s.StartTLS()
+		} else {
+			s.Start()
+		}
+		opts.Redirect[port] = s.Listener.Addr().String()
 	}
 	if *demo {
 		opts.Banner = demoBanner

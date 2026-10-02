@@ -477,8 +477,10 @@ function start(cmd, args, opts) {
     "focus not kept on the moved item");
 
   // Drag and drop: drag "Second app" below "Demo app".
+  const demoRow = page.locator(".service", { hasText: "Demo app" });
+  const demoBox = await demoRow.boundingBox(); // drop on its lower half, whatever its height
   await page.getByRole("button", { name: "Move service Second app" })
-    .dragTo(page.locator(".service", { hasText: "Demo app" }), { targetPosition: { x: 40, y: 30 } });
+    .dragTo(demoRow, { targetPosition: { x: 40, y: demoBox.height - 8 } });
   await page.waitForFunction(() => document.querySelector(".service strong")?.textContent === "Demo app");
   assert.deepStrictEqual(await serviceNames(), ["Demo app", "Second app"]);
 
@@ -597,6 +599,9 @@ function start(cmd, args, opts) {
     assert.ok(await dialog.getByLabel(`Add port ${port}`, { exact: true }).isChecked(), `port ${port} not ticked`);
   }
   assert.strictEqual(await dialog.getByLabel(`Name for port 5678`).inputValue(), "n8n");
+  // Each candidate was checked: the demo containers answer, Portainer on https.
+  assert.strictEqual(await dialog.getByLabel("Protocol for port 9443").inputValue(), "https");
+  await dialog.locator("tr", { hasText: "n8n" }).getByText("✓ answers").waitFor();
   assert.ok(await dialog.getByLabel(`Add port ${webPort}`, { exact: true }).isDisabled(), "the existing service can be ticked again");
   await dialog.locator("tr", { hasText: "Already added" }).waitFor();
   await dialog.getByText("Not web pages (3)").click(); // DNS, SSH, PostgreSQL
@@ -614,6 +619,14 @@ function start(cmd, args, opts) {
   await page.getByText("Searched for services").waitFor();
   await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   step("find services: asks first, recognised apps ticked, existing marked, only ticked ones added");
+
+  // Service checks: Check says whether the app behind a service answers.
+  for (const [name, text] of [["Demo app", "✓ App answers"], ["Second app", "Nothing answers on port 81"]]) {
+    const row = page.locator(".service", { hasText: name });
+    await row.getByRole("button", { name: "Check" }).click();
+    await row.getByText(text).waitFor();
+  }
+  step("service checks: an app that answers, and one that doesn't");
 
   // 10. Stop the tunnel, then quit.
   await page.locator(".service", { hasText: "Demo app" }).getByRole("button", { name: "Stop" }).click();

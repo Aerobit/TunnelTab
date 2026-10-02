@@ -63,7 +63,8 @@ the page for you, on `localhost` only.
 
 ### 🔎 Find services
 Don't know the port? **Find services** lists the web apps a server runs
-(n8n, Grafana, Portainer, Home Assistant…) and adds the ones you tick.
+(n8n, Grafana, Portainer, Home Assistant…), checks that each one answers,
+and adds the ones you tick.
 
 </td>
 </tr>

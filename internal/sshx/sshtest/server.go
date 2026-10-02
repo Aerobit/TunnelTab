@@ -39,6 +39,10 @@ type Options struct {
 
 	// Addr to listen on (default 127.0.0.1:0, a random port).
 	Addr string
+
+	// Redirect sends forwarded connections for a port (any host) to another
+	// address instead, e.g. a demo app standing in for "n8n on 5678".
+	Redirect map[int]string
 }
 
 // Server is a running test SSH server.
@@ -233,7 +237,7 @@ func (s *Server) handle(nc net.Conn, cfg *ssh.ServerConfig) {
 	for nc := range chans {
 		switch nc.ChannelType() {
 		case "direct-tcpip":
-			go handleDirectTCPIP(nc)
+			go s.handleDirectTCPIP(nc)
 		case "session":
 			go handleSession(nc, s.opts)
 		default:
@@ -244,7 +248,7 @@ func (s *Server) handle(nc net.Conn, cfg *ssh.ServerConfig) {
 }
 
 // handleDirectTCPIP connects a forwarded channel to its target address.
-func handleDirectTCPIP(nc ssh.NewChannel) {
+func (s *Server) handleDirectTCPIP(nc ssh.NewChannel) {
 	extra := nc.ExtraData()
 	host, rest, ok := readString(extra)
 	if !ok || len(rest) < 4 {
@@ -252,7 +256,11 @@ func handleDirectTCPIP(nc ssh.NewChannel) {
 		return
 	}
 	port := binary.BigEndian.Uint32(rest)
-	target, err := net.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(int(port))))
+	addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
+	if to, ok := s.opts.Redirect[int(port)]; ok {
+		addr = to
+	}
+	target, err := net.Dial("tcp", addr)
 	if err != nil {
 		nc.Reject(ssh.ConnectionFailed, err.Error())
 		return

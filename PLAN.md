@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.6.1 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15 and §16.
+> Status: **v0.6.1 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -188,7 +188,7 @@ Testing environment: everything through phase 6 is built and tested in the dev c
 
 ## 10. Out of scope for v1 (possible later)
 
-System tray icon · macOS build · Linux ARM build · "Open in system terminal" (would need TunnelTab's host-key checks and vault keys handed to an external ssh) · jump hosts / ProxyJump · SOCKS proxy mode · SFTP file browser · import from local.browser or `~/.ssh/config` · code signing.
+System tray icon · macOS build · Linux ARM build · "Open in system terminal" (would need TunnelTab's host-key checks and vault keys handed to an external ssh) · jump hosts / ProxyJump · SOCKS proxy mode · SFTP file browser (idea written up in §17) · import from local.browser or `~/.ssh/config` · code signing.
 
 ## 11. v0.2.0 — "Update now" (released 2026-10-01)
 
@@ -305,8 +305,10 @@ Built as proposed below (S1, S2, S4). Decisions taken: the command runs
 loopback or all addresses tunnel to `127.0.0.1`, ports bound to one other
 address are offered with that address (marked *only on …*), ports open on
 all addresses are marked *open on all addresses*; recognised web apps are
-ticked already. **S3 (web check) is not built** — the known-apps table and
-usual web ports pick http/https; the user can change it in the list.
+ticked already. **S3 (web check)** was built after 0.6.1 and extended to
+added services ("service checks": after Start, on Check, on Open when the
+last check failed); see ARCHITECTURE.md → Service checks. Ports that answer
+are ticked and get the protocol they answered on.
 
 Adding services by hand means knowing each app's port. **Find services**
 would look at a server, list the web apps and ports it finds, and let you
@@ -471,3 +473,71 @@ the same SSH connection — no VNC port exposed to the internet.
 | V1 | **Desktop setting + tunnel bridge**: per-server VNC port/password in the vault; WebSocket ⇄ SSH channel bridge with tickets | Tests with a fake VNC server (RFB handshake) through the test SSH server |
 | V2 | **Viewer**: vendored noVNC in a Desktop tab, fit/scale, Ctrl+Alt+Del, clipboard, Pop out, blank on lock | Browser test against a fake RFB server showing a test pattern |
 | V3 | **Docs + security review**, license notice | Review done; user guide explains setting up a VNC server safely (bound to localhost) |
+
+## 17. Future — Files: browse, upload and download (idea, not scheduled)
+
+Move files between this PC and a server without a separate program
+(WinSCP, FileZilla, `scp`): browse the server's folders in the dashboard
+and upload or download with a click or by dragging. It uses SFTP over the
+server's existing SSH connection, so nothing new is opened to the
+internet and nothing needs installing on the server (every OpenSSH server
+has SFTP).
+
+### What the user sees
+
+- A **Files** tab on each server's page, next to Terminals. It opens in the
+  login user's home folder; a path bar shows where you are (click a part to
+  go up, or type a path).
+- A list of the folder: name, size, modified date, permissions; folders
+  first; sort by any column; **Show hidden files** switch.
+- **Download**: a file goes to the browser's normal download folder; a
+  selection or a folder downloads as one `.zip`, made on the fly.
+- **Upload**: **Upload files…** (the browser's file picker) or drag files
+  and folders from Windows Explorer / the desktop onto the list.
+- **New folder**, **Rename**, **Delete** (asks first; folders say how many
+  items are inside).
+- A **Transfers** panel with a progress bar per file, speed, **Cancel**, and
+  *Replace / Keep both / Skip* when a file already exists.
+- Later, optionally, a **two-pane view** (this PC on the left, the server on
+  the right) for copying back and forth — see "Local files" below.
+
+### How (proposal)
+
+- **SFTP client:** an SFTP session on the server's shared connection
+  (`sshx.Manager`, like terminals: opening Files connects if needed, closing
+  the tab lets the connection go). Either add `github.com/pkg/sftp` (the
+  standard Go SFTP library; a new dependency needs your OK) or write the
+  small subset needed (list, stat, open, read, write, mkdir, rename,
+  remove) on top of `x/crypto/ssh`.
+- **API:** `GET /api/servers/{id}/files?path=` (list), `POST …/files/mkdir`,
+  `…/rename`, `…/delete`. Downloads and uploads stream through the program,
+  never held in memory or written to disk on the PC (apart from the
+  browser's own download). A download uses a one-time, short-lived ticket
+  in the URL (like terminals), so the browser saves it natively with its
+  own progress; uploads are streamed `PUT`s with the session token.
+- **Events:** transfer progress over the event stream (like Update now's
+  progress bar); each upload, download, rename and delete is listed in the
+  server's Activity (names shown only while unlocked, like the rest).
+
+### Things to decide before building
+
+| Topic | Question / recommendation |
+|---|---|
+| Local files | **Recommended:** no browsing of this PC by TunnelTab at all — the browser's file picker, drag-and-drop and Downloads folder do it, and the dashboard API can't read local files. A two-pane view would let the program list and read local folders, a much bigger risk if the dashboard were ever tricked; if wanted, limit it to one folder you choose (e.g. `transfers/` next to the program) and never follow links out of it. |
+| Security invariants | SFTP runs no commands on the server (it's the SSH "sftp" subsystem), but it **changes files there**, unlike anything TunnelTab does today. CLAUDE.md invariant 7 would name it: only on the user's click, paths only from the user's own browsing, nothing in the background. Invariant 10 (portable) is unaffected: downloads are saved by the browser. |
+| Dependency | `github.com/pkg/sftp` (well known, BSD licence) vs. a minimal own client (more code to test and fuzz). |
+| Limits | Maximum file size? (Streaming means none is needed for memory.) Maximum items per folder listing (e.g. 10 000, with a note)? |
+| Deleting | Confirmation always; recursive folder delete only after showing the count. No "trash" on the server (SFTP has none). |
+| Permissions | Show `rwx` only, or also allow **chmod**? Downloading files you can't read shows the server's "permission denied". |
+| Locking | Running transfers keep going while locked (like tunnels) or stop? The file list is hidden while locked either way. |
+| Editing | Later: open a small text file in an editor in the page and save it back? (Easy to add once the rest exists.) |
+
+### Build phases (sketch)
+
+| # | Phase | Done when |
+|---|---|---|
+| F1 | **SFTP + listing**: SFTP session on the shared connection; list/stat API with paths validated and cleaned; Files tab with path bar, sorting, hidden files | Tests against the in-process test SSH server with an SFTP subsystem (temp folder); fuzzed path handling; browser test browses folders |
+| F2 | **Download and upload**: streamed download with one-time tickets (zip for folders), streamed upload with drag-and-drop, Transfers panel with progress, cancel and conflicts | Tests: large file, cancel mid-way, name conflicts, permission denied, connection drop during a transfer; browser test uploads and downloads a file and compares checksums |
+| F3 | **Manage**: new folder, rename, delete (with counts), Activity entries | Tests per operation, including refusing to delete `/` or the home folder without a second confirmation |
+| F4 | **Docs + security review**: CLAUDE.md invariant 7, SECURITY.md (what SFTP can change on a server), SECURITY_REVIEW.md, USER_GUIDE | Review done; docs match behaviour |
+| F5 | *(optional)* **Two-pane view** with a local folder pane, limited to one chosen folder | Only if decided above; tests that nothing outside that folder can be listed or read |

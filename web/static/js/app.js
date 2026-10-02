@@ -28,6 +28,7 @@ const state = {
   updateAvailable: null, // newer version found by the last "Check for updates" (never checked automatically)
   traffic: new Map(), // serviceId → {todayIn, todayOut, lastHour[60]} (counted by the program, in memory)
   health: new Map(), // serverId → {health?, error?, at} for servers with health switched on
+  checks: new Map(), // serviceId → {state, protocol?, status?, at}: does the app answer? (last check)
 };
 
 let stopEvents = null;
@@ -272,6 +273,7 @@ async function loadData() {
     state.terminals = new Map((res.terminals || []).map((t) => [t.id, t]));
     state.activity = res.activity || [];
     state.health = new Map(Object.entries(res.health || {}));
+    state.checks = new Map(Object.entries(res.checks || {}));
     await loadTraffic();
     syncViews(state.terminals.values());
     renderDashboard();
@@ -312,6 +314,11 @@ function onEvent(ev) {
         state.vault = "unlocked";
         loadData();
       }
+      break;
+    case "check":
+      if (ev.check) state.checks.set(ev.serviceId, ev.check);
+      else state.checks.delete(ev.serviceId);
+      renderSoon();
       break;
     case "health":
       if (ev.reading) state.health.set(ev.serverId, ev.reading);
@@ -1204,15 +1211,70 @@ function renderService(svc) {
         usable ? h("a", { href: serviceURL(svc, fwd), target: "_blank", rel: "noopener noreferrer" }, localText) : localText,
         ` → ${remote}${svc.path || ""}`),
       fwd ? h("span", { class: ["pill", fwd.state] }, STATE_TEXT[fwd.state] || fwd.state) : null,
+      checkNote(svc),
       h("span", { class: "muted" }, todayText(trafficOf([svc.id]))),
       svc.autoStart ? h("span", { class: "badge", title: "Starts automatically after unlocking" }, "auto") : null),
     h("div", { class: "actions" },
       toggle, open,
+      h("button", { class: "chip", title: "Check that the app answers (one request through the server's SSH connection)",
+        onclick: (e) => checkService(svc, e.currentTarget) }, "Check"),
       h("button", { class: "chip", onclick: () => serviceDialog(svc.serverId, svc) }, "Edit")));
   dropTarget(row, dragService(svc.serverId), (id, after) => {
     if (id !== svc.id) saveOrder(orderPath, placed(siblings(), id, svc.id, after), id);
   });
   return row;
+}
+
+// --- Service checks -----------------------------------------------------------
+// Does the app behind a service answer? Checked after Start, on Check, and on
+// Open when the last check failed: never in the background.
+
+const checkOK = (svc, c) => c?.state === "responding" && c.protocol === svc.protocol;
+
+/** The last check's result, in words, for a service row. */
+function checkNote(svc) {
+  const c = state.checks.get(svc.id);
+  if (!c) return null;
+  const when = `Checked at ${clock(c.at)}`;
+  if (c.state === "responding") {
+    return c.protocol === svc.protocol
+      ? h("span", { class: "svc-check ok", title: `${when}: it answered (HTTP ${c.status}).` }, "✓ App answers")
+      : h("span", { class: "svc-check warn", title: when }, `Answers on ${c.protocol}, not ${svc.protocol}: edit the service`);
+  }
+  return h("span", { class: "svc-check bad", title: when },
+    c.state === "no_answer" ? `✗ Nothing answers on port ${svc.remotePort}` : "✗ Answers, but not as a web page");
+}
+
+/** The Check button: checks now (this may connect to the server). */
+async function checkService(svc, button) {
+  button.disabled = true;
+  button.textContent = "Checking…";
+  try {
+    const res = await withHostKeys(() => api("POST", `/services/${svc.id}/check`));
+    if (res) state.checks.set(svc.id, res.check);
+  } catch (err) {
+    toast(`${svc.label}: ${err.message}`, "error");
+  } finally {
+    renderSoon();
+  }
+}
+
+/** After Open: if the last check failed, check again and say so if it still does. */
+async function recheckOnOpen(svc) {
+  const last = state.checks.get(svc.id);
+  if (!last || checkOK(svc, last)) return;
+  try {
+    const { check } = await api("POST", `/services/${svc.id}/check`);
+    state.checks.set(svc.id, check);
+    renderSoon();
+    if (!checkOK(svc, check)) {
+      toast(check.state === "responding"
+        ? `${svc.label} answers on ${check.protocol}, but the service is set to ${svc.protocol}. Edit it to fix the page.`
+        : `${svc.label} isn't answering on the server (port ${svc.remotePort}). Is the app running?`, "error");
+    }
+  } catch {
+    // The page opened anyway; the next Check will tell.
+  }
 }
 
 // --- Actions ----------------------------------------------------------------
@@ -1249,8 +1311,10 @@ async function openService(svc, button) {
   const fwd = state.forwards.get(svc.id);
   if (fwd?.state === "active") {
     window.open(serviceURL(svc, fwd), "_blank", "noopener,noreferrer");
+    recheckOnOpen(svc);
     return;
   }
+  // Starting the tunnel checks the app too (the result shows on the Services tab).
   button.disabled = true;
   button.textContent = "Starting…";
   const res = await startService(svc, false, null);

@@ -21,6 +21,7 @@ export async function findServices(server) {
       h("p", {}, "TunnelTab will connect to ", h("strong", {}, server.name),
         " and run one read-only command that lists its open ports and Docker containers (",
         h("code", {}, "ss"), " or ", h("code", {}, "netstat"), ", and ", h("code", {}, "docker ps"), ")."),
+      h("p", { class: "hint" }, "Then it checks whether each port that may be a web app answers, with one request for its front page (a HEAD request: nothing is sent to log in or change anything)."),
       h("p", { class: "hint" }, "Nothing is changed on the server, the list isn't saved, and nothing is added until you tick it."),
     ],
     actions: [
@@ -38,6 +39,18 @@ export async function findServices(server) {
   if (result) await resultsDialog(server, result);
 }
 
+/**
+ * Whether a candidate answered like a web page when checked: true, false,
+ * or null when it wasn't checked (known non-web ports).
+ */
+const answers = (c) => (c.check ? c.check.state === "responding" : null);
+
+/** Web apps and unknown ports that answered go in the main list; the rest below. */
+const isWeb = (c) => c.kind !== "other" && !(c.kind === "maybe" && answers(c) === false);
+
+/** What the check found, in words. */
+const CHECK_TEXT = { responding: "answers", not_web: "answers, but not as a web page", no_answer: "didn't answer" };
+
 /** Where a candidate was found, in words. */
 function foundAs(c) {
   const parts = [];
@@ -47,12 +60,15 @@ function foundAs(c) {
   // Listening only on the server itself is the usual, safe case: not mentioned.
   if (c.listen === "all") parts.push("open on all addresses");
   else if (c.listen === "other") parts.push(`only on ${c.host}`);
-  return parts.join(" · ") || "listening port";
+  const text = parts.join(" · ") || "listening port";
+  if (!c.check) return text;
+  const ok = c.check.state === "responding";
+  return [h("span", { class: ["svc-check", ok ? "ok" : "bad"] }, `${ok ? "✓" : "✗"} ${CHECK_TEXT[c.check.state]}`), " · ", text];
 }
 
 function candidateRow(c) {
   const tick = h("input", {
-    type: "checkbox", checked: c.kind === "web" && !c.added, disabled: c.added,
+    type: "checkbox", checked: !c.added && (answers(c) ?? c.kind === "web"), disabled: c.added,
     "aria-label": `Add port ${c.port}`,
   });
   const name = h("input", {
@@ -60,7 +76,7 @@ function candidateRow(c) {
     placeholder: `Port ${c.port}`, "aria-label": `Name for port ${c.port}`, disabled: c.added,
   });
   const protocol = h("select", { "aria-label": `Protocol for port ${c.port}`, disabled: c.added },
-    ["http", "https"].map((p) => h("option", { value: p, selected: p === c.protocol }, p)));
+    ["http", "https"].map((p) => h("option", { value: p, selected: p === (answers(c) ? c.check.protocol : c.protocol) }, p)));
   // Typing a name ticks the row: you'd only name what you want to add.
   name.addEventListener("input", () => { if (name.value.trim()) tick.checked = true; });
   const row = h("tr", { class: c.added ? "added" : null },
@@ -88,8 +104,8 @@ function table(rows) {
 
 async function resultsDialog(server, result) {
   const rows = result.candidates.map(candidateRow);
-  const web = rows.filter((_, i) => result.candidates[i].kind !== "other");
-  const other = rows.filter((_, i) => result.candidates[i].kind === "other");
+  const web = rows.filter((_, i) => isWeb(result.candidates[i]));
+  const other = rows.filter((_, i) => !isWeb(result.candidates[i]));
   const notes = [
     DOCKER_NOTE[result.docker] ? h("p", { class: "hint" }, DOCKER_NOTE[result.docker]) : null,
     result.truncated ? h("p", { class: "hint" }, `Only the first ${result.candidates.length} ports are shown.`) : null,
@@ -113,7 +129,7 @@ async function resultsDialog(server, result) {
     wide: "xl",
     body: rows.length
       ? [
-        h("p", { class: "hint" }, "Tick the ones to add. Web apps TunnelTab recognises are ticked already; names can be changed here or later."),
+        h("p", { class: "hint" }, "Tick the ones to add. TunnelTab checked each port: apps that answered like a web page are ticked already, set to http or https as they answered. Names can be changed here or later."),
         web.length ? table(web) : h("p", {}, "No web apps found."),
         other.length
           ? h("details", { class: "discover-other" },

@@ -61,6 +61,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("DELETE /api/services/{id}", s.handleDeleteService)
 	a("POST /api/services/{id}/start", s.handleStartService)
 	a("POST /api/services/{id}/stop", s.handleStopService)
+	a("POST /api/services/{id}/check", s.handleCheckService)
 	a("POST /api/hostkeys/confirm", s.handleConfirmHostKey)
 	a("PUT /api/projects/order", s.handleOrderProjects)
 	a("PUT /api/projects/{id}/servers/order", s.handleOrderServers)
@@ -409,7 +410,7 @@ func (s *Server) handleData(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"data": pub, "forwards": forwards, "servers": s.mgr.Servers(),
-		"terminals": s.terminalList(), "activity": s.activity.list(), "health": s.healthReadings(),
+		"terminals": s.terminalList(), "activity": s.activity.list(), "health": s.healthReadings(), "checks": s.checkReadings(),
 	})
 }
 
@@ -565,6 +566,7 @@ func (s *Server) handleUpdateService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mgr.StopForward(out.ID) // settings changed: the user restarts it
+	s.dropCheck(out.ID)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -575,6 +577,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mgr.StopForward(id)
+	s.dropCheck(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -631,6 +634,7 @@ func (s *Server) handleStartService(w http.ResponseWriter, r *http.Request) {
 		s.writeSSHError(w, err)
 		return
 	}
+	go s.checkService(svc) // does the app answer? (the tunnel is up; this reuses its connection)
 	url := string(svc.Protocol) + "://127.0.0.1:" + strconv.Itoa(st.LocalPort) + svc.Path
 	writeJSON(w, http.StatusOK, map[string]any{"forward": st, "url": url})
 }

@@ -269,6 +269,7 @@ Then:
 
 - **Open ↗** starts the tunnel if needed and opens the app in a new tab.
 - **Start** / **Stop** controls the tunnel without opening anything.
+- **Check** asks whether the app behind the service answers (see below).
 - While running, the service shows its address (e.g. `localhost:23720`) —
   click it to open the app again. The label shows *Running*,
   *Reconnecting…* or *Waiting for unlock*.
@@ -279,6 +280,24 @@ network can't use them.
 *"The local port is already in use"* means another program uses that port:
 choose another local port, or leave it blank.
 
+**Does the app answer?** When you start a tunnel, TunnelTab checks that the
+app behind it answers, and shows the result next to the service:
+
+- **✓ App answers** — all good.
+- **✗ Nothing answers on port …** — the app isn't running, or the remote
+  port is wrong.
+- **✗ Answers, but not as a web page** — something else uses that port.
+- **Answers on https, not http** (or the other way round) — edit the
+  service and change its protocol, or the page won't load.
+
+Click **Check** to check again at any time. If the last check failed,
+**Open ↗** checks again too and tells you if the app still doesn't answer.
+The check is one request for the app's front page (a `HEAD` request,
+the way a browser asks "are you there?"), sent through the SSH connection
+like the tunnel itself. It never logs in or changes anything, and runs only
+after you click Start, Open, Check or Find services — never in the
+background.
+
 ### Find services
 
 Don't know an app's port? On the **Services** tab click **Find services…**.
@@ -288,10 +307,14 @@ command that lists its open ports and Docker containers (`ss` or
 
 You get a list of what it found:
 
+- TunnelTab then **checks each port** that may be a web app: those that
+  answer like a web page show **✓ answers** and are **ticked already**,
+  set to http or https the way they answered; those that don't are
+  unticked (**✗ didn't answer**).
 - Web apps TunnelTab recognises (n8n, Grafana, Portainer, Home Assistant,
-  Uptime Kuma, Jellyfin, Proxmox and many more) get their usual name and
-  protocol and are **ticked already**. Other ports are named after their
-  Docker container or program, if the server says.
+  Uptime Kuma, Jellyfin, Proxmox and many more) get their usual name.
+  Other ports are named after their Docker container or program, if the
+  server says.
 - Ports that already have a service say **Already added**.
 - Databases, SSH and other ports that aren't web pages are under **Not web
   pages**, unticked.
@@ -308,7 +331,7 @@ is listed in the server's **Activity**.
 
 ## Settings
 
-**Settings** (bottom of the sidebar) has five tabs:
+**Settings** (bottom of the sidebar) has four tabs:
 
 - **General**
   - **Lock after inactivity** — Never, 5 min … 4 hours (default 15 min).

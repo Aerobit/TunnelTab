@@ -95,6 +95,7 @@ type Server struct {
 	terms      terminals
 	activity   activityLog // recent events, in memory only
 	health     healthStore // opt-in server health readings, in memory only
+	checks     checkStore  // service check results, in memory only
 	stopReaper chan struct{}
 	closeOnce  sync.Once
 }
@@ -127,6 +128,7 @@ func New(cfg Config) (*Server, error) {
 		pendingKeys:  map[string]pendingKey{},
 		terms:        newTerminals(),
 		health:       healthStore{readings: map[string]healthReading{}, running: map[string]bool{}},
+		checks:       checkStore{readings: map[string]checkReading{}},
 		stopReaper:   make(chan struct{}),
 	}
 	s.mgr = sshx.NewManager(sshx.Config{

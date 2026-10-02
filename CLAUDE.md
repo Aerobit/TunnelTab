@@ -62,6 +62,12 @@ one, stop and ask the user instead.
    (`Manager.Run`, which may connect). Never put user input into either
    command, never run "Find services" in the background, and never add
    other remote commands.
+   **Service checks** (`internal/webcheck`) run no command: they open a
+   connection through SSH to a service's address (as its tunnel does) and
+   send one fixed `HEAD` request (no cookies, no credentials; certificates
+   not verified, as only "does it answer?" is asked), only after the user
+   clicks Start, Check, Open (when the last check failed) or Find services
+   (`Manager.Through`). Never run them in the background.
 8. **IDs are generated server-side** and all input is validated in
    `internal/model` before use.
 9. **No network access except SSH to the user's servers** — with one

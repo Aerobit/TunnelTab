@@ -55,6 +55,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events, terminal WebSocket | Done |
 | `internal/health` | Opt-in server health: the one fixed command TunnelTab runs on a server by itself (`Command`) and its strict parser (`Parse`, fuzzed) | Done |
 | `internal/discover` | "Find services": the fixed, read-only command TunnelTab runs on a server when the user clicks Find services (`Command`: `ss`/`netstat` + `docker ps`), its strict parser (`Parse`, fuzzed) and the table of well-known apps (`apps.go`) | Done |
+| `internal/webcheck` | Service checks: does a port answer like a web page? One fixed `HEAD` request, https first (certificate not verified) then http, over connections the caller dials through SSH (`Manager.Through`); path validated (fuzzed) | Done |
 | `internal/update` | Updates, only when the user clicks: "Check for updates" (GitHub releases/latest API, version comparison) and "Update now" (download, signature + checksum verification, unpack, install with `.old` backups, rollback, cleanup). Release signature format in `signature.go` | Done |
 | `internal/platform` | Open browser, error dialog, instance file | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
@@ -260,7 +261,7 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `POST /vault/unlock` | `{password}` | 401 `wrong_password`, 429 `too_many_attempts` (+ `retryAfterMs`) |
 | `POST /vault/lock` | | |
 | `POST /vault/password` | `{old, new}` | |
-| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached, client}], activity: [activity entry], health: {serverId: reading}}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects`, `reason` (`sshx.ErrorKind`), `held` (kept connected by the Health box's Connect) and `pingMs` (last keep-alive round trip; the first keep-alive goes out right after connecting) |
+| `GET /data` | | `{data: PublicData, forwards: [ForwardStatus], servers: [ServerStatus], terminals: [{id, serverId, openedAt, attached, client}], activity: [activity entry], health: {serverId: reading}, checks: {serviceId: check}}`; `ServerStatus` has `since` (first connect, kept across reconnects), `reconnects`, `reason` (`sshx.ErrorKind`), `held` (kept connected by the Health box's Connect) and `pingMs` (last keep-alive round trip; the first keep-alive goes out right after connecting) |
 | `POST /projects` · `PUT`/`DELETE /projects/{id}` | `{name, description}` | project; delete cascades |
 | `POST /servers` · `PUT`/`DELETE /servers/{id}` | `model.Server` | `PublicServer` (never secrets); blank secrets are kept on update |
 | `POST /servers/{id}/move` | `{projectId}` | |
@@ -270,11 +271,12 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `DELETE /servers/{id}/connect` | | 204; Disconnect: drops the hold (the connection closes unless a tunnel or terminal uses it) and the reading unless health is switched on |
 | `POST /servers/{id}/clear-passphrase` | | |
 | `POST /servers/{id}/test` | | connects once (drives host-key confirmation) |
-| `POST /servers/{id}/discover` | | "Find services", only on the user's click: connects if needed (drives host-key confirmation), runs `discover.Command`, answers `{candidates: [{name, host, port, protocol, path, kind (web/maybe/other), app, process, container, image, listen (local/all/other), added}], docker (ok/none/denied/stopped/error), truncated}`; 422 `discover_failed` if neither `ss` nor `netstat` answered. Nothing is saved |
+| `POST /servers/{id}/discover` | | "Find services", only on the user's click: connects if needed (drives host-key confirmation), runs `discover.Command`, answers `{candidates: [{name, host, port, protocol, path, kind (web/maybe/other), app, process, container, image, listen (local/all/other), added, check (a service check result, or absent for ports known not to be web pages; at most 24 checked)}], docker (ok/none/denied/stopped/error), truncated}`; 422 `discover_failed` if neither `ss` nor `netstat` answered. Nothing is saved |
 | `POST /servers/{id}/services` | `{services: [model.Service]}` | adds 1–200 services to the server in one vault update (all or none; a validation error names `services.<index>.<field>`); 201 with the new services |
 | `POST /services` · `PUT`/`DELETE /services/{id}` | `model.Service` | service |
 | `POST /services/{id}/start` | | `{forward, url}` |
 | `POST /services/{id}/stop` | | |
+| `POST /services/{id}/check` | | `{check: {state (responding/not_web/no_answer), protocol?, status?, at}}`; checks now, through `Manager.Through` (may connect: host-key errors as for Start). Start also checks once the tunnel is up; editing or deleting a service drops its result |
 | `POST /hostkeys/confirm` | `{token, replace}` | stores the pending key |
 | `POST /hostkeys/forget` | `{host}` | removes a confirmed key (asks again next time) |
 | `PUT /projects/order` | `{ids}` | new order of all projects |
@@ -309,6 +311,7 @@ sent). Each `data:` line is JSON:
 | `tunnel` | `kind` (server/forward), `id`, `serverId`, `state`, `error`, `localPort`, and for servers `since`, `reconnects`, `reason` | SSH engine state change |
 | `activity` | `at`, `kind` (server/forward/terminal/discover), `id`, `serverId`, `state`, `error`, `reconnects`, `reason` | a line for "Recent activity" (see below) |
 | `health` | `serverId`, `reading` (`{health?, error?, at}`, or null when switched off or disconnected) | a server health reading |
+| `check` | `serviceId`, `check` (as above, or null when the service changed) | a service check result |
 | `update` | `step` (checking, verifying, downloading, unpacking, installing, restarting, failed), `done`, `total` (bytes, while downloading), `version` | how far "Update now" has got (see Updates) |
 | `vault` | `state` (locked/unlocked) | lock state changed |
 | `data` | | stored data changed: re-fetch `/api/data` |
@@ -360,6 +363,23 @@ valid service (fuzzed). The server marks ports that already have a
 service; the result isn't stored. The user ticks rows and `POST
 /servers/{id}/services` adds them in one vault update. Each search adds an
 activity line (kind `discover`).
+The scan and the checks share one connection (`Manager.Through` around
+`Manager.Run`): after parsing, up to 24 candidates that may be web pages
+(not `other`) are checked, 8 at a time, with `webcheck.Check`; each
+candidate carries its `check`. The dashboard ticks those that answered,
+sets their protocol to the one they answered on, and moves unknown ports
+that didn't answer to *Not web pages*.
+
+**Service checks** (`internal/server/check.go`, `internal/webcheck`): does
+the app behind a service answer? `webcheck.Check` opens a channel through
+the server's connection to the service's address and sends one `HEAD`
+request, over TLS first, then plain: *responding* (with protocol and
+status), *not_web* (connected, no HTTP answer) or *no_answer* (couldn't
+connect). Run after Start (once the tunnel is up), on **Check**
+(`POST /services/{id}/check`), by the dashboard on **Open** when the last
+result wasn't OK, and in Find services. Results are in memory, sent as
+`check` events and in `GET /api/data`, and dropped when the service is
+edited or deleted.
 
 
 ## Terminals
