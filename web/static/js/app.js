@@ -917,7 +917,7 @@ function renderHealthBox(s, st) {
     return h("section", { class: "box" }, head,
       h("p", { class: "hint" }, s.healthEnabled
         ? "Shown while this server is connected for a service or a terminal. Connect to see it now."
-        : `${connected ? "Show health" : "Connect"} to see this server's load, memory, disk use and uptime, read every 30 seconds until you disconnect or close the dashboard. To see it whenever a service or terminal is open, tick this server in Settings → Server health.`),
+        : `${connected ? "Show health" : "Connect"} to see this server's load, memory, disk use and uptime, read every 30 seconds until you disconnect or close the dashboard. To see it whenever a service or terminal is open, tick Health for this server in Settings → Servers.`),
       h("p", { class: "hint" }, "It runs one read-only command; Linux servers only."),
       h("div", {}, h("button", { class: "btn secondary small", onclick: (e) => connectServer(s, e.currentTarget) },
         connected ? "Show health" : "Connect")));

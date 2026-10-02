@@ -578,6 +578,9 @@ a.chip { text-decoration: none; display: inline-block; }
 .health-meter:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--error); }
 .health-figure { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .host-list li .field.check { margin: 0; flex: 1; }
+.server-settings li .field.check { flex: none; }
+.server-settings .inline-actions { flex-wrap: nowrap; }
+.server-settings-name { min-width: 0; }
 
 /* Find services */
 .dialog.xl { width: min(860px, calc(100vw - 32px)); }

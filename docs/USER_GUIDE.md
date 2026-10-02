@@ -122,7 +122,7 @@ There are two ways to see it:
   **Disconnect** or close the dashboard. The connection then closes, unless
   a service or terminal still uses it.
 - To see it whenever a service or terminal is open, tick the server in
-  **Settings → Server health** (off by default). Then it never connects
+  **Settings → Servers** (off by default). Then it never connects
   just for this: it shows only while the server is already connected.
 
 Either way, and only while the dashboard is open, TunnelTab runs one
@@ -321,10 +321,11 @@ is listed in the server's **Activity**.
   and offers **Update now**. A blue dot on **Settings** then reminds you
   while this dashboard tab stays open. TunnelTab never checks or downloads
   by itself — only when you click. See [How do I update](#faq).
-- **Servers** — every fingerprint you've trusted. **Forget** removes one, so
-  the next connection asks you to confirm again.
-- **Server health** — tick a server to see its health whenever a service
-  or terminal is open (see [Server health](#server-health)).
+- **Servers** — one row per server: tick **Health** to see its health
+  whenever a service or terminal is open (see [Server health](#server-health)),
+  and the fingerprint you trusted for it. **Forget** removes a fingerprint,
+  so the next connection asks you to confirm again. Fingerprints no server
+  uses any more are listed underneath.
 
 ## Backups and moving to another PC
 

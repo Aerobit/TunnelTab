@@ -426,27 +426,6 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
     }
   }
 
-  const hostList = h("ul", { class: "host-list" });
-  if (knownHosts.length === 0) hostList.appendChild(h("li", { class: "hint" }, "No servers confirmed yet."));
-  for (const kh of knownHosts) {
-    const fp = h("code", {}, "…");
-    fingerprint(kh.key).then((f) => (fp.textContent = f));
-    const forget = h("button", { type: "button", class: "btn small secondary" }, "Forget");
-    const li = h("li", {}, h("div", {}, h("strong", {}, kh.host), h("br"), fp), forget);
-    forget.addEventListener("click", async () => {
-      if (!(await confirmDialog("Forget server key?",
-        `The next connection to ${kh.host} will ask you to confirm its fingerprint again.`, { confirmLabel: "Forget" }))) return;
-      try {
-        await api("POST", "/hostkeys/forget", { host: kh.host });
-        li.remove();
-      } catch (err) {
-        forget.textContent = "Failed";
-        forget.title = err.message;
-      }
-    });
-    hostList.appendChild(li);
-  }
-
   await openDialog({
     title: "Settings",
     wide: true,
@@ -467,11 +446,7 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
         h("p", { class: "hint" }, `You're running TunnelTab ${version}. Checking asks GitHub for the latest release. An update is downloaded only when you click Update now, and installed only if it's signed by TunnelTab. TunnelTab never checks on its own.`),
         h("div", { class: "inline-actions" }, updateBtn, updateStatus),
       ] },
-      { label: "Servers", content: [
-        h("p", { class: "hint" }, "Server fingerprints you have trusted. They are stored inside the encrypted vault."),
-        hostList,
-      ] },
-      { label: "Server health", content: renderHealthSettings(servers, projects) },
+      { label: "Servers", content: renderServerSettings(servers, projects, knownHosts) },
     ], initialTab),
     actions: [
       { label: "Close" },
@@ -486,39 +461,95 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
   });
 }
 
-/** Settings → Server health: a switch per server (off by default). */
-function renderHealthSettings(servers, projects) {
+/** The known_hosts address of a server, as model.HostKeyAddress makes it. */
+const hostKeyAddress = (host, port) => (port === 22 ? host : `[${host}]:${port}`);
+
+/**
+ * Settings → Servers: per server, its health switch (off by default) and the
+ * fingerprint confirmed for its address, with Forget. Fingerprints no server
+ * uses any more are listed below.
+ */
+function renderServerSettings(servers, projects, knownHosts) {
   const status = h("span", { class: "inline-status", role: "status" });
+  const say = (ok, text) => {
+    status.className = `inline-status ${ok ? "ok" : "bad"}`;
+    status.textContent = text;
+  };
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
-  const list = h("ul", { class: "host-list" },
+  const keyOf = new Map(knownHosts.map((kh) => [kh.host, kh.key]));
+  // Rows showing each address's fingerprint: several servers can share one.
+  const shown = new Map(); // address → [{fp, forget}]
+
+  async function forget(address, label) {
+    if (!(await confirmDialog("Forget server key?",
+      `The next connection to ${label} will ask you to confirm its fingerprint again.`, { confirmLabel: "Forget" }))) return;
+    try {
+      await api("POST", "/hostkeys/forget", { host: address });
+      for (const row of shown.get(address) || []) {
+        row.fp.textContent = "Fingerprint not confirmed yet";
+        row.forget.remove();
+      }
+      say(true, `${label}: fingerprint forgotten.`);
+    } catch (err) {
+      say(false, err.message);
+    }
+  }
+
+  function fingerprintRow(address, label) {
+    const key = keyOf.get(address);
+    const fp = h("code", {}, key ? "…" : "Fingerprint not confirmed yet");
+    if (!key) return { fp, forget: null };
+    fingerprint(key).then((f) => (fp.textContent = f));
+    const btn = h("button", { type: "button", class: "btn small secondary", "aria-label": `Forget the fingerprint of ${label}` }, "Forget");
+    btn.addEventListener("click", () => forget(address, label));
+    const row = { fp, forget: btn };
+    shown.set(address, [...(shown.get(address) || []), row]);
+    return row;
+  }
+
+  const list = h("ul", { class: "host-list server-settings" },
     servers.length
       ? servers.map((srv) => {
-        const box = checkbox(srv.name, srv.healthEnabled);
-        box.input.addEventListener("change", async () => {
-          box.input.disabled = true;
-          status.className = "inline-status";
-          status.textContent = "";
+        const health = checkbox("Health", srv.healthEnabled);
+        health.input.setAttribute("aria-label", `Health for ${srv.name}`);
+        health.input.addEventListener("change", async () => {
+          health.input.disabled = true;
           try {
-            await api("PUT", `/servers/${encodeURIComponent(srv.id)}/health`, { enabled: box.input.checked });
-            status.classList.add("ok");
-            status.textContent = `${srv.name}: health ${box.input.checked ? "on" : "off"}.`;
+            await api("PUT", `/servers/${encodeURIComponent(srv.id)}/health`, { enabled: health.input.checked });
+            say(true, `${srv.name}: health ${health.input.checked ? "on" : "off"}.`);
           } catch (err) {
-            box.input.checked = !box.input.checked;
-            status.classList.add("bad");
-            status.textContent = err.message;
+            health.input.checked = !health.input.checked;
+            say(false, err.message);
           } finally {
-            box.input.disabled = false;
+            health.input.disabled = false;
           }
         });
-        return h("li", {}, box.el, h("span", { class: "muted" }, projectName.get(srv.projectId) || ""));
+        const { fp, forget: forgetBtn } = fingerprintRow(hostKeyAddress(srv.host, srv.port), srv.name);
+        return h("li", {},
+          h("div", { class: "server-settings-name" },
+            h("strong", {}, srv.name), " ", h("span", { class: "muted" }, projectName.get(srv.projectId) || ""), h("br"), fp),
+          h("div", { class: "inline-actions" }, health.el, forgetBtn));
       })
       : h("li", { class: "hint" }, "No servers yet."));
+
+  const used = new Set(servers.map((srv) => hostKeyAddress(srv.host, srv.port)));
+  const others = knownHosts.filter((kh) => !used.has(kh.host));
+  const otherList = others.length
+    ? [h("h3", {}, "Other fingerprints"),
+      h("p", { class: "hint" }, "Confirmed for addresses no server uses any more."),
+      h("ul", { class: "host-list" }, others.map((kh) => {
+        const { fp, forget: forgetBtn } = fingerprintRow(kh.host, kh.host);
+        return h("li", {}, h("div", {}, h("strong", {}, kh.host), h("br"), fp), forgetBtn);
+      }))]
+    : null;
+
   return [
-    h("p", { class: "hint" }, "Switched on, TunnelTab reads a server's CPU load, memory, disk use and uptime every 30 seconds — only while that server is already connected (for a service or a terminal) and this dashboard is open. It never connects just for this. Off by default; switch it off again at any time. To look at a server without a service or terminal, use Connect on its Health box."),
-    h("p", { class: "hint" }, "It runs one fixed, read-only command (Linux servers): ",
+    h("p", { class: "hint" }, "Health: ticked, a server's CPU load, memory, disk use and uptime are read every 30 seconds while it's already connected (for a service or a terminal) and this dashboard is open. It never connects just for this; to look at a server without one, use Connect on its Health box. It runs one fixed, read-only command (Linux servers): ",
       h("code", {}, "cat /proc/loadavg /proc/meminfo /proc/uptime; nproc; df -P -k"),
-      ". The readings stay in memory and are never saved."),
+      ". Readings stay in memory."),
+    h("p", { class: "hint" }, "Fingerprint: the server key you confirmed, stored in the encrypted vault. Forget makes the next connection ask you to confirm it again."),
     list,
+    otherList,
     status,
   ];
 }
