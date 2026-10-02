@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -28,13 +29,14 @@ const maxResponse = 1 << 20
 
 // Result is what the dashboard shows.
 type Result struct {
-	Current     string `json:"current"`     // running version
-	Latest      string `json:"latest"`      // newest release, e.g. "0.2.0"
-	Newer       bool   `json:"newer"`       // Latest is newer than Current
-	DevBuild    bool   `json:"devBuild"`    // Current isn't a release version
-	CanInstall  bool   `json:"canInstall"`  // Newer, and "Update now" can install it
-	URL         string `json:"url"`         // release page (download + notes)
-	PublishedAt string `json:"publishedAt"` // RFC 3339
+	Current     string `json:"current"`          // running version
+	Latest      string `json:"latest"`           // newest release, e.g. "0.2.0"
+	Newer       bool   `json:"newer"`            // Latest is newer than Current
+	DevBuild    bool   `json:"devBuild"`         // Current is neither a release nor a test build of one
+	TestOf      string `json:"testOf,omitempty"` // Current is a test build made after this release
+	CanInstall  bool   `json:"canInstall"`       // Newer, and "Update now" can install it
+	URL         string `json:"url"`              // release page (download + notes)
+	PublishedAt string `json:"publishedAt"`      // RFC 3339
 
 	assets map[string]string // file name → download URL (TunnelTab's own only)
 	sizes  map[string]int64  // file name → size in bytes, as the API says
@@ -91,7 +93,15 @@ func Check(ctx context.Context, client *http.Client, url, current string) (Resul
 	}
 
 	r := Result{Current: current, Latest: latest.String(), URL: rel.HTMLURL, PublishedAt: rel.PublishedAt}
-	if cur, ok := parse(current); ok {
+	cur, ok := parse(current)
+	if !ok {
+		// A test build counts as the release it was made after, so only a
+		// newer release is offered (never a step back to that release).
+		if cur, ok = parseTest(current); ok {
+			r.TestOf = cur.String()
+		}
+	}
+	if ok {
 		r.Newer = latest.newerThan(cur)
 		r.assets, r.sizes = map[string]string{}, map[string]int64{}
 		prefix := downloadPrefix(url)
@@ -139,3 +149,17 @@ func (v version) newerThan(o version) bool {
 }
 
 func (v version) String() string { return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) }
+
+// testBuild matches a test build's version, as `git describe --tags
+// --dirty` names it: the release it was made after, how many commits later
+// and the commit ("0.6.1-3-g652f29e"), or "-dirty" for uncommitted changes.
+var testBuild = regexp.MustCompile(`^v?(\d+\.\d+\.\d+)(?:-\d+-g[0-9a-f]{7,40})?(?:-dirty)?$`)
+
+// parseTest returns the release a test build was made after.
+func parseTest(s string) (version, bool) {
+	m := testBuild.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil || m[0] == m[1] || "v"+m[1] == m[0] {
+		return version{}, false // a plain release number isn't a test build
+	}
+	return parse(m[1])
+}

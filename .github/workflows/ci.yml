@@ -18,6 +18,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history and tags: the build is named after the last release
+          # (git describe, e.g. 0.6.1-3-g652f29e), so Update now offers it
+          # the next release.
+          fetch-depth: 0
 
       - uses: actions/setup-go@v6
         with:
@@ -39,12 +44,12 @@ jobs:
 
       - name: Build portable package (bash)
         if: runner.os == 'Linux'
-        run: bash scripts/build.sh ci
+        run: bash scripts/build.sh
 
       - name: Build portable package (PowerShell)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/build.ps1 ci
+        run: ./scripts/build.ps1
 
       - name: Check the portable folder
         shell: bash
@@ -59,7 +64,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: tunneltab-portable-${{ github.sha }}
-          path: dist/tunneltab-ci.zip
+          path: dist/tunneltab-*.zip
           retention-days: 14
 
   lint:

@@ -2,7 +2,8 @@
 //
 //   cd tests/e2e && node update.js
 //
-// It builds TunnelTab 0.1.0 and a signed 0.2.0 release (with a throwaway
+// It builds a TunnelTab test build made after 0.1.0 (version
+// "0.1.0-3-gabc1234", as CI builds are named) and a signed 0.2.0 release (with a throwaway
 // test key), serves the release from a fake GitHub, and clicks Update now.
 // Checks: the new version replaces the program and starts by itself, the
 // data (vault) survives, the leftovers are cleaned up. Then, on Linux, a
@@ -88,13 +89,14 @@ process.on("exit", () => {
 
   fs.mkdirSync(appDir, { recursive: true });
   const program = path.join(appDir, exeName);
-  build("0.1.0", program);
-  fs.writeFileSync(path.join(appDir, "README.txt"), "TunnelTab 0.1.0\r\n");
+  const START = "0.1.0-3-gabc1234"; // a test build: offered the next release
+  build(START, program);
+  fs.writeFileSync(path.join(appDir, "README.txt"), `TunnelTab ${START}\r\n`);
   const newBuild = path.join(tmp, "new-" + exeName);
   build("0.2.0", newBuild);
   const versionOf = () => execFileSync(program, ["--version"], { encoding: "utf8" }).trim();
 
-  // Start 0.1.0. Restarted versions inherit its output, so every launch
+  // Start the test build. Restarted versions inherit its output, so every launch
   // link (old and new) shows up here.
   const proc = spawn(program, ["--no-browser", "--port", "47902", "--data", dataDir,
     "--update-url", `http://127.0.0.1:${gh.address().port}/latest`], { stdio: ["ignore", "pipe", "pipe"] });
@@ -153,20 +155,21 @@ process.on("exit", () => {
   const stepNames = (steps) => steps.map((s) => s.text.replace(/^Downloading.*/, "Downloading"))
     .filter((t, i, a) => i === 0 || a[i - 1] !== t);
 
-  // 1. First run on 0.1.0.
+  // 1. First run on the test build.
   let page = await newPage(await nthLink(1));
   await page.getByLabel("Master password").fill("correct horse battery staple");
   await page.getByLabel("Repeat it").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Create vault" }).click();
   await page.getByText("Add your first project").waitFor();
-  await page.getByText("TunnelTab 0.1.0").waitFor();
-  step("0.1.0 running, vault created");
+  await page.getByText(`TunnelTab ${START}`).waitFor();
+  step("test build running, vault created");
 
   // 2. Update to a good, signed 0.2.0.
   current = makeRelease("0.2.0", newBuild);
   await page.getByRole("button", { name: /Settings/ }).click();
   await page.getByRole("tab", { name: "Updates" }).click();
   await page.getByRole("button", { name: "Check for updates" }).click();
+  await page.getByText("You're running a test build made after TunnelTab 0.1.0.").waitFor();
   await page.getByText("TunnelTab 0.2.0 is available").waitFor();
   await page.getByRole("button", { name: "Update now" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${OUT}/20-update-available.png` });

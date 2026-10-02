@@ -506,9 +506,17 @@ program files.
 **Update now**. TunnelTab downloads the new version, checks that it's
 signed by TunnelTab (anything else is refused), replaces its program files
 and restarts in a new tab. A progress bar shows each step and how much is
-downloaded; afterwards the old tab says whether the new version is running. Unlock with your master password as usual.
+downloaded; afterwards the old tab says whether the new version is running.
+Unlock with your master password as usual.
 Running tunnels and open terminals close during the restart. If the new
 version can't start, the previous one comes back by itself.
+
+**Test builds** (the zips from GitHub Actions, named like
+`tunneltab-0.6.1-3-g652f29e.zip`: three changes after 0.6.1) are offered
+**Update now** to the next official release, e.g. 0.7.0, with the same
+signature checks. Going back to the release they were made after (0.6.1
+here) is never offered, since the test build may have newer features or
+data; do that by hand if you need to.
 
 **By hand** (e.g. from 0.1.0, which has no **Update now**):
 

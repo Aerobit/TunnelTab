@@ -282,7 +282,7 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `PUT /projects/order` | `{ids}` | new order of all projects |
 | `PUT /projects/{id}/servers/order` | `{ids}` | new order of the project's servers; servers from other projects in the list are moved in |
 | `PUT /servers/{id}/services/order` | `{ids}` | new order of the server's services |
-| `POST /updates/check` | | `{current, latest, newer, devBuild, canInstall, url, publishedAt}` or `{noRelease}` — contacts GitHub, only on request |
+| `POST /updates/check` | | `{current, latest, newer, devBuild, testOf, canInstall, url, publishedAt}` (`testOf`: the release a test build was made after) or `{noRelease}` — contacts GitHub, only on request |
 | `POST /updates/install` | | "Update now": downloads, verifies and installs the latest release, answers `{status: "restarting", version}`, then restarts TunnelTab; 409 `update_unavailable` / `update_busy`, 502 `update_failed` (nothing changed) |
 | `POST /terminals` | `{serverId, cols, rows}` | opens a shell; `{terminalId, ticket, serverName}` (see Terminals) |
 | `POST /terminals/{id}/attach` | | `{ticket, …}` to re-attach to a running session; 423 while locked, 404 once ended |
@@ -534,11 +534,15 @@ endpoints, and focus returns to the moved item's grip after re-rendering.
 
 ### Updates (`internal/update`)
 
-`Check` reads the release's tag and assets; `canInstall` needs a newer
-release version (not a dev build) with `tunneltab-<v>.zip`,
+`Check` reads the release's tag and assets; `canInstall` needs a release
+newer than the running version with `tunneltab-<v>.zip`,
 `SHA256SUMS.txt` and `SHA256SUMS.txt.sig`, all at
 `https://github.com/Aerobit/TunnelTab/releases/download/` (or the test
-server given with `--update-url`). `Download` fetches the checksums and
+server given with `--update-url`). A test build (`git describe`
+version such as `0.6.1-3-g652f29e` or `0.6.1-dirty`, as CI builds are
+named) counts as the release it was made after (`testOf`), so only a newer
+release is offered; other non-release versions (`dev`) are `devBuild` and
+never offered one. `Download` fetches the checksums and
 signature, verifies the signature against `ReleasePublicKey`, requires the
 zip for exactly that version, downloads it into `.update/` next to the
 program, compares its SHA-256, and extracts only the known package files

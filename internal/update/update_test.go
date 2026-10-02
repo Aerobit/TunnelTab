@@ -33,14 +33,20 @@ func TestCheck(t *testing.T) {
 	cases := []struct {
 		current, tag  string
 		newer, devBld bool
+		testOf        string
 	}{
-		{"0.1.0", "v0.2.0", true, false},
-		{"0.1.0", "v0.1.0", false, false},
-		{"0.2.0", "v0.1.9", false, false},
-		{"0.9.0", "v0.10.0", true, false}, // numeric, not text, comparison
-		{"1.0.0", "v0.99.99", false, false},
-		{"dev", "v0.2.0", false, true},
-		{"0.1.0-3-gabc123-dirty", "v0.2.0", false, true},
+		{"0.1.0", "v0.2.0", true, false, ""},
+		{"0.1.0", "v0.1.0", false, false, ""},
+		{"0.2.0", "v0.1.9", false, false, ""},
+		{"0.9.0", "v0.10.0", true, false, ""}, // numeric, not text, comparison
+		{"1.0.0", "v0.99.99", false, false, ""},
+		{"dev", "v0.2.0", false, true, ""},
+		{"ci", "v0.2.0", false, true, ""},
+		// Test builds: offered only a release newer than the one they were made after.
+		{"0.1.0-3-gabc1234-dirty", "v0.2.0", true, false, "0.1.0"},
+		{"0.1.0-3-gabc1234", "v0.1.0", false, false, "0.1.0"},
+		{"0.2.0-dirty", "v0.2.0", false, false, "0.2.0"},
+		{"0.1.0-rc1", "v0.2.0", false, true, ""}, // not a test build
 	}
 	for _, c := range cases {
 		url := fakeGitHub(t, 200, release(c.tag, page))
@@ -48,7 +54,7 @@ func TestCheck(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s vs %s: %v", c.current, c.tag, err)
 		}
-		if r.Newer != c.newer || r.DevBuild != c.devBld || r.Latest != strings.TrimPrefix(c.tag, "v") || r.URL != page {
+		if r.Newer != c.newer || r.DevBuild != c.devBld || r.TestOf != c.testOf || r.Latest != strings.TrimPrefix(c.tag, "v") || r.URL != page {
 			t.Errorf("%s vs %s: got %+v", c.current, c.tag, r)
 		}
 	}
@@ -103,6 +109,25 @@ func TestParse(t *testing.T) {
 	for _, s := range []string{"", "dev", "1.2", "1.2.3.4", "1.2.x", "01.2.3", "-1.2.3", "1.2.3-rc1", "v1.2.3+build"} {
 		if _, ok := parse(s); ok {
 			t.Errorf("parse(%q) accepted", s)
+		}
+	}
+}
+
+func TestParseTest(t *testing.T) {
+	good := map[string]version{
+		"0.6.1-3-g652f29e":              {0, 6, 1},
+		"v0.6.1-12-g652f29e1a2b3-dirty": {0, 6, 1},
+		"0.6.1-dirty":                   {0, 6, 1},
+		"1.0.0-1-g0123456789abcdef0123456789abcdef01234567": {1, 0, 0},
+	}
+	for s, want := range good {
+		if v, ok := parseTest(s); !ok || v != want {
+			t.Errorf("parseTest(%q) = %v %v", s, v, ok)
+		}
+	}
+	for _, s := range []string{"", "dev", "ci", "652f29e", "0.6.1", "v0.6.1", "0.6.1-rc1", "0.6.1-3-g652f29", "0.6.1-3-gXYZ1234", "0.6.1-3-g652f29e-other", "0.6-3-g652f29e"} {
+		if _, ok := parseTest(s); ok {
+			t.Errorf("parseTest(%q) accepted", s)
 		}
 	}
 }

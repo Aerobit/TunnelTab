@@ -14,8 +14,9 @@ covers what only a real Windows PC and a real server can show.
 ## 2. Manual check on Windows
 
 Get the zip from the latest CI run on `main` (GitHub → **Actions** → the run →
-**Artifacts** → `tunneltab-portable-…`; it contains `tunneltab-ci.zip`), or build
-it yourself with `.\scripts\build.ps1 x.y.z`.
+**Artifacts** → `tunneltab-portable-…`; it contains `tunneltab-<version>.zip`,
+named after the last release, e.g. `tunneltab-0.6.1-3-g652f29e.zip`), or
+build it yourself with `.\scripts\build.ps1 x.y.z`.
 
 **Package**
 - [ ] `tunneltab.exe` shows the TunnelTab icon; *Properties → Details* shows

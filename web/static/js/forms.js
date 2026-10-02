@@ -368,12 +368,16 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
       } else if (r.newer) {
         const date = r.publishedAt ? ` (released ${new Date(r.publishedAt).toLocaleDateString()})` : "";
         updateStatus.classList.add("ok");
-        updateStatus.replaceChildren(`TunnelTab ${r.latest} is available${date}. `, releaseLink("Release notes and download"));
+        updateStatus.replaceChildren(r.testOf ? `You're running a test build made after TunnelTab ${r.testOf}. ` : "",
+          `TunnelTab ${r.latest} is available${date}. `, releaseLink("Release notes and download"));
         if (r.canInstall) {
           const installBtn = h("button", { type: "button", class: "btn primary small" }, "Update now");
           installBtn.addEventListener("click", () => installUpdate(r.latest, installBtn));
           updateStatus.append(" ", installBtn);
         }
+      } else if (r.testOf) {
+        updateStatus.replaceChildren(`This is a test build made after TunnelTab ${r.testOf}. There's no newer release yet. `,
+          `(To go back to ${r.testOf} itself, download it by hand.) `, releaseLink("Releases"));
       } else if (r.devBuild) {
         updateStatus.replaceChildren(`This is a development build. The latest release is ${r.latest}. `, releaseLink("View it"));
       } else {
