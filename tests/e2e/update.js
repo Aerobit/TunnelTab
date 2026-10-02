@@ -71,7 +71,18 @@ process.on("exit", () => {
     }
     const name = decodeURIComponent(req.url.replace(/^\/dl\//, ""));
     if (!current.files.includes(name)) { res.statusCode = 404; return res.end(); }
-    fs.createReadStream(path.join(current.dir, name)).pipe(res);
+    if (!name.endsWith(".zip")) return fs.createReadStream(path.join(current.dir, name)).pipe(res);
+    // The zip goes out slowly, in 20 parts, so the progress bar can be seen moving.
+    const zip = fs.readFileSync(path.join(current.dir, name));
+    res.setHeader("Content-Length", zip.length);
+    const part = Math.ceil(zip.length / 20);
+    (async () => {
+      for (let i = 0; i < zip.length; i += part) {
+        res.write(zip.subarray(i, i + part));
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      res.end();
+    })();
   });
   await new Promise((r) => gh.listen(0, "127.0.0.1", r));
 
@@ -122,9 +133,25 @@ process.on("exit", () => {
     await page.getByRole("tab", { name: "Updates" }).click();
     await page.getByRole("button", { name: "Check for updates" }).click();
     await page.getByRole("button", { name: "Update now" }).click();
+    // Record every step and bar value the Settings dialog shows.
+    await page.evaluate(() => {
+      window.updateSteps = [];
+      new MutationObserver(() => {
+        const step = document.querySelector(".dialog .update-step");
+        if (!step) return;
+        const bar = step.querySelector("progress");
+        const seen = { text: step.textContent, value: bar.hasAttribute("value") ? bar.value : null, max: bar.max };
+        const last = window.updateSteps[window.updateSteps.length - 1];
+        if (!last || last.text !== seen.text || last.value !== seen.value) window.updateSteps.push(seen);
+      }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    });
     await page.getByRole("button", { name: "Update now" }).last().click(); // the confirmation
     await page.getByRole("heading", { name: "Updating TunnelTab" }).waitFor({ timeout: 60000 });
+    return page.evaluate(() => window.updateSteps);
   };
+  // The steps in order, each once (repeats of "Downloading" merged).
+  const stepNames = (steps) => steps.map((s) => s.text.replace(/^Downloading.*/, "Downloading"))
+    .filter((t, i, a) => i === 0 || a[i - 1] !== t);
 
   // 1. First run on 0.1.0.
   let page = await newPage(await nthLink(1));
@@ -144,14 +171,31 @@ process.on("exit", () => {
   await page.getByRole("button", { name: "Update now" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${OUT}/20-update-available.png` });
   await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
-  await clickUpdateNow(page);
+  const steps = await clickUpdateNow(page);
   await page.screenshot({ path: `${OUT}/21-updating.png` });
+  // ("Restarting…" may arrive after the dialog has already made way for the Updating screen.)
+  assert.deepStrictEqual(stepNames(steps).filter((t) => t !== "Restarting…"),
+    ["Checking for the latest release…", "Checking the signature…", "Downloading", "Download checked; unpacking…", "Installing…"],
+    "update steps: " + JSON.stringify(steps));
+  const downloads = steps.filter((s) => s.text.startsWith("Downloading") && s.value !== null);
+  assert.ok(downloads.length >= 5, "the bar barely moved: " + JSON.stringify(downloads));
+  assert.ok(downloads.every((s, i) => i === 0 || s.value >= downloads[i - 1].value), "the bar went backwards");
+  // (The last few may be replaced by "unpacking" before the page draws them.)
+  const end = downloads[downloads.length - 1];
+  assert.ok(end.value > end.max / 2, "the bar stopped early: " + JSON.stringify(end));
+  assert.match(end.text, /^Downloading .+ of .+ \(\d+%\)$/);
+  step(`Settings showed each step in order, and the bar moved (${downloads.length} updates)`);
+
+  const oldPage = page;
   page = await newPage(await nthLink(2));
   await unlock(page);
   await page.getByText("TunnelTab 0.2.0").waitFor();
   assert.strictEqual(versionOf(), "TunnelTab 0.2.0");
   assert.strictEqual(fs.readFileSync(path.join(appDir, "README.txt"), "utf8"), "TunnelTab 0.2.0\r\n");
-  step("Update now installed 0.2.0, restarted, and the vault still unlocks");
+  await oldPage.getByText("TunnelTab 0.2.0 is running and opened in a new tab.").waitFor({ timeout: 30000 });
+  await oldPage.screenshot({ path: `${OUT}/22-updated.png` });
+  await oldPage.close();
+  step("Update now installed 0.2.0, restarted, and the vault still unlocks; the old tab says the new version runs");
 
   const leftovers = () => fs.readdirSync(appDir).filter((n) => n.endsWith(".old") || n === ".update");
   for (let i = 0; i < 100 && leftovers().length; i++) await new Promise((r) => setTimeout(r, 200));
@@ -164,12 +208,15 @@ process.on("exit", () => {
     fs.writeFileSync(broken, "#!/bin/sh\nexit 3\n", { mode: 0o755 });
     current = makeRelease("0.3.0", broken);
     await clickUpdateNow(page);
+    const oldPage = page;
     page = await newPage(await nthLink(3));
     await unlock(page);
     await page.getByText("TunnelTab 0.2.0").waitFor();
     assert.strictEqual(versionOf(), "TunnelTab 0.2.0");
     assert.deepStrictEqual(leftovers(), [], "rollback left files behind");
-    step("a release that can't start is rolled back; 0.2.0 runs again");
+    await oldPage.getByText("TunnelTab 0.3.0 couldn't start, so the previous version (0.2.0) came back.").waitFor({ timeout: 30000 });
+    await oldPage.close();
+    step("a release that can't start is rolled back; 0.2.0 runs again, and the old tab says so");
   }
 
   // 4. Quit.

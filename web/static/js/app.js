@@ -2,12 +2,14 @@
 // first-run setup, unlock, dashboard), renders the dashboard from /api/data,
 // and keeps it live with the event stream.
 
-import { api, ApiError, signIn, streamEvents, whenSignedOut } from "./api.js";
+import { api, ApiError, currentSession, probe, signIn, streamEvents, whenSignedOut } from "./api.js";
 import { debounce, h, replace } from "./dom.js";
 import { confirmDialog, field, toast } from "./dialogs.js";
 import {
   projectDialog, serverDialog, serviceDialog, settingsDialog, testServer, withHostKeys,
 } from "./forms.js";
+import { findServices } from "./discover.js";
+import { fmtBytes } from "./format.js";
 import { TERM_STATES, TermView } from "./termview.js";
 
 const root = document.getElementById("app");
@@ -118,9 +120,44 @@ function showUpdating(version) {
   stopEvents = null;
   dropViews();
   closeDialogs();
-  messageScreen("Updating TunnelTab",
-    h("p", {}, `TunnelTab ${version} is starting and opens in a new tab. You can close this tab.`),
-    h("p", { class: "hint" }, "If it doesn't open within a minute, start TunnelTab again. If the new version can't start, the previous one comes back by itself."));
+  const status = h("p", { class: "update-step", role: "status" },
+    h("progress", { class: "update-progress", "aria-label": "Restarting" }), `Starting TunnelTab ${version}…`);
+  const hint = h("p", { class: "hint" }, "It opens in a new tab. If the new version can't start, the previous one comes back by itself.");
+  messageScreen("Updating TunnelTab", status, hint);
+  waitForRestart(version, currentSession(), status).then(() => hint.remove());
+}
+
+// After "Update now" this program stops and starts the new version, which
+// opens in a new tab (or, if it can't start, the previous version comes
+// back, after up to 30 s). The restarted program doesn't know this tab's
+// session, so it refuses it: that's how this tab sees the restart. Once the
+// new tab has signed in (its session replaces ours in localStorage), the
+// new session says which version runs.
+async function waitForRestart(version, oldSession, status) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const started = Date.now();
+  let restarted = false;
+  while (Date.now() - started < 120_000) {
+    await sleep(500);
+    if (!restarted) {
+      const p = await probe(oldSession);
+      if (p !== "unknown") continue; // not answering, or still the old program
+      restarted = true;
+      status.replaceChildren(`TunnelTab has restarted. Waiting for it to open in a new tab…`);
+    }
+    const s = currentSession();
+    if (!s || s === oldSession) continue;
+    const p = await probe(s);
+    if (typeof p !== "object") continue;
+    status.replaceChildren(p.version === version
+      ? `TunnelTab ${version} is running and opened in a new tab. You can close this tab.`
+      : `TunnelTab ${version} couldn't start, so the previous version (${p.version}) came back. It opened in a new tab. Your data is unchanged.`);
+    status.classList.add(p.version === version ? "ok" : "bad");
+    return;
+  }
+  status.replaceChildren(restarted
+    ? "TunnelTab has restarted, but no new tab signed in. Open TunnelTab from the link it shows, or start it again."
+    : "TunnelTab hasn't come back. Start it again; if the new version couldn't start, the previous one has been restored. Your data is unchanged.");
 }
 
 /** Rough password strength: 0 (weak) to 4 (strong). */
@@ -257,6 +294,10 @@ const renderSoon = debounce(() => state.vault === "unlocked" && state.data && cu
 
 function onEvent(ev) {
   switch (ev.type) {
+    case "update":
+      // "Update now" progress, for the Settings dialog that started it.
+      window.dispatchEvent(new CustomEvent("tunneltab-update", { detail: ev }));
+      break;
     case "resync":
     case "data":
       if (ev.type === "resync") loadState().then(route).catch(() => {});
@@ -684,6 +725,7 @@ function activityText(e) {
     const label = state.data?.services.find((s) => s.id === e.id)?.label || "A tunnel";
     return `${label}: ${{ active: "tunnel started", stopped: "tunnel stopped", failed: "tunnel failed" }[e.state] || e.state}${e.state === "failed" ? err : ""}`;
   }
+  if (e.kind === "discover") return e.state === "searched" ? "Searched for services" : "Couldn't search for services";
   return e.state === "opened" ? "Terminal opened" : "Terminal closed";
 }
 
@@ -711,18 +753,6 @@ function duration(ms) {
 }
 
 // --- Traffic ----------------------------------------------------------------
-
-function fmtBytes(n) {
-  if (n < 1024) return `${n} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let v = n;
-  let i = -1;
-  do {
-    v /= 1024;
-    i++;
-  } while (v >= 1024 && i < units.length - 1);
-  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
-}
 
 /** Traffic of some services added up: {todayIn, todayOut, lastHour[60]}. */
 function trafficOf(serviceIds) {
@@ -963,10 +993,15 @@ function renderServicesTab(s, services) {
   return h("section", { class: "box" },
     h("div", { class: "box-head" },
       h("h2", {}, "Services"),
+      h("span", { class: "grow" }),
+      h("button", { class: "chip", onclick: () => findServices(s), title: "List the web apps running on this server and pick which to add" }, "Find services…"),
       h("button", { class: "chip add", onclick: () => serviceDialog(s.id) }, "+ Service")),
     services.length
       ? h("ul", { class: "services" }, services.map(renderService))
-      : h("p", { class: "hint" }, "No services yet. Add a web app running on this server with “+ Service”."));
+      : [
+        h("p", { class: "hint" }, "No services yet. TunnelTab can look at this server and list the web apps it runs, or you can add one by hand with “+ Service”."),
+        h("div", {}, h("button", { class: "btn secondary small", onclick: () => findServices(s) }, "Find services…")),
+      ]);
 }
 
 // --- Reordering (drag the ⠿ grip, or focus it and press ↑/↓) ---------------

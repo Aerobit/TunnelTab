@@ -128,9 +128,24 @@ func TestDownloadAndInstall(t *testing.T) {
 	os.WriteFile(filepath.Join(app, "data", "vault.enc"), []byte("my vault"), 0o600)
 
 	dl := filepath.Join(app, ".update")
-	st, err := Download(context.Background(), rel.srv.Client(), r, pub, dl, "tunneltab")
+	var steps []Progress
+	st, err := Download(context.Background(), rel.srv.Client(), r, pub, dl, "tunneltab", func(p Progress) { steps = append(steps, p) })
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Progress: verifying, then downloading from 0 to the zip's size, then unpacking.
+	if len(steps) < 3 || steps[0].Step != StepVerifying || steps[len(steps)-1].Step != StepUnpacking {
+		t.Fatalf("steps %+v", steps)
+	}
+	dlSteps := steps[1 : len(steps)-1]
+	first, last := dlSteps[0], dlSteps[len(dlSteps)-1]
+	if first.Step != StepDownloading || first.Done != 0 || last.Total == 0 || last.Done != last.Total {
+		t.Fatalf("download progress %+v", dlSteps)
+	}
+	for i, p := range dlSteps {
+		if p.Step != StepDownloading || p.Total != last.Total || (i > 0 && p.Done < dlSteps[i-1].Done) {
+			t.Fatalf("download progress %+v", dlSteps)
+		}
 	}
 	want := []string{"README.txt", "THIRD_PARTY_NOTICES.txt", "tunneltab"}
 	if len(st.Files) != len(want) {
@@ -165,7 +180,7 @@ func TestDownloadAndInstall(t *testing.T) {
 	}
 
 	// Install again, then clean up.
-	st, err = Download(context.Background(), rel.srv.Client(), r, pub, dl, "tunneltab")
+	st, err = Download(context.Background(), rel.srv.Client(), r, pub, dl, "tunneltab", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +251,7 @@ func TestDownloadRejects(t *testing.T) {
 			r := rel.check("0.1.0")
 			app := t.TempDir()
 			os.WriteFile(filepath.Join(app, "tunneltab"), []byte("old program"), 0o755)
-			_, err := Download(context.Background(), rel.srv.Client(), r, pub, filepath.Join(app, ".update"), "tunneltab")
+			_, err := Download(context.Background(), rel.srv.Client(), r, pub, filepath.Join(app, ".update"), "tunneltab", nil)
 			if err == nil {
 				t.Fatal("accepted")
 			}
@@ -278,7 +293,7 @@ func TestCanInstall(t *testing.T) {
 	rel := newFakeRelease(t, "v0.2.0")
 	rel.publish(priv, "0.2.0", goodPackage())
 	r := rel.check("0.2.0")
-	if _, err := Download(context.Background(), rel.srv.Client(), r, nil, t.TempDir(), "tunneltab"); err == nil {
+	if _, err := Download(context.Background(), rel.srv.Client(), r, nil, t.TempDir(), "tunneltab", nil); err == nil {
 		t.Fatal("Download accepted a release that isn't newer")
 	}
 }

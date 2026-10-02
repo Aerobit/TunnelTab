@@ -566,6 +566,40 @@ function start(cmd, args, opts) {
   await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
   step("server health: off by default, on from the server page (readings shown), off from Settings");
 
+  // §13: Find services asks first, then lists what the server runs; only ticked ones are added.
+  await page.locator(".service", { hasText: "Demo app" }).waitFor();
+  const servicesBefore = await page.locator(".service").count();
+  await page.getByRole("button", { name: "Find services…" }).click();
+  let dialog = page.getByRole("dialog");
+  await dialog.getByText("run one read-only command").waitFor();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  assert.strictEqual(await page.getByRole("dialog").count(), 0, "Cancel left a dialog open");
+  await page.getByRole("button", { name: "Find services…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Find services" }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByRole("heading", { name: "Services found on Demo VPS (renamed)" }).waitFor();
+  for (const port of [5678, 3000, 9443]) {
+    assert.ok(await dialog.getByLabel(`Add port ${port}`, { exact: true }).isChecked(), `port ${port} not ticked`);
+  }
+  assert.strictEqual(await dialog.getByLabel(`Name for port 5678`).inputValue(), "n8n");
+  assert.ok(await dialog.getByLabel(`Add port ${webPort}`, { exact: true }).isDisabled(), "the existing service can be ticked again");
+  await dialog.locator("tr", { hasText: "Already added" }).waitFor();
+  await dialog.getByText("Not web pages (3)").click(); // DNS, SSH, PostgreSQL
+  assert.ok(!(await dialog.getByLabel("Add port 5432", { exact: true }).isChecked()), "a database was ticked");
+  await dialog.getByLabel("Add port 9443", { exact: true }).uncheck();
+  await dialog.getByLabel("Name for port 3000").fill("Graphs");
+  await shot("17-find-services");
+  await dialog.getByRole("button", { name: "Add selected" }).click();
+  await page.getByText("Added 2 services.").waitFor();
+  await page.locator(".service", { hasText: "Graphs" }).waitFor();
+  await page.locator(".service", { hasText: "n8n" }).waitFor();
+  assert.strictEqual(await page.locator(".service").count(), servicesBefore + 2, "wrong number of services added");
+  assert.strictEqual(await page.locator(".service", { hasText: "Portainer" }).count(), 0, "an unticked service was added");
+  await page.locator(".page-tabs").getByRole("link", { name: "Activity" }).click();
+  await page.getByText("Searched for services").waitFor();
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).click();
+  step("find services: asks first, recognised apps ticked, existing marked, only ticked ones added");
+
   // 10. Stop the tunnel, then quit.
   await page.locator(".service", { hasText: "Demo app" }).getByRole("button", { name: "Stop" }).click();
   await page.locator(".pill.active").waitFor({ state: "detached", timeout: 10000 });

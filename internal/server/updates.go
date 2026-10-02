@@ -55,6 +55,19 @@ func (s *Server) handleCheckUpdates(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// updateEvent tells every open dashboard how far "Update now" has got:
+// update.Progress steps, plus "checking" first, then "restarting" when
+// installed, or "failed".
+type updateEvent struct {
+	Type    string `json:"type"` // "update"
+	Version string `json:"version,omitempty"`
+	update.Progress
+}
+
+func (s *Server) publishUpdate(version string, p update.Progress) {
+	s.events.publish(updateEvent{Type: "update", Version: version, Progress: p})
+}
+
 // handleInstallUpdate is "Update now": it checks for the latest release
 // again, downloads and verifies it (update.Download), replaces the program
 // files (update.Install), answers, and then restarts TunnelTab through
@@ -68,8 +81,11 @@ func (s *Server) handleInstallUpdate(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if !done {
 			s.installing.Store(false)
+			s.publishUpdate("", update.Progress{Step: "failed"})
 		}
 	}()
+
+	s.publishUpdate("", update.Progress{Step: "checking"})
 
 	res, err := s.checkUpdate(r.Context())
 	if err != nil {
@@ -87,8 +103,10 @@ func (s *Server) handleInstallUpdate(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 	client := &http.Client{Timeout: 10 * time.Minute}
-	st, err := update.Download(ctx, client, res, key, filepath.Join(s.cfg.AppDir, ".update"), s.cfg.ExeName)
+	st, err := update.Download(ctx, client, res, key, filepath.Join(s.cfg.AppDir, ".update"), s.cfg.ExeName,
+		func(p update.Progress) { s.publishUpdate(res.Latest, p) })
 	if err == nil {
+		s.publishUpdate(res.Latest, update.Progress{Step: update.StepInstalling})
 		err = update.Install(st, s.cfg.AppDir)
 	}
 	if err != nil {
@@ -98,6 +116,7 @@ func (s *Server) handleInstallUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("update installed; restarting", "version", res.Latest)
 	done = true
+	s.publishUpdate(res.Latest, update.Progress{Step: "restarting"})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "restarting", "version": res.Latest})
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()

@@ -29,6 +29,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/Aerobit/TunnelTab/internal/discover"
 	"github.com/Aerobit/TunnelTab/internal/health"
 	"github.com/Aerobit/TunnelTab/internal/sshx/sshtest"
 )
@@ -50,8 +51,13 @@ func main() {
 	}))
 
 	opts := sshtest.Options{User: "demo", Password: "demo-password", Addr: fmt.Sprintf("127.0.0.1:%d", *port)}
-	// Answers the opt-in server health check like a small Ubuntu VPS.
-	opts.Exec = map[string]string{health.Command: demoHealth}
+	// Answers the opt-in server health check like a small Ubuntu VPS, and
+	// "Find services" with the demo web app (a real tunnel target) plus a
+	// few Docker containers.
+	opts.Exec = map[string]string{
+		health.Command:   demoHealth,
+		discover.Command: fmt.Sprintf(demoDiscover, web.Addr().(*net.TCPAddr).Port),
+	}
 	if *demo {
 		opts.Banner = demoBanner
 		opts.Prompt = "\x1b[1;32mdemo@homelab\x1b[0m:\x1b[1;34m~\x1b[0m$ "
@@ -126,4 +132,23 @@ Filesystem     1024-blocks      Used Available Capacity Mounted on
 tmpfs               402852      1104    401748       1% /run
 /dev/sda1         81106868  22020096  59070388      28% /
 /dev/sdb1        960303848 421527552 538776296      44% /srv/data
+`
+
+// demoDiscover is what discover.Command prints on a homelab VPS; %d is the
+// demo web app's port.
+const demoDiscover = `@@ss
+State  Recv-Q Send-Q Local Address:Port  Peer Address:Port Process
+LISTEN 0      4096     127.0.0.53%%lo:53         0.0.0.0:*
+LISTEN 0      4096         127.0.0.1:5678        0.0.0.0:*
+LISTEN 0      4096         127.0.0.1:3000        0.0.0.0:*
+LISTEN 0      4096         127.0.0.1:9443        0.0.0.0:*
+LISTEN 0      4096           0.0.0.0:22          0.0.0.0:*
+LISTEN 0      511          127.0.0.1:%d       0.0.0.0:*    users:(("demo-app",pid=4242,fd=3))
+@@netstat
+@@docker
+{"name":"n8n","image":"docker.n8n.io/n8nio/n8n:latest","ports":"127.0.0.1:5678->5678/tcp"}
+{"name":"grafana","image":"grafana/grafana-oss:11.2.0","ports":"127.0.0.1:3000->3000/tcp"}
+{"name":"portainer","image":"portainer/portainer-ce:2.21.0","ports":"127.0.0.1:9443->9443/tcp, 8000/tcp"}
+{"name":"postgres","image":"postgres:16","ports":"127.0.0.1:5432->5432/tcp"}
+@@end
 `

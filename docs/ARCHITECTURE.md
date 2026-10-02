@@ -54,6 +54,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/sshx/sshtest` | In-process SSH server used by tests | Done |
 | `internal/server` | HTTP server, launch links + sessions, Host/Origin checks, API, events, terminal WebSocket | Done |
 | `internal/health` | Opt-in server health: the one fixed command TunnelTab runs on a server by itself (`Command`) and its strict parser (`Parse`, fuzzed) | Done |
+| `internal/discover` | "Find services": the fixed, read-only command TunnelTab runs on a server when the user clicks Find services (`Command`: `ss`/`netstat` + `docker ps`), its strict parser (`Parse`, fuzzed) and the table of well-known apps (`apps.go`) | Done |
 | `internal/update` | Updates, only when the user clicks: "Check for updates" (GitHub releases/latest API, version comparison) and "Update now" (download, signature + checksum verification, unpack, install with `.old` backups, rollback, cleanup). Release signature format in `signature.go` | Done |
 | `internal/platform` | Open browser, error dialog, instance file | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
@@ -267,6 +268,8 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `PUT /servers/{id}/health` | `{enabled}` | 204; switches the opt-in health check on (checked at once if connected) or off (reading dropped at once); stored in the vault, `PublicServer.healthEnabled` |
 | `POST /servers/{id}/clear-passphrase` | | |
 | `POST /servers/{id}/test` | | connects once (drives host-key confirmation) |
+| `POST /servers/{id}/discover` | | "Find services", only on the user's click: connects if needed (drives host-key confirmation), runs `discover.Command`, answers `{candidates: [{name, host, port, protocol, path, kind (web/maybe/other), app, process, container, image, listen (local/all/other), added}], docker (ok/none/denied/stopped/error), truncated}`; 422 `discover_failed` if neither `ss` nor `netstat` answered. Nothing is saved |
+| `POST /servers/{id}/services` | `{services: [model.Service]}` | adds 1–200 services to the server in one vault update (all or none; a validation error names `services.<index>.<field>`); 201 with the new services |
 | `POST /services` · `PUT`/`DELETE /services/{id}` | `model.Service` | service |
 | `POST /services/{id}/start` | | `{forward, url}` |
 | `POST /services/{id}/stop` | | |
@@ -302,8 +305,9 @@ sent). Each `data:` line is JSON:
 | `type` | Fields | Meaning |
 |---|---|---|
 | `tunnel` | `kind` (server/forward), `id`, `serverId`, `state`, `error`, `localPort`, and for servers `since`, `reconnects`, `reason` | SSH engine state change |
-| `activity` | `at`, `kind` (server/forward/terminal), `id`, `serverId`, `state`, `error`, `reconnects`, `reason` | a line for "Recent activity" (see below) |
+| `activity` | `at`, `kind` (server/forward/terminal/discover), `id`, `serverId`, `state`, `error`, `reconnects`, `reason` | a line for "Recent activity" (see below) |
 | `health` | `serverId`, `reading` (`{health?, error?, at}`, or null when switched off or disconnected) | a server health reading |
+| `update` | `step` (checking, verifying, downloading, unpacking, installing, restarting, failed), `done`, `total` (bytes, while downloading), `version` | how far "Update now" has got (see Updates) |
 | `vault` | `state` (locked/unlocked) | lock state changed |
 | `data` | | stored data changed: re-fetch `/api/data` |
 | `resync` | | events were dropped: re-fetch everything |
@@ -313,7 +317,8 @@ blocking the app.
 
 **Activity log** (`internal/server/activity.go`): the last 200 connection,
 tunnel and terminal events worth showing (connected, reconnecting, failed,
-stopped; tunnel started/stopped/failed; terminal opened/ended), with a
+stopped; tunnel started/stopped/failed; terminal opened/ended; services
+searched — each search has its own ID, so every one is listed), with a
 repeated state recorded once. IDs and states only; the dashboard looks the
 names up. Kept in memory only, never written to disk or the log file.
 
@@ -327,6 +332,24 @@ into load, cores, memory, uptime and up to 5 disks. Readings are kept in
 memory, sent as `health` events and in `GET /api/data`; a server that
 disconnects or is switched off loses its reading at once. A server that
 connects is checked right away.
+
+**Find services** (`internal/server/discover.go`, `internal/discover`):
+only when the user clicks **Find services** and confirms.
+`Manager.Run` connects if needed (and lets the connection go afterwards,
+so it closes unless a tunnel or terminal uses it), runs the constant
+`discover.Command` (`ss -tlnp`, `netstat -tln`, `docker ps` with a
+three-field JSON format; `;` only, so it works in fish too), 20 s timeout,
+256 KiB output limit. `discover.Parse` prefers `ss` (falls back to
+`netstat`), joins listening ports with published container ports (one
+candidate per port), names them by a built-in table of well-known images
+(then ports), else by container or program name (cleaned: printable, ≤ 60
+characters), and picks the address to tunnel to (`127.0.0.1` for loopback
+or all-address listeners). At most 200 candidates; every candidate makes a
+valid service (fuzzed). The server marks ports that already have a
+service; the result isn't stored. The user ticks rows and `POST
+/servers/{id}/services` adds them in one vault update. Each search adds an
+activity line (kind `discover`).
+
 
 ## Terminals
 
@@ -492,6 +515,19 @@ program, compares its SHA-256, and extracts only the known package files
 receives this OS's binary even if it was renamed. `Install` renames each
 file it replaces to `<name>.old` (possible even for a running `.exe`) and
 moves the new one in; any failure rolls back.
+
+**Progress:** `Download` reports each step to a callback (`update.Progress`:
+verifying → downloading with `done`/`total` bytes, at most ~100 reports →
+unpacking); the server adds `checking` first, `installing` before
+`Install`, then `restarting` or `failed`, and sends them all as `update`
+events. Settings draws them with a `<progress>` bar. After the answer the
+page shows *Updating TunnelTab* and polls `GET /api/state` with its old
+session token: the restarted program refuses it (401), which is how the
+page sees the restart. When the new tab has signed in (its session
+replaces the old one in `localStorage`), the page asks `/api/state` with
+that session and says whether the new version runs or the previous one
+came back (rollback).
+
 
 Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`,
 `--update-url <url>` (tests: a fake release API; downloads may then come

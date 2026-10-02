@@ -4,6 +4,7 @@
 import { api, ApiError } from "./api.js";
 import { h } from "./dom.js";
 import { checkbox, confirmDialog, field, openDialog, tabs, toast } from "./dialogs.js";
+import { fmtBytes } from "./format.js";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -293,6 +294,22 @@ export async function serviceDialog(serverId, service) {
 
 // --- Settings ---------------------------------------------------------------
 
+/** One "Update now" step (an "update" event) in words; "" for none. */
+function updateStepText(p) {
+  switch (p.step) {
+    case "checking": return "Checking for the latest release…";
+    case "verifying": return "Checking the signature…";
+    case "downloading":
+      return p.total > 0
+        ? `Downloading ${fmtBytes(p.done)} of ${fmtBytes(p.total)} (${Math.floor((p.done / p.total) * 100)}%)`
+        : `Downloading… ${fmtBytes(p.done)}`;
+    case "unpacking": return "Download checked; unpacking…";
+    case "installing": return "Installing…";
+    case "restarting": return "Restarting…";
+    default: return "";
+  }
+}
+
 export async function settingsDialog({ knownHosts, minPasswordLen, version, runningTunnels = 0, onRestarting, onChecked, initialTab, servers = [], projects = [] }) {
   const current = await api("GET", "/settings");
   const lock = select(
@@ -381,7 +398,22 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
       { confirmLabel: "Update now" }))) return;
     installBtn.disabled = updateBtn.disabled = true;
     updateStatus.className = "inline-status";
-    updateStatus.replaceChildren("Downloading and checking the update…");
+    const bar = h("progress", { class: "update-progress", "aria-label": "Update progress" }); // no value: busy
+    const stepText = h("span", {}, "Checking for the latest release…");
+    updateStatus.replaceChildren(h("span", { class: "update-step" }, bar, stepText));
+    const onProgress = (e) => {
+      const p = { done: 0, total: 0, ...e.detail }; // zeros are left out of the event
+      const text = updateStepText(p);
+      if (!text) return;
+      stepText.textContent = text;
+      if (p.step === "downloading" && p.total > 0) {
+        bar.max = p.total;
+        bar.value = Math.min(p.done, p.total);
+      } else if (p.step !== "downloading") {
+        bar.removeAttribute("value"); // busy, without a known end
+      }
+    };
+    window.addEventListener("tunneltab-update", onProgress);
     try {
       const res = await api("POST", "/updates/install");
       onRestarting?.(res.version);
@@ -389,6 +421,8 @@ export async function settingsDialog({ knownHosts, minPasswordLen, version, runn
       updateStatus.classList.add("bad");
       updateStatus.replaceChildren(err.message);
       installBtn.disabled = updateBtn.disabled = false;
+    } finally {
+      window.removeEventListener("tunneltab-update", onProgress);
     }
   }
 

@@ -107,8 +107,14 @@ func TestInstallUpdate(t *testing.T) {
 	if m := h.mustCall("POST", "/api/updates/check", nil, 200); m["canInstall"] != true {
 		t.Fatalf("check: %v", m)
 	}
+	dashboard := h.srv.events.subscribe()
+	defer h.srv.events.unsubscribe(dashboard)
 	if m := h.mustCall("POST", "/api/updates/install", nil, 200); m["version"] != "0.2.0" {
 		t.Fatalf("install: %v", m)
+	}
+	// Every open dashboard is told each step, in order.
+	if got, want := strings.Join(updateSteps(dashboard), ","), "checking,verifying,downloading,unpacking,installing,restarting"; got != want {
+		t.Errorf("update steps %s, want %s", got, want)
 	}
 	select {
 	case <-restarted:
@@ -140,6 +146,8 @@ func TestInstallUpdateRefused(t *testing.T) {
 		c.OnUpdateInstalled = func() { called = true }
 	})
 	h.login()
+	dashboard := h.srv.events.subscribe()
+	defer h.srv.events.unsubscribe(dashboard)
 	// Signed with another key: refused, nothing changed, and it can be retried.
 	for i := 0; i < 2; i++ {
 		if m := h.mustCall("POST", "/api/updates/install", nil, http.StatusBadGateway); m["error"] != "update_failed" ||
@@ -149,6 +157,9 @@ func TestInstallUpdateRefused(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(exe); string(b) != "old program" || called {
 		t.Fatal("a badly signed update was installed")
+	}
+	if got, want := strings.Join(updateSteps(dashboard), ","), "checking,verifying,failed,checking,verifying,failed"; got != want {
+		t.Errorf("update steps %s, want %s", got, want)
 	}
 
 	// Without AppDir (dev builds, tests) there's no "Update now".
@@ -163,5 +174,23 @@ func TestInstallUpdateRefused(t *testing.T) {
 	// Needs a session, like everything else.
 	if status, _ := h2.request("POST", "/api/updates/install", nil, map[string]string{"Origin": h2.base}); status != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated install: %d", status)
+	}
+}
+
+// updateSteps drains a dashboard's events and returns the update steps sent
+// (repeats, such as "downloading", merged).
+func updateSteps(ch chan []byte) []string {
+	var steps []string
+	for {
+		select {
+		case raw := <-ch:
+			var ev struct{ Type, Step string }
+			json.Unmarshal(raw, &ev)
+			if ev.Type == "update" && (len(steps) == 0 || steps[len(steps)-1] != ev.Step) {
+				steps = append(steps, ev.Step)
+			}
+		default:
+			return steps
+		}
 	}
 }

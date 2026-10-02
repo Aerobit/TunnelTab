@@ -6,6 +6,21 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Find services**: on a server's **Services** tab, **Find services…**
+  lists the web apps the server runs, so you don't need to know their
+  ports. After you confirm, TunnelTab runs one read-only command on the
+  server (`ss` or `netstat`, and `docker ps`) and shows what it found:
+  well-known apps (n8n, Grafana, Portainer, Home Assistant and many more)
+  get their usual name and protocol and are ticked already; ports that
+  already have a service are marked; databases and other non-web ports are
+  listed separately. Only the services you tick are added. It runs only
+  when you click, never by itself.
+- **Update progress**: **Update now** shows a progress bar with each step
+  (checking the signature, *Downloading 4.2 of 9.8 MB (43%)*, unpacking,
+  installing). After the restart, the old tab says whether the new version
+  is running or the previous one came back.
+
 ## [0.4.3] - 2026-10-01
 
 ### Fixed

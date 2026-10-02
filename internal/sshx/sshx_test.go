@@ -966,3 +966,44 @@ func TestRunIfConnected(t *testing.T) {
 		t.Fatalf("%d logins, want 1 (the tunnel's)", srv.Logins())
 	}
 }
+
+func TestRun(t *testing.T) {
+	e := newEnv()
+	srv := sshtest.Start(t, sshtest.Options{User: user, Password: password, Exec: map[string]string{"scan": "ports\n"}})
+	s := e.addServer(srv, model.Auth{Type: model.AuthPassword, Password: password})
+	m := newManager(t, e, nil)
+
+	// An unknown host key stops it before anything runs, like TestConnection.
+	var unknown *UnknownHostKeyError
+	if _, err := m.Run(s.ID, "scan", 1024, 5*time.Second); !errors.As(err, &unknown) {
+		t.Fatalf("got %v, want *UnknownHostKeyError", err)
+	}
+	e.trust(srv.Host, srv.Port, srv.HostKey.PublicKey())
+
+	// Connects when needed, and lets the connection go afterwards.
+	out, err := m.Run(s.ID, "scan", 1024, 5*time.Second)
+	if err != nil || string(out) != "ports\n" {
+		t.Fatalf("got %q, %v", out, err)
+	}
+	if srv.Logins() != 1 {
+		t.Fatalf("%d logins, want 1", srv.Logins())
+	}
+	if list := m.Servers(); len(list) != 0 {
+		t.Fatalf("connection kept open: %+v", list)
+	}
+
+	// Uses an existing connection without logging in again, and keeps it.
+	host, port := backend(t, "x")
+	if _, err := m.StartForward(service(s.ID, host, port)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Run(s.ID, "scan", 1024, 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if srv.Logins() != 2 {
+		t.Fatalf("%d logins, want 2", srv.Logins())
+	}
+	if list := m.Servers(); len(list) != 1 || list[0].State != StateConnected {
+		t.Fatalf("existing connection changed: %+v", list)
+	}
+}

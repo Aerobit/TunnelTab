@@ -10,7 +10,7 @@ import { h } from "./dom.js";
  *   actions [{label, kind: "primary"|"danger"|"secondary", onClick}]
  *           onClick may be async; return false (or throw) to keep the dialog
  *           open. Buttons are disabled while it runs.
- *   wide    use a wider dialog
+ *   wide    use a wider dialog; "xl" for an even wider one (tables)
  * Resolves with the label of the action that closed it, or null on Escape.
  */
 export function openDialog({ title, body, actions = [], wide = false, danger = false }) {
@@ -27,7 +27,7 @@ export function openDialog({ title, body, actions = [], wide = false, danger = f
       error,
       h("footer", { class: "dialog-actions" }, buttons),
     );
-    const dialog = h("dialog", { class: ["dialog", wide && "wide", danger && "danger"] }, form);
+    const dialog = h("dialog", { class: ["dialog", wide && "wide", wide === "xl" && "xl", danger && "danger"] }, form);
     let result = null;
 
     async function run(action, button) {

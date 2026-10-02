@@ -53,6 +53,28 @@ export async function signIn() {
   return Boolean(session());
 }
 
+/** The session token this tab uses now (it changes when another tab signs in). */
+export function currentSession() {
+  return session();
+}
+
+/**
+ * Asks TunnelTab for its state with a given session token, without signing
+ * out when it's refused (used after "Update now" to see the restart).
+ * Returns "down" if nothing answers, "unknown" if TunnelTab answers but
+ * doesn't know the token (it has restarted since), or the state
+ * ({vault, version, …}).
+ */
+export async function probe(token) {
+  try {
+    const res = await fetch("/api/state", { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+    if (res.status === 401) return "unknown";
+    return res.ok ? await res.json() : "down";
+  } catch {
+    return "down";
+  }
+}
+
 /** Sends an API request and returns the parsed JSON (or null). */
 export async function api(method, path, body) {
   const headers = { Authorization: "Bearer " + session() };

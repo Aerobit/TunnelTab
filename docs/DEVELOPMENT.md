@@ -114,6 +114,7 @@ go test -run '^$' -fuzz '^FuzzServiceValidate$' -fuzztime 60s ./internal/model
 go test -run '^$' -fuzz '^FuzzParse$' -fuzztime 60s ./internal/vault
 go test -run '^$' -fuzz '^FuzzAPIBodies$' -fuzztime 60s ./internal/server
 go test -run '^$' -fuzz '^FuzzParse$' -fuzztime 60s ./internal/health
+go test -run '^$' -fuzz '^FuzzParse$' -fuzztime 60s ./internal/discover
 ```
 
 The fuzz tests' seed inputs also run as ordinary tests in `go test ./...`.

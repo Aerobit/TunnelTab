@@ -53,7 +53,8 @@ many as you like.
 
 ### 🚀 One-click web UIs
 Click **Open** on a service. TunnelTab starts the SSH tunnel and opens the
-page for you.
+page for you. **Find services** lists the web apps a server runs, so you
+don't need to know their ports.
 
 </td>
 <td width="33%" valign="top">

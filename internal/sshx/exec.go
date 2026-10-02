@@ -29,6 +29,27 @@ func (m *Manager) RunIfConnected(serverID, command string, limit int, timeout ti
 	if sc == nil || sc.status().State != StateConnected {
 		return nil, ErrNotConnected
 	}
+	return sc.run(command, limit, timeout)
+}
+
+// Run is RunIfConnected for a command the user asked for: it connects to the
+// server first if needed (and lets the connection go afterwards, so it
+// closes unless something else uses it). It returns the same connection
+// errors as TestConnection, so it can drive the host-key confirmation.
+//
+// It is used only for "Find services", whose command is a constant (see
+// internal/discover), and only when the user clicks: never pass it anything
+// a user typed, and never call it in the background.
+func (m *Manager) Run(serverID, command string, limit int, timeout time.Duration) ([]byte, error) {
+	sc, err := m.acquire(serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer m.release(sc)
+	return sc.run(command, limit, timeout)
+}
+
+func (sc *serverConn) run(command string, limit int, timeout time.Duration) ([]byte, error) {
 	client := sc.currentClient()
 	if client == nil {
 		return nil, ErrNotConnected

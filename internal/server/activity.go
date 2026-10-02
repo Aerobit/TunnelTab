@@ -16,8 +16,8 @@ const activityMax = 200
 
 type activityEntry struct {
 	At         time.Time `json:"at"`
-	Kind       string    `json:"kind"` // "server", "forward" or "terminal"
-	ID         string    `json:"id"`   // server, service or terminal ID
+	Kind       string    `json:"kind"` // "server", "forward", "terminal" or "discover"
+	ID         string    `json:"id"`   // server, service or terminal ID; a new one per service search
 	ServerID   string    `json:"serverId"`
 	State      string    `json:"state"`
 	Error      string    `json:"error,omitempty"`
@@ -38,6 +38,7 @@ var activityStates = map[string]map[string]bool{
 	},
 	"forward":  {string(sshx.StateActive): true, string(sshx.StateStopped): true, string(sshx.StateFailed): true},
 	"terminal": {"opened": true, "ended": true},
+	"discover": {"searched": true, "failed": true},
 }
 
 type activityLog struct {

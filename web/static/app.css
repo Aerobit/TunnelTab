@@ -578,3 +578,24 @@ a.chip { text-decoration: none; display: inline-block; }
 .health-meter:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--error); }
 .health-figure { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .host-list li .field.check { margin: 0; flex: 1; }
+
+/* Find services */
+.dialog.xl { width: min(860px, calc(100vw - 32px)); }
+.table.discover td { padding: 6px 8px; vertical-align: middle; }
+.table.discover td:first-child, .table.discover th:first-child { width: 34px; padding-right: 0; }
+.table.discover td:last-child { font-size: 12.5px; }
+.table.discover .discover-name { width: 100%; min-width: 120px; }
+.table.discover tr.added td { opacity: .6; }
+.table.discover td.mono .muted { margin-left: 2px; }
+.discover-other { margin: 12px 0 4px; }
+.discover-other summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.table.discover { table-layout: fixed; min-width: 640px; }
+.table.discover th:nth-child(2) { width: 30%; }
+.table.discover th:nth-child(3) { width: 72px; }
+.table.discover th:nth-child(4) { width: 96px; }
+
+/* Update now progress */
+.update-step { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.update-progress { width: 180px; height: 8px; accent-color: var(--accent, #388bfd); }
+.update-step.ok { color: #56d364; }
+.update-step.bad { color: var(--warning); }

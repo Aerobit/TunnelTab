@@ -66,6 +66,21 @@ const (
 	maxFile = 150 << 20 // one file inside the zip
 )
 
+// Steps of "Update now", in order, as reported to Download's progress.
+const (
+	StepVerifying   = "verifying"   // downloading and checking the signed checksums
+	StepDownloading = "downloading" // downloading the zip (Done/Total bytes)
+	StepUnpacking   = "unpacking"   // checksum matched; unpacking the zip
+	StepInstalling  = "installing"  // replacing the program files (Install)
+)
+
+// Progress is how far an update has got. Total is 0 when the size isn't known.
+type Progress struct {
+	Step  string `json:"step"`
+	Done  int64  `json:"done,omitempty"`
+	Total int64  `json:"total,omitempty"`
+}
+
 // Staged is a verified update, unpacked and ready for Install.
 type Staged struct {
 	Version string
@@ -80,10 +95,16 @@ type Staged struct {
 // for exactly version r.Latest; the zip's SHA-256 matches; the zip has the
 // program for this system. exeName is the running program's file name,
 // which receives the new program for this system even if it was renamed.
-func Download(ctx context.Context, client *http.Client, r Result, pub ed25519.PublicKey, dir, exeName string) (Staged, error) {
+// progress (may be nil) is called as each step starts and while the zip
+// downloads.
+func Download(ctx context.Context, client *http.Client, r Result, pub ed25519.PublicKey, dir, exeName string, progress func(Progress)) (Staged, error) {
 	if !r.CanInstall {
 		return Staged{}, errors.New("this release can't be installed automatically")
 	}
+	if progress == nil {
+		progress = func(Progress) {}
+	}
+	progress(Progress{Step: StepVerifying})
 	sums, err := fetch(ctx, client, r.assets[SumsName], maxSums)
 	if err != nil {
 		return Staged{}, err
@@ -112,13 +133,14 @@ func Download(ctx context.Context, client *http.Client, r Result, pub ed25519.Pu
 		return Staged{}, fmt.Errorf("TunnelTab's folder can't be written to: %w", err)
 	}
 	zipPath := filepath.Join(dir, zipName)
-	got, err := fetchToFile(ctx, client, r.assets[zipName], zipPath, maxZip)
+	got, err := fetchToFile(ctx, client, r.assets[zipName], zipPath, maxZip, r.sizes[zipName], progress)
 	if err != nil {
 		return Staged{}, err
 	}
 	if got != want {
 		return Staged{}, errors.New("the download doesn't match its signed checksum")
 	}
+	progress(Progress{Step: StepUnpacking})
 
 	files, err := unpack(zipPath, filepath.Join(dir, "new"), exeName)
 	if err != nil {
@@ -230,8 +252,10 @@ func fetch(ctx context.Context, client *http.Client, u string, limit int64) ([]b
 	return b, nil
 }
 
-// fetchToFile downloads into a new file and returns its hex SHA-256.
-func fetchToFile(ctx context.Context, client *http.Client, u, out string, limit int64) (string, error) {
+// fetchToFile downloads into a new file and returns its hex SHA-256. It
+// reports StepDownloading progress; the total is the response's length, or
+// apiSize (from the release API) if the server doesn't say.
+func fetchToFile(ctx context.Context, client *http.Client, u, out string, limit, apiSize int64, progress func(Progress)) (string, error) {
 	resp, err := get(ctx, client, u)
 	if err != nil {
 		return "", err
@@ -241,8 +265,17 @@ func fetchToFile(ctx context.Context, client *http.Client, u, out string, limit 
 	if err != nil {
 		return "", err
 	}
+	total := resp.ContentLength
+	if total <= 0 {
+		total = apiSize
+	}
+	if total < 0 || total > limit {
+		total = 0 // unknown, or too large anyway (the limit below says so)
+	}
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(w, h), io.LimitReader(resp.Body, limit+1))
+	c := &counter{progress: progress, total: total}
+	c.report()
+	n, err := io.Copy(io.MultiWriter(w, h, c), io.LimitReader(resp.Body, limit+1))
 	if cerr := w.Close(); err == nil {
 		err = cerr
 	}
@@ -253,4 +286,29 @@ func fetchToFile(ctx context.Context, client *http.Client, u, out string, limit 
 		return "", errors.New("the download is unexpectedly large")
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// counter reports download progress about every 1% (or every 256 KB when
+// the size isn't known), so a download sends at most about 100 reports.
+type counter struct {
+	progress     func(Progress)
+	done, total  int64
+	lastReported int64
+}
+
+func (c *counter) Write(p []byte) (int, error) {
+	c.done += int64(len(p))
+	step := int64(256 << 10)
+	if c.total > 0 {
+		step = max(c.total/100, 1)
+	}
+	if c.done-c.lastReported >= step || (c.total > 0 && c.done == c.total) {
+		c.report()
+	}
+	return len(p), nil
+}
+
+func (c *counter) report() {
+	c.lastReported = c.done
+	c.progress(Progress{Step: StepDownloading, Done: c.done, Total: c.total})
 }

@@ -53,8 +53,12 @@ one, stop and ask the user instead.
    health check: the constant `internal/health.Command` (read-only), only
    for servers where the user switched it on, only over an existing
    connection (`Manager.RunIfConnected` never connects), and only while a
-   dashboard is open. Never put user input into it or add other automatic
-   remote commands.
+   dashboard is open. The only other command TunnelTab runs on a server is
+   "Find services": the constant `internal/discover.Command` (read-only:
+   lists listening ports and Docker containers), only when the user clicks
+   **Find services** and confirms (`Manager.Run`, which may connect). Never
+   put user input into either command, never run "Find services" in the
+   background, and never add other remote commands.
 8. **IDs are generated server-side** and all input is validated in
    `internal/model` before use.
 9. **No network access except SSH to the user's servers** — with one

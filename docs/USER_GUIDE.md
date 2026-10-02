@@ -94,7 +94,8 @@ Each time TunnelTab starts, enter your master password to unlock it.
     reconnects, address, login method), its services, its **health** (if
     you switched it on), the traffic through its tunnels in the last hour,
     and your notes.
-  - **Services**: start, stop, open, edit and reorder its web apps.
+  - **Services**: start, stop, open, edit and reorder its web apps, or
+    let TunnelTab [find them](#find-services).
   - **Terminals**: terminals on this server (see [Opening a terminal](#opening-a-terminal)).
   - **Activity**: what happened with this server since TunnelTab started.
   - **Notes**: free text about the server (backup times, where the
@@ -246,7 +247,7 @@ same connection when one is open).
 
 A **service** is a web app (or any TCP port) running on your server, such as
 n8n, Portainer or Grafana. On the server's page, open the **Services** tab and
-click **+ Service**:
+click **+ Service** (or let TunnelTab [find them](#find-services)):
 
 | Field | Meaning |
 |---|---|
@@ -271,6 +272,33 @@ network can't use them.
 
 *"The local port is already in use"* means another program uses that port:
 choose another local port, or leave it blank.
+
+### Find services
+
+Don't know an app's port? On the **Services** tab click **Find services…**.
+TunnelTab asks first, then connects to the server and runs one read-only
+command that lists its open ports and Docker containers (`ss` or
+`netstat`, and `docker ps`). Nothing on the server is changed.
+
+You get a list of what it found:
+
+- Web apps TunnelTab recognises (n8n, Grafana, Portainer, Home Assistant,
+  Uptime Kuma, Jellyfin, Proxmox and many more) get their usual name and
+  protocol and are **ticked already**. Other ports are named after their
+  Docker container or program, if the server says.
+- Ports that already have a service say **Already added**.
+- Databases, SSH and other ports that aren't web pages are under **Not web
+  pages**, unticked.
+- *Open on all addresses* means the port can be reached from outside the
+  server too, unless a firewall blocks it. Through TunnelTab you don't
+  need that: binding the app to `127.0.0.1` is safer.
+
+Change names or the protocol if you like, tick what you want and click
+**Add selected**. Only ticked services are added; the list itself isn't
+saved. If Docker is installed but your user may not use it, containers
+aren't named (adding the user to the `docker` group shows them). The search
+is listed in the server's **Activity**.
+
 
 ## Settings
 
@@ -447,7 +475,8 @@ program files.
 **The easy way (0.2.0 and later):** Settings → **Check for updates** →
 **Update now**. TunnelTab downloads the new version, checks that it's
 signed by TunnelTab (anything else is refused), replaces its program files
-and restarts in a new tab. Unlock with your master password as usual.
+and restarts in a new tab. A progress bar shows each step and how much is
+downloaded; afterwards the old tab says whether the new version is running. Unlock with your master password as usual.
 Running tunnels and open terminals close during the restart. If the new
 version can't start, the previous one comes back by itself.
 
