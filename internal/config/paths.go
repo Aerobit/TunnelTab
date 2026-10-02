@@ -19,6 +19,7 @@ type Paths struct {
 	Settings    string // non-secret preferences
 	LogDir      string // rotated log files
 	Instance    string // running-instance info (port + secret), removed on exit
+	Lock        string // held while TunnelTab runs, so only one copy uses the folder
 }
 
 // PathsFor returns the standard file locations inside dataDir.
@@ -30,6 +31,7 @@ func PathsFor(dataDir string) Paths {
 		Settings:    filepath.Join(dataDir, "settings.json"),
 		LogDir:      filepath.Join(dataDir, "logs"),
 		Instance:    filepath.Join(dataDir, "instance.json"),
+		Lock:        filepath.Join(dataDir, "instance.lock"),
 	}
 }
 

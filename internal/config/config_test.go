@@ -19,6 +19,7 @@ func TestPathsFor(t *testing.T) {
 		p.Settings:    "settings.json",
 		p.LogDir:      "logs",
 		p.Instance:    "instance.json",
+		p.Lock:        "instance.lock",
 	}
 	for path, name := range want {
 		if filepath.Dir(path) != p.DataDir || filepath.Base(path) != name {

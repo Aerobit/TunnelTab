@@ -58,7 +58,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/discover` | "Find services": the fixed, read-only command TunnelTab runs on a server when the user clicks Find services (`Command`: `ss`/`netstat` + `docker ps`), its strict parser (`Parse`, fuzzed) and the table of well-known apps (`apps.go`) | Done |
 | `internal/webcheck` | Service checks: does a port answer like a web page? One fixed `HEAD` request, https first (certificate not verified) then http, over connections the caller dials through SSH (`Manager.Through`); path validated (fuzzed) | Done |
 | `internal/update` | Updates, only when the user clicks: "Check for updates" (GitHub releases/latest API, version comparison) and "Update now" (download, signature + checksum verification, unpack, install with `.old` backups, rollback, cleanup). Release signature format in `signature.go` | Done |
-| `internal/platform` | Open browser, error dialog, instance file | Done |
+| `internal/platform` | Open browser, error dialog, instance file and data folder lock | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
 | `web/static` | The dashboard (vanilla JS modules + CSS) | Done |
 | `internal/devtools/fakessh` | Local SSH server + demo web app for trying the dashboard (not shipped) | Done |
@@ -76,6 +76,7 @@ data/
 ├── vault.enc.bak    previous version, kept by every save
 ├── settings.json    non-secret preferences
 ├── instance.json    port + secret of the running copy (deleted on exit)
+├── instance.lock    locked while a copy runs (one copy per data folder)
 └── logs/            rotated logs; never contain secrets
 ```
 
@@ -519,18 +520,28 @@ endpoints, and focus returns to the moved item's grip after re-rendering.
 ## Startup and shutdown (`cmd/tunneltab`)
 
 1. Resolve and create the data folder; open the log; load settings.
-2. If `data/instance.json` exists, ask that copy for a new launch link
-   (`/api/instance/launch` with its secret), open it and exit.
+2. Lock `data/instance.lock` (`platform.LockDataDir`: `flock` on Linux,
+   `LockFileEx` on Windows), so only one process uses the data folder and
+   two copies can't overwrite each other's vault saves. The OS releases the
+   lock when the process exits, even after a crash. If another process
+   holds it, ask that copy for a new launch link via `data/instance.json`
+   (`/api/instance/launch` with its secret), open it and exit. That copy
+   may still be starting or quitting, so retry both for up to 20 s, then
+   show an error. A file system that can't lock (some network shares) only
+   gets a log warning and the instance-file check.
 3. Listen on 127.0.0.1:`port` (settings, `--port`); if busy, any free port.
 4. Write `instance.json` (port + random secret), create the server, open the
    browser at the launch link (`--no-browser` prints it instead).
 5. Run until Quit, Ctrl+C or SIGTERM; then stop all tunnels, end event
-   streams, shut the HTTP server down and delete `instance.json`.
+   streams, shut the HTTP server down and delete `instance.json`. The lock
+   is released when the process exits.
 
 6. **After "Update now"** (`restart.go`): the new files are already in place
-   (the old ones renamed to `*.old`). Shut down as in step 5, then start the
-   program again with the same arguments and wait up to 30 s for it to write
-   `instance.json` with its own PID *and* answer `/api/instance/started`
+   (the old ones renamed to `*.old`). Shut down as in step 5, delete
+   `instance.json` and release the data folder lock (the new version needs
+   it), then start the program again with the same arguments and wait up to
+   30 s for it to write `instance.json` with its own PID *and* answer
+   `/api/instance/started`
    (so it has opened the vault and serves the dashboard; the file alone is
    written before that). If it doesn't, kill it, wait for it to exit, put
    the `.old` files back (`update.Rollback`, retried for up to 10 s while

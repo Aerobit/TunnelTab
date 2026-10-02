@@ -87,15 +87,20 @@ func run() int {
 		log.Warn("using default settings", "error", err)
 	}
 
-	// Already running? Ask it for a fresh login link and open that instead.
-	if inst, ok, _ := platform.ReadInstance(paths.Instance); ok {
-		if url, err := server.RequestLaunchURL(inst.Port, inst.Secret); err == nil {
-			log.Info("already running; opening its dashboard", "pid", inst.PID)
-			show(url, *noBrowser, log)
-			return 0
-		}
-		log.Info("ignoring stale instance file")
+	// Only one copy may use the data folder: two would each save their own
+	// vault and the last save would win. If one is already running, open
+	// its dashboard instead.
+	dataLock, url, err := claimDataDir(paths, lockWait, log)
+	if err != nil {
+		platform.ShowError("TunnelTab", "Another TunnelTab is using this data folder but doesn't answer.\n\n"+
+			"If it is still starting or quitting, try again in a moment.")
+		return 1
 	}
+	if url != "" {
+		show(url, *noBrowser, log)
+		return 0
+	}
+	defer dataLock.Close()
 
 	port := settings.Port
 	if *portFlag != 0 {
@@ -187,10 +192,51 @@ func run() int {
 	watchdog.Stop()
 	log.Info("stopped")
 	if restart.Load() {
+		// The new version needs the data folder; this process only waits
+		// for it to start (and rolls back if it doesn't).
 		platform.RemoveInstance(paths.Instance)
+		dataLock.Close()
 		return restartAfterUpdate(exe, paths.Instance, log)
 	}
 	return 0
+}
+
+// How long a launch keeps trying while another copy holds the data folder
+// but doesn't answer yet: it may still be starting, or quitting (which can
+// take up to the 15 s shutdown watchdog).
+const (
+	lockWait = 20 * time.Second
+	lockPoll = 250 * time.Millisecond
+)
+
+// claimDataDir takes the data folder's lock for this process. If another
+// copy holds it, it returns a login link from that copy instead (found via
+// instance.json), retrying both for up to wait, and platform.ErrLocked if
+// neither works out. If the file system can't lock files, it warns and
+// returns neither lock nor link, and only instance.json guards the folder.
+func claimDataDir(paths config.Paths, wait time.Duration, log *slog.Logger) (*platform.DataDirLock, string, error) {
+	deadline := time.Now().Add(wait)
+	for {
+		lock, err := platform.LockDataDir(paths.Lock)
+		if err == nil {
+			return lock, "", nil
+		}
+		if inst, ok, _ := platform.ReadInstance(paths.Instance); ok {
+			if url, err := server.RequestLaunchURL(inst.Port, inst.Secret); err == nil {
+				log.Info("already running; opening its dashboard", "pid", inst.PID)
+				return nil, url, nil
+			}
+		}
+		if !errors.Is(err, platform.ErrLocked) {
+			log.Warn("can't lock the data folder", "error", err)
+			return nil, "", nil
+		}
+		if time.Now().After(deadline) {
+			log.Warn("data folder is locked by a copy that doesn't answer")
+			return nil, "", err
+		}
+		time.Sleep(lockPoll)
+	}
 }
 
 // show opens the dashboard link in the browser, or prints it. The link

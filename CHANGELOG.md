@@ -7,6 +7,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Only one TunnelTab can use a data folder.** It now locks the folder
+  while it runs. Before, two copies could open the same vault (for example
+  when `instance.json` was missing, as it briefly is during Update now) and
+  the last one to save overwrote the other's changes. A second start now
+  opens the running copy's dashboard, waiting up to 20 seconds if that copy
+  is still starting or quitting.
 - **Update now rolls back more reliably.** The previous version now waits
   until the new one has opened your vault and shows its dashboard (before,
   it only waited for the new version to write `instance.json`, which
@@ -268,7 +274,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.2
 [0.7.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.0
 [0.6.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.6.1

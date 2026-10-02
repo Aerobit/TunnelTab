@@ -383,6 +383,8 @@ Closing the browser tab does **not** stop it: your tunnels keep running.
 
 To get back to the dashboard after closing the tab, just start TunnelTab
 again: it notices it's already running and opens the dashboard in a new tab.
+Only one copy can use a data folder at a time; if the running copy is still
+starting or quitting, the new one waits up to 20 seconds for it.
 
 ## Troubleshooting
 
@@ -473,7 +475,8 @@ for exactly what it protects against — and what it doesn't.
 **Can I use it on several PCs?**  
 Yes. Copy the folder, or keep it on a USB stick or in a synced folder. Don't
 run two copies of the *same* folder at the same time from different PCs
-(e.g. via cloud sync): the last one to save wins.
+(e.g. via cloud sync): the last one to save wins. (On one PC, TunnelTab
+locks the folder, so a second copy just opens the running one.)
 
 **Does TunnelTab connect to anything besides my servers?**  
 Only when you click **Check for updates** or **Update now** in Settings: it
