@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-02
+
 ### Changed
 - **Settings: one Servers tab.** The Servers and Server health tabs are
   combined: each server has one row with its Health tick box and its
@@ -208,7 +210,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.5.0
 [0.4.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.3
 [0.4.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.4.2
