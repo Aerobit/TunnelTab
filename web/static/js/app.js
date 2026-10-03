@@ -34,6 +34,10 @@ const state = {
 
 let stopEvents = null;
 let currentScreen = ""; // which screen is showing, so it isn't redrawn needlessly
+// Counts the screens shown instead of the dashboard (unlock, setup, stopped…).
+// A loadData that was waiting when one appeared must not bring the
+// dashboard back, e.g. over the unlock screen after a lock.
+let screenCount = 0;
 
 // --- Startup ----------------------------------------------------------------
 
@@ -85,6 +89,7 @@ async function route() {
 // --- Simple screens ---------------------------------------------------------
 
 function screen(title, ...content) {
+  screenCount++;
   currentScreen = "other";
   replace(root, h("section", { class: "screen" },
     h("div", { class: "brand big" }, logo(), h("span", {}, "TunnelTab")),
@@ -268,8 +273,11 @@ function showUnlock() {
 // --- Data and events --------------------------------------------------------
 
 async function loadData() {
+  const shown = screenCount;
+  const replaced = () => shown !== screenCount || state.vault !== "unlocked";
   try {
     const res = await api("GET", "/data");
+    if (replaced()) return; // locked (or stopped) while waiting
     state.data = res.data;
     state.forwards = new Map(res.forwards.map((f) => [f.serviceId, f]));
     state.servers = new Map(res.servers.map((s) => [s.id, s]));
@@ -278,6 +286,7 @@ async function loadData() {
     state.health = new Map(Object.entries(res.health || {}));
     state.checks = new Map(Object.entries(res.checks || {}));
     await loadTraffic();
+    if (replaced()) return;
     syncViews(state.terminals.values());
     renderDashboard();
     allViews().forEach((v) => v.resume()); // after an unlock

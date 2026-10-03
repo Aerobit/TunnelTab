@@ -575,6 +575,136 @@ func TestStopWithIdleConnectionToStubbornService(t *testing.T) {
 	}
 }
 
+// A server that keeps the connection alive but never answers the request
+// to reach the service must not keep a forward from stopping.
+func TestStopWhileServiceNeverAnswers(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	srv.StallForwards(true)
+	m := newManager(t, e, nil)
+	svc := service(s.ID, "127.0.0.1", 1)
+	st, err := m.StartForward(svc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browser, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(st.LocalPort)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	waitFor(t, "the request to reach the service", func() bool { return srv.Stalled() > 0 })
+
+	stopped := make(chan struct{})
+	go func() {
+		m.StopForward(svc.ID)
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("StopForward hangs while the server doesn't answer")
+	}
+	waitFor(t, "the connection to close", func() bool { return srv.ActiveConnections() == 0 })
+}
+
+// Stopping a service (or its server, or everything) while it is still
+// starting cancels the start: no tunnel is left running afterwards.
+func TestStopCancelsStartingForward(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		stop func(m *Manager, svc model.Service)
+	}{
+		{"StopForward", func(m *Manager, svc model.Service) { m.StopForward(svc.ID) }},
+		{"StopServer", func(m *Manager, svc model.Service) { m.StopServer(svc.ServerID) }},
+		{"StopAll", func(m *Manager, svc model.Service) { m.StopAll() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv()
+			srv, s := passwordServer(t, e)
+			resume := srv.PauseHandshakes()
+			t.Cleanup(resume)
+			m := newManager(t, e, nil)
+			svc := service(s.ID, "127.0.0.1", 1)
+			starting := func() bool {
+				m.mu.Lock()
+				defer m.mu.Unlock()
+				return m.starting[svc.ID] != nil
+			}
+			errc := make(chan error, 1)
+			go func() {
+				_, err := m.StartForward(svc)
+				errc <- err
+			}()
+			waitFor(t, "the start to begin", starting)
+			tc.stop(m, svc)
+			if starting() {
+				t.Fatal("the start is still reserved after stopping")
+			}
+			resume()
+			select {
+			case err := <-errc:
+				if !errors.Is(err, ErrStartCancelled) {
+					t.Fatalf("got %v, want ErrStartCancelled", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("StartForward never returned")
+			}
+			if _, ok := m.Forward(svc.ID); ok {
+				t.Fatal("a stopped service's tunnel is running")
+			}
+			waitFor(t, "the connection to close", func() bool { return srv.ActiveConnections() == 0 })
+		})
+	}
+}
+
+// A start that was cancelled must not replace a newer start of the same
+// service when it finishes.
+func TestCancelledStartLeavesNewerStart(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	host, port := backend(t, "hello")
+	resume := srv.PauseHandshakes()
+	t.Cleanup(resume)
+	m := newManager(t, e, nil)
+	svc := service(s.ID, host, port)
+	reserved := func() *startingForward {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.starting[svc.ID]
+	}
+	type result struct {
+		st  ForwardStatus
+		err error
+	}
+	start := func() chan result {
+		ch := make(chan result, 1)
+		go func() {
+			st, err := m.StartForward(svc)
+			ch <- result{st, err}
+		}()
+		return ch
+	}
+	first := start()
+	waitFor(t, "the first start", func() bool { return reserved() != nil })
+	old := reserved()
+	m.StopForward(svc.ID)
+	second := start()
+	waitFor(t, "the second start", func() bool { p := reserved(); return p != nil && p != old })
+	resume()
+
+	if r := <-first; !errors.Is(r.err, ErrStartCancelled) {
+		t.Fatalf("first start: got %v, want ErrStartCancelled", r.err)
+	}
+	r := <-second
+	if r.err != nil {
+		t.Fatalf("second start: %v", r.err)
+	}
+	if st, ok := m.Forward(svc.ID); !ok || st.LocalPort != r.st.LocalPort {
+		t.Fatalf("running forward %+v (%v), want the second start's port %d", st, ok, r.st.LocalPort)
+	}
+	mustGet(t, r.st.LocalPort, "hello")
+}
+
 func TestPortInUse(t *testing.T) {
 	e := newEnv()
 	srv, s := passwordServer(t, e)

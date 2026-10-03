@@ -16,6 +16,22 @@ and versions follow [Semantic Versioning](https://semver.org/).
   service that listens only on another loopback address such as 127.0.0.2
   (its tunnel would have gone to the wrong place). The address is shown
   whenever it isn't 127.0.0.1.
+- Locking can no longer leave a terminal showing or accepting typing: a page
+  that was attaching just as TunnelTab locked is hidden too, and a hidden
+  page's last keystrokes no longer reach the shell.
+- A dashboard that was still loading when TunnelTab locked no longer replaces
+  the unlock screen with the dashboard.
+- Stopping a tunnel (or deleting its service, or locking with "close tunnels
+  on lock") no longer hangs when the server never answers a request to reach
+  the service.
+- Stopping, editing or deleting a service while its tunnel is still starting
+  now cancels the start; before, the tunnel came up anyway once connected.
+- Unlocking in a second tab while already unlocked no longer brings back an
+  older copy of the vault (an edit made meanwhile could be lost on the next
+  save), and it still checks the password.
+- If an update can't start, the rollback now also restores a TunnelTab
+  program that was renamed (e.g. to `myssh.exe`), and the clean-up removes
+  its `.old` copy.
 
 ## [0.8.0] - 2026-10-03
 

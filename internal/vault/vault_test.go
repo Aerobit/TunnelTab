@@ -467,3 +467,34 @@ func TestDefaultParamsAreValid(t *testing.T) {
 		t.Fatal("parameters below the minimum were accepted")
 	}
 }
+
+// Unlocking again (a second tab, say) must not bring back the data the file
+// held when that unlock read it: it may be older than what is in memory.
+func TestUnlockWhenUnlockedKeepsData(t *testing.T) {
+	v, p := create(t)
+	// Another Vault on the same file writes a version this one never saw;
+	// it stands in for the file read by an unlock that started earlier.
+	other, err := Open(p.vault, p.backup, fastOpts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Unlock([]byte(pw)); err != nil {
+		t.Fatal(err)
+	}
+	addSample(t, v, "hunter3")
+	addSample(t, v, "hunter4")
+	addSample(t, other, "hunter2") // the file now has 1 project, memory 2
+
+	if err := v.Unlock([]byte(pw)); err != nil {
+		t.Fatal(err)
+	}
+	if pr, _, _ := counts(t, v); pr != 2 {
+		t.Fatalf("got %d projects after unlocking again, want the 2 in memory", pr)
+	}
+	if err := v.Unlock([]byte("wrong password!")); !errors.Is(err, ErrWrongPassword) {
+		t.Fatalf("wrong password on an unlocked vault: got %v", err)
+	}
+	if !v.Unlocked() {
+		t.Fatal("a wrong password locked the vault")
+	}
+}

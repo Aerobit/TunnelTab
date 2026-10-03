@@ -602,9 +602,11 @@ signature, verifies the signature against `ReleasePublicKey`, requires the
 zip for exactly that version, downloads it into `.update/` next to the
 program, compares its SHA-256, and extracts only the known package files
 (`PackageFiles`) from the zip's `tunneltab/` folder. The running program
-receives this OS's binary even if it was renamed. `Install` renames each
-file it replaces to `<name>.old` (possible even for a running `.exe`) and
-moves the new one in; any failure rolls back.
+receives this OS's binary even if it was renamed. `Install` first records
+the names it will replace in `.update-replaced` next to the program (so
+`Rollback` and `Cleanup` find a renamed program's `.old` too), then renames
+each file it replaces to `<name>.old` (possible even for a running `.exe`)
+and moves the new one in; any failure rolls back.
 
 **Progress:** `Download` reports each step to a callback (`update.Progress`:
 verifying → downloading with `done`/`total` bytes, at most ~100 reports →

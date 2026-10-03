@@ -320,3 +320,54 @@ func TestInstallRejectsBadNames(t *testing.T) {
 		t.Error("rollback of nothing failed")
 	}
 }
+
+// The running program may have any name; Install gives it the new program,
+// so Rollback and Cleanup must find its <name>.old too.
+func TestRollbackRenamedProgram(t *testing.T) {
+	app := t.TempDir()
+	write := func(path, content string) {
+		if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(name string) string { b, _ := os.ReadFile(filepath.Join(app, name)); return string(b) }
+	stage := func() Staged {
+		dir := filepath.Join(app, ".update")
+		os.MkdirAll(dir, 0o755)
+		write(filepath.Join(dir, "exe"), "new program")
+		write(filepath.Join(dir, "readme"), "new readme")
+		return Staged{Dir: dir, Files: map[string]string{"myssh.exe": filepath.Join(dir, "exe"), "README.txt": filepath.Join(dir, "readme")}}
+	}
+	write(filepath.Join(app, "myssh.exe"), "old program")
+	write(filepath.Join(app, "README.txt"), "old readme")
+	write(filepath.Join(app, "notes.txt.old"), "not ours") // not replaced by the update
+
+	if err := Install(stage(), app); err != nil {
+		t.Fatal(err)
+	}
+	if read("myssh.exe") != "new program" || read("myssh.exe.old") != "old program" || !Pending(app) {
+		t.Fatal("files not replaced as expected")
+	}
+	if err := Rollback(app); err != nil {
+		t.Fatal(err)
+	}
+	if read("myssh.exe") != "old program" || read("README.txt") != "old readme" || Pending(app) {
+		t.Fatal("rollback didn't restore the renamed program")
+	}
+	if read("notes.txt.old") != "not ours" || exists(filepath.Join(app, replacedList)) {
+		t.Fatal("rollback touched another file or left its list behind")
+	}
+
+	if err := Install(stage(), app); err != nil {
+		t.Fatal(err)
+	}
+	if err := Cleanup(app, filepath.Join(app, ".update")); err != nil {
+		t.Fatal(err)
+	}
+	if exists(filepath.Join(app, "myssh.exe.old")) || exists(filepath.Join(app, replacedList)) || Pending(app) {
+		t.Fatal("cleanup left the renamed program's old file behind")
+	}
+	if read("myssh.exe") != "new program" || read("notes.txt.old") != "not ours" {
+		t.Fatal("cleanup removed the wrong files")
+	}
+}

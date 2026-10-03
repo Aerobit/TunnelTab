@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -115,6 +116,10 @@ func Open(path, backupPath string, opts Options) (*Vault, error) {
 
 // Unlock decrypts the vault with password. It re-reads the file, so it also
 // picks up a vault restored from backup while the app was locked.
+//
+// Unlocking an unlocked vault only checks the password: the data in memory
+// is newer than (or the same as) the file read here, since it was read
+// before the key derivation, which takes a while.
 func (v *Vault) Unlock(password []byte) error {
 	f, err := readFile(v.path)
 	if err != nil {
@@ -134,11 +139,20 @@ func (v *Vault) Unlock(password []byte) error {
 	}
 
 	v.mu.Lock()
+	defer v.mu.Unlock()
 	if v.key != nil {
-		wipe(v.key)
+		// Already unlocked (another tab, say). Keep the current data; the
+		// password must still be the current one (it may have been changed
+		// since the file was read).
+		same := reflect.DeepEqual(f.header, v.hdr) && subtle.ConstantTimeCompare(key, v.key) == 1
+		wipe(key)
+		if !same {
+			return ErrWrongPassword
+		}
+		v.lastUsed = v.now()
+		return nil
 	}
 	v.hdr, v.key, v.data, v.lastUsed = f.header, key, data, v.now()
-	v.mu.Unlock()
 	return nil
 }
 

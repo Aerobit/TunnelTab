@@ -60,6 +60,11 @@ type Server struct {
 	closed   bool
 	wg       sync.WaitGroup
 	refusing atomic.Bool
+	stop     chan struct{} // closed by Close
+
+	gate    atomic.Pointer[chan struct{}] // see PauseHandshakes
+	stall   atomic.Bool                   // see StallForwards
+	stalled atomic.Int64
 }
 
 // NewHostKey returns a fresh ed25519 signer.
@@ -90,7 +95,7 @@ func Start(t testing.TB, opts Options) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{opts: opts, ln: ln, HostKey: opts.HostKey, conns: map[*ssh.ServerConn]bool{}}
+	s := &Server{opts: opts, ln: ln, HostKey: opts.HostKey, conns: map[*ssh.ServerConn]bool{}, stop: make(chan struct{})}
 	s.Addr = ln.Addr().String()
 	host, port, _ := net.SplitHostPort(s.Addr)
 	s.Host = host
@@ -125,6 +130,28 @@ func (s *Server) DropConnections() {
 // (simulating the server being unreachable) until called with false.
 func (s *Server) SetRefusing(refuse bool) { s.refusing.Store(refuse) }
 
+// PauseHandshakes holds new connections before the SSH handshake (a slow
+// server) until resume is called or the server closes.
+func (s *Server) PauseHandshakes() (resume func()) {
+	ch := make(chan struct{})
+	s.gate.Store(&ch)
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.gate.Store(nil)
+			close(ch)
+		})
+	}
+}
+
+// StallForwards makes the server leave forwarding requests (direct-tcpip
+// channel opens) unanswered while it keeps answering keepalives, until
+// called with false. Stalled reports how many requests it left hanging.
+func (s *Server) StallForwards(stall bool) { s.stall.Store(stall) }
+
+// Stalled returns how many forwarding requests StallForwards left hanging.
+func (s *Server) Stalled() int { return int(s.stalled.Load()) }
+
 // Close stops the server and closes all connections.
 func (s *Server) Close() {
 	s.mu.Lock()
@@ -133,6 +160,7 @@ func (s *Server) Close() {
 		return
 	}
 	s.closed = true
+	close(s.stop)
 	s.ln.Close()
 	for c := range s.conns {
 		c.Close()
@@ -206,6 +234,14 @@ func (s *Server) serve() {
 }
 
 func (s *Server) handle(nc net.Conn, cfg *ssh.ServerConfig) {
+	if gate := s.gate.Load(); gate != nil {
+		select {
+		case <-*gate:
+		case <-s.stop:
+			nc.Close()
+			return
+		}
+	}
 	conn, chans, reqs, err := ssh.NewServerConn(nc, cfg)
 	if err != nil {
 		nc.Close()
@@ -249,6 +285,11 @@ func (s *Server) handle(nc net.Conn, cfg *ssh.ServerConfig) {
 
 // handleDirectTCPIP connects a forwarded channel to its target address.
 func (s *Server) handleDirectTCPIP(nc ssh.NewChannel) {
+	if s.stall.Load() {
+		s.stalled.Add(1)
+		<-s.stop
+		return
+	}
 	extra := nc.ExtraData()
 	host, rest, ok := readString(extra)
 	if !ok || len(rest) < 4 {

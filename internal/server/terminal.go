@@ -208,8 +208,14 @@ func (s *Server) handleConnectTerminal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.SetReadLimit(terminalReadLimit)
-	if !t.attach(c) {
+	// attach checks the vault again: it may have locked since the check above.
+	switch t.attach(c, func() bool { return s.vaultState() == "unlocked" }) {
+	case attachEnded:
 		c.Close(websocket.StatusNormalClosure, "session ended")
+		return
+	case attachLocked:
+		writeTimeout(c, websocket.MessageText, msgLocked)
+		c.Close(websocket.StatusNormalClosure, "TunnelTab is locked")
 		return
 	}
 	s.log.Info("terminal attached", "server", t.serverID)
@@ -341,7 +347,7 @@ func (s *Server) readTerminalInput(ctx context.Context, t *termSession, c *webso
 			lastTouch = time.Now()
 		}
 		if typ == websocket.MessageBinary {
-			if !t.write(data) {
+			if !t.write(c, data) {
 				return
 			}
 			continue
@@ -352,7 +358,7 @@ func (s *Server) readTerminalInput(ctx context.Context, t *termSession, c *webso
 			Rows int    `json:"rows"`
 		}
 		if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" {
-			t.resize(msg.Cols, msg.Rows)
+			t.resize(c, msg.Cols, msg.Rows)
 		}
 	}
 }
@@ -369,12 +375,16 @@ func (t *termSession) size() (cols, rows int) {
 	return t.cols, t.rows
 }
 
-// write sends keystrokes to the shell. It reports false if the shell is
-// gone; while reconnecting, typing is dropped.
-func (t *termSession) write(p []byte) bool {
+// write sends keystrokes from page c to the shell. It reports false if the
+// shell is gone or c is no longer the attached page (detached, replaced, or
+// hidden because TunnelTab locked); while reconnecting, typing is dropped.
+func (t *termSession) write(c *websocket.Conn, p []byte) bool {
 	t.mu.Lock()
-	sh, reconnecting := t.shell, t.reconnecting
+	sh, reconnecting, current := t.shell, t.reconnecting, t.conn == c
 	t.mu.Unlock()
+	if !current {
+		return false
+	}
 	if reconnecting {
 		return true
 	}
@@ -382,9 +392,14 @@ func (t *termSession) write(p []byte) bool {
 	return err == nil
 }
 
-// resize records the page's terminal size and passes it to the shell.
-func (t *termSession) resize(cols, rows int) {
+// resize records page c's terminal size and passes it to the shell, if c
+// is still the attached page.
+func (t *termSession) resize(c *websocket.Conn, cols, rows int) {
 	t.mu.Lock()
+	if t.conn != c {
+		t.mu.Unlock()
+		return
+	}
 	if cols > 0 && rows > 0 && cols <= 1000 && rows <= 1000 {
 		t.cols, t.rows = cols, rows
 	}
@@ -409,6 +424,7 @@ func (t *termSession) close() {
 var (
 	msgReconnecting = []byte(`{"type":"reconnecting"}`)
 	msgReconnected  = []byte(`{"type":"reconnected"}`)
+	msgLocked       = []byte(`{"type":"locked"}`)
 )
 
 // setReconnecting marks the session as waiting for its connection, with a
@@ -455,13 +471,29 @@ func (t *termSession) output(p []byte) {
 	}
 }
 
+// Results of attach.
+const (
+	attached = iota
+	attachEnded
+	attachLocked
+)
+
 // attach connects a page, replacing any page already attached, and replays
-// the recent output. It reports false if the session has already ended.
-func (t *termSession) attach(c *websocket.Conn) bool {
+// the recent output. It refuses if the session has already ended, or if
+// unlocked reports false.
+//
+// unlocked is checked under t.mu, which hide also holds: the vault is
+// marked locked before the pages are hidden, so either attach sees the lock
+// or hide runs after it and detaches c again. A page can't stay attached
+// while TunnelTab is locked.
+func (t *termSession) attach(c *websocket.Conn, unlocked func() bool) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.ended {
-		return false
+		return attachEnded
+	}
+	if !unlocked() {
+		return attachLocked
 	}
 	if t.conn != nil {
 		closeAsync(t.conn, "opened in another tab")
@@ -473,7 +505,7 @@ func (t *termSession) attach(c *websocket.Conn) bool {
 		c.CloseNow()
 		t.conn = nil
 	}
-	return true
+	return attached
 }
 
 // detach disconnects c if it is still the attached page.
@@ -491,7 +523,7 @@ func (t *termSession) hide(now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.conn != nil {
-		writeTimeout(t.conn, websocket.MessageText, []byte(`{"type":"locked"}`))
+		writeTimeout(t.conn, websocket.MessageText, msgLocked)
 		closeAsync(t.conn, "TunnelTab is locked")
 		t.conn = nil
 	}

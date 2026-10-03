@@ -23,6 +23,9 @@ var (
 	ErrPaused = errors.New("waiting for the vault to be unlocked")
 	// ErrClosed is returned after the Manager has been closed.
 	ErrClosed = errors.New("SSH engine is shut down")
+	// ErrStartCancelled is returned by StartForward when the service was
+	// stopped (or its server stopped) while it was starting.
+	ErrStartCancelled = errors.New("the tunnel was stopped while it was starting")
 )
 
 // UnknownHostKeyError means the server's host key hasn't been confirmed yet.

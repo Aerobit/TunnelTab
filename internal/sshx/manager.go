@@ -105,7 +105,8 @@ type Manager struct {
 
 	mu       sync.Mutex
 	servers  map[string]*serverConn
-	forwards map[string]*forward // by service ID; nil value = starting
+	forwards map[string]*forward         // by service ID; running forwards only
+	starting map[string]*startingForward // by service ID; see StartForward
 	shells   map[*Shell]struct{}
 	holds    map[string]*serverConn // by server ID; see Hold
 	closed   bool
@@ -131,7 +132,7 @@ func NewManager(cfg Config) *Manager {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, shells: map[*Shell]struct{}{}, holds: map[string]*serverConn{}, traffic: newTrafficMeter()}
+	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, starting: map[string]*startingForward{}, shells: map[*Shell]struct{}{}, holds: map[string]*serverConn{}, traffic: newTrafficMeter()}
 }
 
 func (m *Manager) emit(e Event) {
@@ -173,6 +174,7 @@ func (m *Manager) Resume() {
 // Call it when a server is edited or deleted.
 func (m *Manager) StopServer(serverID string) {
 	m.Unhold(serverID)
+	m.cancelStarting(func(p *startingForward) bool { return p.serverID == serverID })
 	for _, f := range m.forwardsFor(serverID) {
 		m.StopForward(f.svc.ID)
 	}
@@ -194,6 +196,7 @@ func (m *Manager) StopServer(serverID string) {
 // the vault locks with "close tunnels on lock" enabled.
 func (m *Manager) StopAll() {
 	m.UnholdAll()
+	m.cancelStarting(func(*startingForward) bool { return true })
 	for _, f := range m.allForwards() {
 		m.StopForward(f.svc.ID)
 	}
@@ -216,11 +219,10 @@ func (m *Manager) TestConnection(serverID string) error {
 func (m *Manager) Close() {
 	m.mu.Lock()
 	m.closed = true
+	clear(m.starting)
 	ids := make([]string, 0, len(m.forwards))
-	for id, f := range m.forwards {
-		if f != nil {
-			ids = append(ids, id)
-		}
+	for id := range m.forwards {
+		ids = append(ids, id)
 	}
 	m.mu.Unlock()
 	for _, id := range ids {

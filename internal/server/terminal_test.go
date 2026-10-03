@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -257,6 +258,65 @@ func TestTerminalSurvivesLock(t *testing.T) {
 	readUntil(t, c2, "same shell after unlock\r\n")
 	if h.srv.mgr.ShellCount() != 1 {
 		t.Fatalf("%d shells, want the same single one", h.srv.mgr.ShellCount())
+	}
+}
+
+// A page must not end up attached to a terminal while TunnelTab is locked,
+// even if the lock lands just as the page attaches; and a page that was
+// hidden can no longer type.
+func TestTerminalAttachRacingLock(t *testing.T) {
+	h := ready(t)
+	serverID := trustedServer(t, h)
+	id, first := openTerminal(t, h, serverID)
+	first.CloseNow()
+	ts := h.srv.terminal(id)
+
+	// Attach through attach() itself, with a check of the vault that
+	// starts locking at that very moment (the lock then waits for attach).
+	locking := make(chan struct{})
+	pages := make(chan *websocket.Conn, 1)
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		got := ts.attach(c, func() bool {
+			go func() {
+				h.srv.Lock()
+				close(locking)
+			}()
+			return true
+		})
+		if got != attached {
+			t.Errorf("attach = %d, want attached", got)
+		}
+		pages <- c
+		c.CloseRead(context.Background())
+	}))
+	defer web.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	browser, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(web.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.CloseNow()
+	page := <-pages
+	<-locking
+
+	if msg := readText(t, browser); msg != `{"type":"attached"}` {
+		t.Fatalf("got %s, want attached", msg)
+	}
+	if msg := readText(t, browser); msg != `{"type":"locked"}` {
+		t.Fatalf("got %s, want locked: the page stayed attached after the lock", msg)
+	}
+	if ts.write(page, []byte("echo typed while locked\r")) {
+		t.Fatal("a hidden page could still type")
+	}
+
+	// Once locked, attaching is refused outright.
+	if got := ts.attach(page, func() bool { return h.srv.vaultState() == "unlocked" }); got != attachLocked {
+		t.Fatalf("attach while locked = %d, want attachLocked", got)
 	}
 }
 

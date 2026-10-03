@@ -10,15 +10,23 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/Aerobit/TunnelTab/internal/atomicfile"
 )
 
 // oldSuffix marks a replaced file, kept until the new version has started.
 const oldSuffix = ".old"
 
+// replacedList (in the app folder) lists the files an update replaced, one
+// name per line, so Rollback and Cleanup find them whatever they are called
+// (the program may have been renamed).
+const replacedList = ".update-replaced"
+
 // Install moves the staged files into appDir (the folder with the running
 // program). Each file it replaces is first renamed to <name>.old: a running
 // program can be renamed even on Windows, where it can't be overwritten.
-// If anything fails, the old files are put back.
+// If anything fails, the old files are put back. The names replaced are
+// recorded in appDir first, for Rollback and Cleanup.
 //
 // Afterwards, start the new program; once it runs, it calls Cleanup. If it
 // doesn't start, call Rollback.
@@ -32,6 +40,10 @@ func Install(st Staged, appDir string) error {
 		if strings.ContainsAny(name, `/\`) || name == "" || name == "." || name == ".." {
 			return fmt.Errorf("bad file name %q", name)
 		}
+	}
+	list := strings.Join(names, "\n") + "\n"
+	if err := atomicfile.WriteFile(filepath.Join(appDir, replacedList), []byte(list), 0o644); err != nil {
+		return fmt.Errorf("can't record the files to replace: %w", err)
 	}
 	for _, name := range names {
 		target := filepath.Join(appDir, name)
@@ -74,6 +86,9 @@ func Rollback(appDir string) error {
 			errs = append(errs, fmt.Errorf("can't restore %s: %w", filepath.Base(target), err))
 		}
 	}
+	if len(errs) == 0 {
+		removeList(appDir)
+	}
 	return errors.Join(errs...)
 }
 
@@ -90,26 +105,40 @@ func Cleanup(appDir, downloadDir string) error {
 	if err := os.RemoveAll(downloadDir); err != nil {
 		errs = append(errs, err)
 	}
+	if len(errs) == 0 {
+		removeList(appDir)
+	}
 	return errors.Join(errs...)
+}
+
+func removeList(appDir string) {
+	os.Remove(filepath.Join(appDir, replacedList))
 }
 
 // Pending reports whether an update left files behind in appDir.
 func Pending(appDir string) bool { return len(oldFiles(appDir)) > 0 }
 
-// oldFiles lists the <name>.old files of package files in appDir. The
-// running program may have been renamed, so any "tunneltab*" name counts.
+// oldFiles lists the <name>.old files in appDir of the files the update
+// replaced: those in the list Install wrote, and (for an update installed
+// by a version that wrote no list) package files and "tunneltab*" names.
 func oldFiles(appDir string) []string {
 	entries, err := os.ReadDir(appDir)
 	if err != nil {
 		return nil
 	}
+	replaced := map[string]bool{}
+	if list, err := os.ReadFile(filepath.Join(appDir, replacedList)); err == nil {
+		for _, name := range strings.Split(string(list), "\n") {
+			replaced[strings.TrimSpace(name)] = true
+		}
+	}
 	var out []string
 	for _, e := range entries {
 		name, ok := strings.CutSuffix(e.Name(), oldSuffix)
-		if !ok || !e.Type().IsRegular() {
+		if !ok || name == "" || !e.Type().IsRegular() {
 			continue
 		}
-		if strings.HasPrefix(name, "tunneltab") || slices.Contains(PackageFiles, name) {
+		if replaced[name] || strings.HasPrefix(name, "tunneltab") || slices.Contains(PackageFiles, name) {
 			out = append(out, filepath.Join(appDir, e.Name()))
 		}
 	}

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/Aerobit/TunnelTab/internal/model"
 )
 
@@ -47,13 +49,32 @@ type forward struct {
 	wg    sync.WaitGroup
 }
 
+// startingForward reserves a service ID while its forward starts (binding
+// the port, connecting). Stopping the service, its server or everything
+// takes the reservation away; the start then undoes what it set up rather
+// than publishing a forward nobody wants any more.
+type startingForward struct {
+	serverID string
+}
+
+// cancelStarting takes away the reservations of the starts that match.
+func (m *Manager) cancelStarting(match func(*startingForward) bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, p := range m.starting {
+		if match(p) {
+			delete(m.starting, id)
+		}
+	}
+}
+
 // StartForward starts forwarding 127.0.0.1:<local port> to the service's
 // remote host and port through its server's SSH connection, connecting to
 // the server first if needed. Starting a running forward returns its status.
 //
 // Errors include *UnknownHostKeyError (ask the user to confirm, store the
 // key, retry), *HostKeyChangedError, ErrAuthFailed, ErrKeyPassphrase and
-// ErrPortInUse.
+// ErrPortInUse; ErrStartCancelled if the service was stopped meanwhile.
 func (m *Manager) StartForward(svc model.Service) (ForwardStatus, error) {
 	m.mu.Lock()
 	if m.closed {
@@ -62,18 +83,20 @@ func (m *Manager) StartForward(svc model.Service) (ForwardStatus, error) {
 	}
 	if f, ok := m.forwards[svc.ID]; ok {
 		m.mu.Unlock()
-		if f == nil {
-			return ForwardStatus{}, errors.New("this service is already starting")
-		}
 		return f.status(), nil
 	}
-	m.forwards[svc.ID] = nil // reserve while starting
+	if _, ok := m.starting[svc.ID]; ok {
+		m.mu.Unlock()
+		return ForwardStatus{}, errors.New("this service is already starting")
+	}
+	p := &startingForward{serverID: svc.ServerID}
+	m.starting[svc.ID] = p
 	m.mu.Unlock()
 
 	unreserve := func() {
 		m.mu.Lock()
-		if m.forwards[svc.ID] == nil {
-			delete(m.forwards, svc.ID)
+		if m.starting[svc.ID] == p {
+			delete(m.starting, svc.ID)
 		}
 		m.mu.Unlock()
 	}
@@ -94,14 +117,20 @@ func (m *Manager) StartForward(svc model.Service) (ForwardStatus, error) {
 	f := &forward{m: m, svc: svc, sc: sc, ln: ln, port: ln.Addr().(*net.TCPAddr).Port, conns: map[net.Conn]struct{}{}, stop: make(chan struct{})}
 	m.mu.Lock()
 	closed := m.closed
-	if !closed {
+	current := !closed && m.starting[svc.ID] == p
+	if current {
+		delete(m.starting, svc.ID)
 		m.forwards[svc.ID] = f
 	}
 	m.mu.Unlock()
-	if closed {
+	if !current {
 		ln.Close()
 		m.release(sc)
-		return ForwardStatus{}, ErrClosed
+		if closed {
+			return ForwardStatus{}, ErrClosed
+		}
+		m.log.Info("forward start cancelled", "service", svc.ID)
+		return ForwardStatus{}, ErrStartCancelled
 	}
 	f.wg.Add(1)
 	go f.serve()
@@ -119,6 +148,7 @@ func (m *Manager) StopForward(serviceID string) {
 
 func (m *Manager) stopForward(serviceID string, final State, cause error) {
 	m.mu.Lock()
+	delete(m.starting, serviceID) // a start still under way is cancelled
 	f := m.forwards[serviceID]
 	if f == nil {
 		m.mu.Unlock()
@@ -159,9 +189,7 @@ func (m *Manager) allForwards() []*forward {
 	defer m.mu.Unlock()
 	out := make([]*forward, 0, len(m.forwards))
 	for _, f := range m.forwards {
-		if f != nil {
-			out = append(out, f)
-		}
+		out = append(out, f)
 	}
 	return out
 }
@@ -227,7 +255,7 @@ func (f *forward) handle(local net.Conn) {
 		return // reconnecting; the browser will retry
 	}
 	target := net.JoinHostPort(f.svc.RemoteHost, strconv.Itoa(f.svc.RemotePort))
-	remote, err := client.Dial("tcp", target)
+	remote, err := f.dial(client, target)
 	if err != nil {
 		f.m.log.Info("forward: remote connect failed", "service", f.svc.ID)
 		return
@@ -255,6 +283,33 @@ func (f *forward) handle(local net.Conn) {
 			remote.Close()
 			stop = nil
 		}
+	}
+}
+
+// dial opens the SSH channel to the service. It gives up when the forward
+// stops: a server can keep answering keepalives yet never answer the
+// channel request, and close waits for every handler. The abandoned
+// request ends when the connection closes (or is closed if it succeeds).
+func (f *forward) dial(client *ssh.Client, target string) (net.Conn, error) {
+	type result struct {
+		c   net.Conn
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		c, err := client.Dial("tcp", target)
+		ch <- result{c, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.c, r.err
+	case <-f.stop:
+		go func() {
+			if r := <-ch; r.c != nil {
+				r.c.Close()
+			}
+		}()
+		return nil, errors.New("the forward is stopping")
 	}
 }
 
