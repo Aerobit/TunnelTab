@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-10-03
+
 ### Fixed
 
 - Locking now also hides a popped-out terminal whose shell had ended, that
@@ -382,7 +384,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.3
 [0.8.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.2
 [0.8.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.1
 [0.8.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.0

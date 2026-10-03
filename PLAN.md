@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.2 released** (2026-10-03); v0.8.3 fixes in progress (§19). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.3 released** (2026-10-03). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -594,10 +594,10 @@ running in the tray.
 | T2 ✅ | **Quit on close**: `closeAction` setting in Settings → General, `POST /api/closing` | Server tests (quit after close, not with a page open, not when "tray"); browser test for the setting, a reload (no quit) and a real tab close (quits) |
 | T3 ✅ | **Docs**: USER_GUIDE, ARCHITECTURE, SECURITY, CLAUDE.md conventions (new dependency), README, CHANGELOG; PLAN §9/§10 updated | Docs match behaviour |
 
-## 19. v0.8.3 — Fourth review round (2026-10-03)
+## 19. v0.8.3 — Fourth review round (released 2026-10-03)
 
 An external review of v0.8.2 found two more issues; both were confirmed in
-the code. Both are fixed (not yet committed); `go test ./...` and the browser
+the code. Both are fixed (85ebcd7); `go test ./...` and the browser
 test pass, and both new tests fail on the old code.
 
 | # | Issue | Fix |
