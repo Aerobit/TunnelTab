@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-03
+
 ### Fixed
 
 - Saving no longer accepts a vault too large to open again (over 64 MiB):
@@ -371,7 +373,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.2
 [0.8.1]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.1
 [0.8.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.0
 [0.7.4]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.4
