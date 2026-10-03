@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.3 released** (2026-10-03); v0.8.4 fixes in progress (§20). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon), §19 and §20. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.4 released** (2026-10-03). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon), §19 and §20. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -609,13 +609,13 @@ Tests: server test with a service whose check is held open while the
 service is edited / deleted (no result stored or published), plus a browser
 test locking with an ended popped-out terminal.
 
-## 20. v0.8.4 — Fifth review round (2026-10-03)
+## 20. v0.8.4 — Fifth review round (released 2026-10-03)
 
 An external review of v0.8.3 found three issues; all were confirmed in the
 code. The fix plan was reviewed too, and its corrections (counters taken
 before auto-start's snapshot, tests that open the gap *before* a start is
 reserved, the auto-lock test's expectation, a guard for stale resync
-answers) are included. All fixed (not yet committed); `go test ./...` and
+answers) are included. All fixed (e9b7f8d); `go test ./...` and
 the browser test pass, and every new test fails on the old code.
 
 | # | Issue | Fix |
