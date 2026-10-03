@@ -1,9 +1,11 @@
 package webcheck
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +94,34 @@ func TestCheck(t *testing.T) {
 	}
 	if gotMethod != http.MethodHead || gotCookie != "" {
 		t.Fatalf("sent %s with cookie %q", gotMethod, gotCookie)
+	}
+}
+
+// A server that never answers the SSH channel-open request: ssh.Client.Dial
+// blocks. The check must still end within its timeout, try only once, and
+// close the connection if it opens later.
+func TestDialCountsTowardsTimeout(t *testing.T) {
+	release := make(chan struct{})
+	ours, theirs := net.Pipe()
+	defer theirs.Close()
+	dials := 0
+	dial := func() (net.Conn, error) {
+		dials++
+		<-release
+		return ours, nil
+	}
+	start := time.Now()
+	got := Check(dial, "/", 200*time.Millisecond)
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("took %v", took)
+	}
+	if got != (Result{State: NoAnswer}) || dials != 1 {
+		t.Fatalf("got %+v after %d dials", got, dials)
+	}
+	close(release)
+	theirs.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := theirs.Read(make([]byte, 1)); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("late connection not closed: %v", err)
 	}
 }
 

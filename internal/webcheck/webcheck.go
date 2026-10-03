@@ -45,7 +45,9 @@ type Dialer func() (net.Conn, error)
 const MaxHeader = 64 << 10
 
 // Check checks one port: https first (a plain-HTTP server refuses the TLS
-// handshake at once), then http. Each attempt may take up to timeout.
+// handshake at once), then http. Each attempt, opening the connection
+// included, may take up to timeout. If the first connection can't be opened
+// (refused, or not open within timeout), the port gets no second try.
 func Check(dial Dialer, path string, timeout time.Duration) Result {
 	path = cleanPath(path)
 	connected := false
@@ -74,14 +76,20 @@ type dialError struct{ err error }
 func (e *dialError) Error() string { return "connect: " + e.err.Error() }
 func (e *dialError) Unwrap() error { return e.err }
 
-// try makes one HEAD request and returns the status code.
+// errDialTimeout: the connection wasn't open in time (for SSH, the server
+// didn't answer the channel-open request).
+var errDialTimeout = errors.New("timed out")
+
+// try makes one HEAD request and returns the status code. The whole
+// attempt, opening the connection included, takes at most timeout.
 func try(dial Dialer, https bool, path string, timeout time.Duration) (int, error) {
-	conn, err := dial()
+	deadline := time.Now().Add(timeout)
+	conn, err := dialWithin(dial, timeout)
 	if err != nil {
 		return 0, &dialError{err}
 	}
 	// SSH channels don't support deadlines: a timer closes the connection.
-	timer := time.AfterFunc(timeout, func() { conn.Close() })
+	timer := time.AfterFunc(time.Until(deadline), func() { conn.Close() })
 	defer timer.Stop()
 	defer conn.Close()
 
@@ -107,6 +115,34 @@ func try(dial Dialer, https bool, path string, timeout time.Duration) (int, erro
 	}
 	resp.Body.Close()
 	return resp.StatusCode, nil
+}
+
+// dialWithin calls dial but gives up after timeout: ssh.Client.Dial has no
+// timeout of its own and waits as long as the server doesn't answer. A
+// connection that opens after giving up is closed.
+func dialWithin(dial Dialer, timeout time.Duration) (net.Conn, error) {
+	type dialed struct {
+		conn net.Conn
+		err  error
+	}
+	ch := make(chan dialed, 1)
+	go func() {
+		c, err := dial()
+		ch <- dialed{c, err}
+	}()
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	select {
+	case d := <-ch:
+		return d.conn, d.err
+	case <-t.C:
+		go func() {
+			if d := <-ch; d.conn != nil {
+				d.conn.Close()
+			}
+		}()
+		return nil, errDialTimeout
+	}
 }
 
 // cleanPath returns path if it is a plain absolute URL path, otherwise "/".

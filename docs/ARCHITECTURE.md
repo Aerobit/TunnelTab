@@ -391,7 +391,11 @@ the app behind a service answer? `webcheck.Check` opens a channel through
 the server's connection to the service's address and sends one `HEAD`
 request, over TLS first, then plain: *responding* (with protocol and
 status), *not_web* (connected, no HTTP answer) or *no_answer* (couldn't
-connect). Run after Start (once the tunnel is up), on **Check**
+connect, or the server didn't open the channel in time). Each attempt
+has 4 s in all, opening the channel included: `ssh.Client.Dial` has no
+timeout, so `webcheck` stops waiting for it (closing a channel that opens
+late) and closes the channel with a timer (SSH channels have no deadlines).
+Run after Start (once the tunnel is up), on **Check**
 (`POST /services/{id}/check`), by the dashboard on **Open** when the last
 result wasn't OK, and in Find services. Results are in memory, sent as
 `check` events and in `GET /api/data`, and dropped when the service is

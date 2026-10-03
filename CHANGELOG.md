@@ -6,6 +6,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Service checks (Check, Start, Open and Find services) no longer wait past
+  their 4-second limit when the server doesn't answer the request to open a
+  connection to the service; such a port now shows as not answering.
+
 ## [0.8.0] - 2026-10-03
 
 ### Added
