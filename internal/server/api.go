@@ -277,7 +277,7 @@ func (s *Server) handleQuit(w http.ResponseWriter, r *http.Request) {
 
 // closeGrace is how long TunnelTab waits, after a page says it is closing,
 // for a page to connect again (a reload does) before quitting.
-const closeGrace = 5 * time.Second
+const closeGrace = 2 * time.Second
 
 // handleClosing is sent by a dashboard or terminal page as it goes away
 // (closed, reloaded or navigated away from). With "Quit when I close the

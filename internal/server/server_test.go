@@ -553,6 +553,35 @@ func TestCloseAction(t *testing.T) {
 	}
 }
 
+// Quitting tells open pages ("stopping"), except when "Update now" restarts
+// TunnelTab: then pages should reconnect to the new version.
+func TestStoppingEvent(t *testing.T) {
+	for _, updating := range []bool{false, true} {
+		h := newHarness(t)
+		h.login()
+		h.srv.installing.Store(updating)
+		req, _ := http.NewRequest("GET", h.base+"/api/events", nil)
+		req.Header.Set("Authorization", "Bearer "+h.session)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for h.srv.events.count() != 1 {
+			if time.Now().After(deadline) {
+				t.Fatal("event stream not counted")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		h.srv.Close()
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if got := strings.Contains(string(body), `{"type":"stopping"}`); got == updating {
+			t.Fatalf("updating=%v: stopping sent=%v; stream: %q", updating, got, body)
+		}
+	}
+}
+
 // --- Tunnels and host keys --------------------------------------------------
 
 // sshSetup creates a project, a server backed by a test SSH server and a

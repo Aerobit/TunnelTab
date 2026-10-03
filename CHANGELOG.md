@@ -16,6 +16,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
   TunnelTab now quits a few seconds after the last TunnelTab tab closes (a
   reload doesn't count); choose "Keep TunnelTab running" to leave it running
   in the tray instead. (Before, closing the tab always left it running.)
+- When TunnelTab quits (from the tray, Ctrl+C or closing the last tab), open
+  TunnelTab tabs now show "TunnelTab has stopped" instead of reconnecting to
+  the next copy started.
 
 ## [0.7.4] - 2026-10-02
 

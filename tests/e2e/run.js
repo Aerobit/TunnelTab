@@ -758,7 +758,7 @@ function start(cmd, args, opts) {
   await page2.getByRole("button", { name: "Lock" }).waitFor();
   await page2.reload();
   await page2.getByRole("button", { name: "Lock" }).waitFor();
-  await page2.waitForTimeout(6000); // longer than the grace period: a reload doesn't quit
+  await page2.waitForTimeout(3000); // longer than the 2 s grace period: a reload doesn't quit
   assert.strictEqual(again.exitCode, null, "a reload quit TunnelTab");
   step("with \"Quit TunnelTab\" chosen, reloading the tab doesn't quit");
   const tabClosedAt = Date.now();
@@ -770,8 +770,21 @@ function start(cmd, args, opts) {
     });
   }
   assert.strictEqual(again.exitCode, 0, "exit code");
-  assert.ok(Date.now() - tabClosedAt >= 4000, "quit before the grace period");
+  assert.ok(Date.now() - tabClosedAt >= 1500, "quit before the grace period");
   step("with \"Quit TunnelTab\" chosen, closing the last tab quits TunnelTab");
+
+  // Quitting another way (Ctrl+C here; the tray's Quit works the same) tells
+  // open tabs, which say so instead of reconnecting to the next copy started.
+  const third = start(path.join(tmp, "tunneltab" + exe), ["--no-browser", "--no-tray", "--port", "47900", "--data", dataDir]);
+  const [url3] = await third.waitFor(/http:\/\/127\.0\.0\.1:47900\/\?launch=\S+/);
+  const page3 = await context2.newPage();
+  page3.on("pageerror", (e) => problems.push("third run pageerror: " + e.message));
+  await page3.goto(url3);
+  await page3.getByRole("button", { name: "Unlock" }).waitFor();
+  third.kill("SIGINT");
+  await page3.getByRole("heading", { name: "TunnelTab has stopped" }).waitFor();
+  if (third.exitCode === null) await new Promise((r) => third.on("exit", r));
+  step("quitting another way tells open tabs, which stop reconnecting");
 
   assert.deepStrictEqual(problems, [], "browser errors:\n" + problems.join("\n"));
   step("no JavaScript errors or CSP violations");

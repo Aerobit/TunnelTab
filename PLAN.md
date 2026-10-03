@@ -582,7 +582,7 @@ running in the tray.
 | Portable (invariant 10) | The library's `SetIcon` on Windows writes the icon to the system temp folder. TunnelTab instead writes `tray-icon.ico` into the data folder and passes that path. On Linux the icon is sent over D-Bus from memory. |
 | No external programs (invariant 7) | godbus can launch `dbus-launch` when no session bus is known. Before starting the tray, TunnelTab connects with auto-launch off and checks that a tray (`org.kde.StatusNotifierWatcher`) is running; if not, there is no tray. |
 | No network (invariant 9) | The tray makes no network calls; its menu calls the same code as the dashboard's buttons. |
-| Detecting the close | `pagehide` on the dashboard sends `POST /api/closing` (fetch `keepalive`, with the session token like every request). If the setting is "quit", TunnelTab waits 5 s and quits if no TunnelTab page is connected by then (a reload reconnects in time). Without that request (a browser discarding a sleeping tab, a crash) it keeps running, so tunnels are never dropped by accident. |
+| Detecting the close | `pagehide` on the dashboard sends `POST /api/closing` (fetch `keepalive`, with the session token like every request). If the setting is "quit", TunnelTab waits 2 s and quits if no TunnelTab page is connected by then (a reload reconnects in time). Without that request (a browser discarding a sleeping tab, a crash) it keeps running, so tunnels are never dropped by accident. |
 | Setting | `settings.json`: `closeAction` = `"quit"` (default) or `"tray"`; `""` (and old settings files) means the default. |
 | Turning it off | `--no-tray` command-line flag (also used by the browser tests). |
 

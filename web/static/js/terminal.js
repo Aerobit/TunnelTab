@@ -55,6 +55,11 @@ function remember(id) {
 function watchEvents() {
   stopEvents?.();
   stopEvents = streamEvents((ev) => {
+    if (ev.type === "stopping") {
+      stopEvents?.();
+      view.stopped();
+      return;
+    }
     const unlocked = (ev.type === "vault" && ev.state === "unlocked") || ev.type === "resync";
     if (unlocked) view.resume();
   }, () => {}, watchedId ? `?terminal=${encodeURIComponent(watchedId)}` : "");

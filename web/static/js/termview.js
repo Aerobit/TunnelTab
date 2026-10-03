@@ -303,6 +303,17 @@ export class TermView {
     };
   }
 
+  /** TunnelTab has quit: stop reconnecting and say so (the view stays). */
+  stopped() {
+    this.disposed = true; // no more retries or reconnects
+    clearTimeout(this.retryTimer);
+    const ws = this.ws;
+    this.ws = null;
+    ws?.close();
+    this.setState("ended", "TunnelTab has stopped. You can close this tab.");
+    this.msgButton.hidden = true;
+  }
+
   /** Ends the session on the server and removes the view. */
   async close() {
     const id = this.terminalId;

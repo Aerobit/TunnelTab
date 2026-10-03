@@ -307,6 +307,11 @@ function onEvent(ev) {
       // "Find services" progress, for the dialog that started it.
       window.dispatchEvent(new CustomEvent("tunneltab-discover", { detail: ev }));
       break;
+    case "stopping":
+      // TunnelTab is quitting (tray, closing the last tab, Ctrl+C): say so
+      // rather than reconnecting to whatever starts next.
+      showStopped();
+      break;
     case "resync":
     case "data":
       if (ev.type === "resync") loadState().then(route).catch(() => {});

@@ -184,6 +184,12 @@ func (s *Server) SetAddr(addr net.Addr) {
 // Close stops all tunnels, terminals and connections.
 func (s *Server) Close() {
 	s.closeOnce.Do(func() {
+		// Tell open pages TunnelTab is quitting, so they say so instead of
+		// reconnecting (and later attaching to the next copy started). Not
+		// after "Update now": the new version takes over and pages reconnect.
+		if !s.installing.Load() {
+			s.events.publish(stoppingEvent{Type: "stopping"})
+		}
 		close(s.stopReaper)
 		s.mgr.Close() // ends every shell; their sessions report the exit and go away
 		s.events.close()

@@ -261,7 +261,7 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 | `GET /events` | | event stream (see below) |
 | `GET /settings` · `PUT /settings` | `Settings` | settings (+ `restartRequired` if the port changed) |
 | `POST /quit` | | stops tunnels and exits |
-| `POST /closing` | | sent by a dashboard or terminal page on `pagehide` (fetch `keepalive`). With `closeAction` `"quit"`, TunnelTab quits 5 s later if no event stream (page) is connected; a reload reconnects in time. A page that disappears without sending it never causes a quit |
+| `POST /closing` | | sent by a dashboard or terminal page on `pagehide` (fetch `keepalive`). With `closeAction` `"quit"`, TunnelTab quits 2 s later if no event stream (page) is connected; a reload reconnects in time. A page that disappears without sending it never causes a quit |
 | `POST /touch` | | 204; the user is working in the dashboard (it sends this on clicks, keys and scrolling, at most every 30 s), so auto-lock waits — moving between pages makes no other request |
 | `GET /traffic` | | `{services: [{serviceId, todayIn, todayOut, lastHour: [60 × bytes per minute, oldest first]}]}` — counted on this PC (`sshx` traffic meter), in memory only |
 | `POST /vault/create` | `{password}` | 400 `weak_password`, 409 `vault_exists` |
@@ -331,6 +331,7 @@ sent). Each `data:` line is JSON:
 | `vault` | `state` (locked/unlocked) | lock state changed |
 | `data` | | stored data changed: re-fetch `/api/data` |
 | `resync` | | events were dropped: re-fetch everything |
+| `stopping` | | TunnelTab is quitting (Quit, tray, closing the last tab, Ctrl+C; not "Update now"): pages show "TunnelTab has stopped" and stop reconnecting, so they don't attach to the next copy started |
 
 A `: ping` comment is sent every 20 s. Slow clients get `resync` instead of
 blocking the app.

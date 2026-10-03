@@ -24,6 +24,9 @@ type (
 	dataEvent struct {
 		Type string `json:"type"` // "data": something changed; re-fetch /api/data
 	}
+	stoppingEvent struct {
+		Type string `json:"type"` // "stopping": TunnelTab is quitting; stop reconnecting
+	}
 )
 
 const heartbeatInterval = 20 * time.Second
