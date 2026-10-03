@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-03
+
 ### Added
 
 - **Tray icon.** TunnelTab now shows an icon in the system tray while it runs
@@ -314,7 +316,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.7.4...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.0
 [0.7.4]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.4
 [0.7.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.3
 [0.7.2]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.7.2

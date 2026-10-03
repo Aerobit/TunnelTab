@@ -40,8 +40,13 @@ build it yourself with `.\scripts\build.ps1 x.y.z`.
       connects.
 
 **Everyday behaviour**
-- [ ] Close the tab, start the exe again: a new dashboard tab opens (no
-      second copy starts).
+- [ ] The TunnelTab icon is in the tray (maybe under **^**). Click: a
+      dashboard tab opens. Right-click → **Lock now** locks; **Quit
+      TunnelTab** quits and the open tab says *TunnelTab has stopped*.
+- [ ] Close the tab (default *Quit TunnelTab*): the tray icon goes away
+      after ~2 s. With *Keep TunnelTab running* (Settings → General) it
+      stays; start the exe again: a new dashboard tab opens (no second copy
+      starts).
 - [ ] Start a long command in a terminal (e.g. `ping -c 60 1.1.1.1`), then
       Lock: the terminal tab goes blank and says *Locked*; tunnels keep
       working. Unlock: the terminal reconnects by itself and the command's

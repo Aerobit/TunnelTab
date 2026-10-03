@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.7.4 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers). In progress: §18 (tray icon).
+> Status: **v0.8.0 released** (2026-10-03). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14 and §18 (tray icon). Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -542,7 +542,7 @@ has SFTP).
 | F4 | **Docs + security review**: CLAUDE.md invariant 7, SECURITY.md (what SFTP can change on a server), SECURITY_REVIEW.md, USER_GUIDE | Review done; docs match behaviour |
 | F5 | *(optional)* **Two-pane view** with a local folder pane, limited to one chosen folder | Only if decided above; tests that nothing outside that folder can be listed or read |
 
-## 18. v0.8.0 — Tray icon and "when I close the tab" (built; Windows check pending)
+## 18. v0.8.0 — Tray icon and "when the dashboard tab is closed" (released 2026-10-03)
 
 The user asked (2026-10-03) for TunnelTab to sit in the system tray, so the
 dashboard tab can be closed while the program keeps running, and for a
