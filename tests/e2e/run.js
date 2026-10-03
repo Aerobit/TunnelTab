@@ -270,14 +270,13 @@ function start(cmd, args, opts) {
   step("right-click copies; Ctrl+V pastes");
 
   // Settings → General: what closing the tab does. This run has no tray
-  // icon (--no-tray), so the dashboard didn't ask (that is tested at the end).
-  assert.strictEqual(await page.getByRole("heading", { name: "When you close this tab…" }).count(), 0, "asked without a tray icon");
+  // icon (--no-tray); the choice is the same either way.
   const closeActionSaved = () => JSON.parse(require("fs").readFileSync(path.join(dataDir, "settings.json"), "utf8")).closeAction;
-  for (const choice of ["quit", "tray"]) {
+  for (const choice of ["tray", "quit"]) {
     await page.getByRole("button", { name: /Settings/ }).click();
     await page.getByRole("heading", { name: "Settings" }).waitFor();
     const closeAction = page.getByLabel("When the dashboard tab is closed");
-    assert.strictEqual(await closeAction.inputValue(), choice === "quit" ? "tray" : "quit");
+    assert.strictEqual(await closeAction.inputValue(), choice === "tray" ? "quit" : "tray"); // quit is the default
     await closeAction.selectOption(choice);
     await page.getByRole("button", { name: "Save settings" }).click();
     await page.getByRole("heading", { name: "Settings" }).waitFor({ state: "detached" });
@@ -741,13 +740,11 @@ function start(cmd, args, opts) {
   if (app.exitCode === null) await new Promise((r) => app.on("exit", r));
   step("quit stops the program");
 
-  // Start again as if there were a tray icon: after unlocking, the dashboard
-  // asks once what closing the tab does. With "Quit when I close the tab",
-  // closing the only TunnelTab tab quits the program (after a few seconds,
-  // so a reload doesn't).
+  // Start again with "Quit TunnelTab" chosen for closing the tab: closing the
+  // only TunnelTab tab quits the program (after a few seconds, so a reload
+  // doesn't).
   const settingsFile = path.join(dataDir, "settings.json");
-  const { closeAction: _, ...noAnswer } = JSON.parse(require("fs").readFileSync(settingsFile, "utf8"));
-  require("fs").writeFileSync(settingsFile, JSON.stringify(noAnswer));
+  require("fs").writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(require("fs").readFileSync(settingsFile, "utf8")), closeAction: "quit" }));
   const again = start(path.join(tmp, "tunneltab" + exe), ["--no-browser", "--no-tray", "--port", "47900", "--data", dataDir]);
   const [url2] = await again.waitFor(/http:\/\/127\.0\.0\.1:47900\/\?launch=\S+/);
   // A fresh context: tabs left open above (a popped-out terminal) would
@@ -755,25 +752,15 @@ function start(cmd, args, opts) {
   const context2 = await browser.newContext({ viewport: { width: 1200, height: 800 } });
   const page2 = await context2.newPage();
   page2.on("pageerror", (e) => problems.push("second run pageerror: " + e.message));
-  await page2.route("**/api/state", async (route) => {
-    const res = await route.fetch();
-    await route.fulfill({ response: res, json: { ...(await res.json()), tray: true } });
-  });
   await page2.goto(url2);
   await page2.getByLabel("Master password").fill("a brand new passphrase");
   await page2.getByRole("button", { name: "Unlock" }).click();
-  const askClose = page2.getByRole("heading", { name: "When you close this tab…" });
-  await askClose.waitFor();
-  await page2.screenshot({ path: `${OUT}/18-close-question.png` });
-  await page2.getByRole("button", { name: "Quit when I close the tab" }).click();
-  await askClose.waitFor({ state: "detached" });
-  assert.strictEqual(closeActionSaved(), "quit", "answer saved");
+  await page2.getByRole("button", { name: "Lock" }).waitFor();
   await page2.reload();
   await page2.getByRole("button", { name: "Lock" }).waitFor();
   await page2.waitForTimeout(6000); // longer than the grace period: a reload doesn't quit
-  assert.strictEqual(await askClose.count(), 0, "asked again after answering");
   assert.strictEqual(again.exitCode, null, "a reload quit TunnelTab");
-  step("with a tray icon, the dashboard asks once what closing the tab does; reloading doesn't quit");
+  step("with \"Quit TunnelTab\" chosen, reloading the tab doesn't quit");
   const tabClosedAt = Date.now();
   await page2.close({ runBeforeUnload: true });
   if (again.exitCode === null) {
@@ -784,7 +771,7 @@ function start(cmd, args, opts) {
   }
   assert.strictEqual(again.exitCode, 0, "exit code");
   assert.ok(Date.now() - tabClosedAt >= 4000, "quit before the grace period");
-  step("with \"Quit when I close the tab\", closing the last tab quits TunnelTab");
+  step("with \"Quit TunnelTab\" chosen, closing the last tab quits TunnelTab");
 
   assert.deepStrictEqual(problems, [], "browser errors:\n" + problems.join("\n"));
   step("no JavaScript errors or CSP violations");

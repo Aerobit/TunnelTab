@@ -560,14 +560,15 @@ running in the tray.
   - **Right-click** menu: **Open dashboard**, **Lock now**, **Quit**.
   - Where there is no tray (GNOME without the extension, no desktop at
     all) nothing changes: no icon, no error, TunnelTab runs as before.
-- **"When I close the tab" question.** Browsers don't let a page show its
-  own question when its tab is closing (only the browser's generic "Leave
-  site?" box, with no choice of buttons). So the dashboard asks **once**,
-  the first time it opens with a tray icon:
-  *"When you close this tab, should TunnelTab keep running in the system
-  tray (tunnels stay up) or quit?"* — **Keep running in the tray** /
-  **Quit when I close the tab**. The answer is a setting, shown and
-  changeable in Settings → General ("When the dashboard tab is closed").
+- **"When the dashboard tab is closed" setting** (Settings → General): **Quit
+  TunnelTab** (default, chosen by the user 2026-10-03) or **Keep TunnelTab
+  running** in the tray. Browsers don't let a
+  page ask anything as its tab closes (only the generic "Leave site?" box,
+  with fixed wording and buttons). A one-time question when the dashboard
+  opened was built first, but the user preferred no question at all
+  (2026-10-03): it's a setting only. A TunnelTab window of its own
+  (WebView2) could ask on every close; the user chose to stay in the
+  browser.
 - **Quit when the tab closes:** closing the last TunnelTab page (dashboard
   tabs and popped-out terminals) quits TunnelTab after a few seconds, like
   pressing Quit. Reloading the page doesn't.
@@ -582,7 +583,7 @@ running in the tray.
 | No external programs (invariant 7) | godbus can launch `dbus-launch` when no session bus is known. Before starting the tray, TunnelTab connects with auto-launch off and checks that a tray (`org.kde.StatusNotifierWatcher`) is running; if not, there is no tray. |
 | No network (invariant 9) | The tray makes no network calls; its menu calls the same code as the dashboard's buttons. |
 | Detecting the close | `pagehide` on the dashboard sends `POST /api/closing` (fetch `keepalive`, with the session token like every request). If the setting is "quit", TunnelTab waits 5 s and quits if no TunnelTab page is connected by then (a reload reconnects in time). Without that request (a browser discarding a sleeping tab, a crash) it keeps running, so tunnels are never dropped by accident. |
-| Setting | `settings.json`: `closeAction` = `""` (not asked yet), `"tray"` or `"quit"`. Old settings files read as `""`. |
+| Setting | `settings.json`: `closeAction` = `"quit"` (default) or `"tray"`; `""` (and old settings files) means the default. |
 | Turning it off | `--no-tray` command-line flag (also used by the browser tests). |
 
 ### Build phases
@@ -590,5 +591,5 @@ running in the tray.
 | # | Phase | Done when |
 |---|---|---|
 | T1 ✅ | **Tray icon**: `internal/platform` tray (Windows + Linux, no-op elsewhere), icon file, Open / Lock / Quit, main-thread loop, `--no-tray` | Builds for both; unit tests for icon generation and the menu actions; real check on Windows (user, CI zip) |
-| T2 ✅ | **Close question + quit on close**: `closeAction` setting, one-time dialog, Settings → General, `POST /api/closing` | Server tests (quit after close, not after reload, not when "tray"); browser test for the dialog and setting |
+| T2 ✅ | **Quit on close**: `closeAction` setting in Settings → General, `POST /api/closing` | Server tests (quit after close, not with a page open, not when "tray"); browser test for the setting, a reload (no quit) and a real tab close (quits) |
 | T3 ✅ | **Docs**: USER_GUIDE, ARCHITECTURE, SECURITY, CLAUDE.md conventions (new dependency), README, CHANGELOG; PLAN §9/§10 updated | Docs match behaviour |

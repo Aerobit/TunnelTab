@@ -26,9 +26,9 @@ YOUR DATA
 
 STOPPING
   Use the Quit button in the dashboard, or Quit TunnelTab in the tray
-  icon's menu. Closing the browser tab keeps TunnelTab running in the
-  tray (click the icon to reopen the dashboard), unless you chose
-  "Quit when I close the tab" (Settings, General).
+  icon's menu. Closing the browser tab also quits TunnelTab, after a
+  few seconds. To keep it running in the tray instead, choose "Keep
+  TunnelTab running" in Settings, General.
 
 FILES
   tunneltab.exe             the Windows program

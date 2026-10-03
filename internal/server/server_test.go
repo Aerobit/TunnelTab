@@ -479,7 +479,7 @@ func TestQuit(t *testing.T) {
 	}
 }
 
-// "When I close the tab": with "quit" chosen, a page saying it is closing
+// "When the dashboard tab is closed": with "quit" (the default), a page saying it is closing
 // makes TunnelTab quit unless a page is connected after the grace period.
 func TestCloseAction(t *testing.T) {
 	var shown atomic.Bool
@@ -511,12 +511,16 @@ func TestCloseAction(t *testing.T) {
 	}
 
 	setAction("bogus", 400)
-	if quits() {
-		t.Fatal("quit before the user chose to")
+	if !quits() {
+		t.Fatal("didn't quit by default")
 	}
 	setAction(config.CloseKeepRunning, 200)
 	if quits() {
 		t.Fatal("quit with keep running chosen")
+	}
+	setAction("", 200) // e.g. a settings file from before the option existed
+	if !quits() {
+		t.Fatal("didn't quit with the option unset")
 	}
 	setAction(config.CloseQuit, 200)
 	if saved, _ := config.LoadSettings(h.srv.cfg.Paths.Settings); saved.CloseAction != config.CloseQuit {

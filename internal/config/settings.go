@@ -25,7 +25,7 @@ type Settings struct {
 	// CloseTunnelsOnLock stops all tunnels and terminals when the vault locks.
 	CloseTunnelsOnLock bool `json:"closeTunnelsOnLock"`
 	// CloseAction is what closing the last dashboard tab does: CloseKeepRunning
-	// or CloseQuit, or "" until the dashboard has asked.
+	// or CloseQuit (the default; "" means the same).
 	CloseAction string `json:"closeAction,omitempty"`
 }
 
@@ -41,6 +41,7 @@ func DefaultSettings() Settings {
 		Port:               DefaultPort,
 		AutoLockMinutes:    15,
 		CloseTunnelsOnLock: false,
+		CloseAction:        CloseQuit,
 	}
 }
 

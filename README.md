@@ -257,10 +257,10 @@ portable, and you get your browser's tabs and zoom.
 <details>
 <summary><b>What happens when I close the dashboard tab?</b></summary>
 <br>
-TunnelTab keeps running in the system tray with your tunnels up. Click its
-tray icon to open the dashboard again, or right-click it to lock or quit.
-If you'd rather it quit with the tab, choose that when the dashboard asks
-(or later in <b>Settings → General</b>).
+TunnelTab quits a few seconds later, closing your tunnels. To keep it
+running in the system tray instead, choose that in <b>Settings → General</b>;
+then click its tray icon to open the dashboard again, or right-click it to
+lock or quit.
 </details>
 
 <details>

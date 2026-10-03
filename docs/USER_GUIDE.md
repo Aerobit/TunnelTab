@@ -339,8 +339,8 @@ is listed in the server's **Activity**.
   - **Lock after inactivity** — Never, 5 min … 4 hours (default 15 min).
   - **Close all tunnels when TunnelTab locks** — off by default.
   - **Dashboard port** — default 47811; applies after restarting TunnelTab.
-  - **When the dashboard tab is closed** — keep TunnelTab running (in the
-    system tray) or quit it; see [Quitting](#quitting).
+  - **When the dashboard tab is closed** — quit TunnelTab (default) or keep
+    it running in the system tray; see [Quitting](#quitting).
 - **Password** — change the master password: enter the current one and the
   new one twice.
 - **Updates** — shows your version. **Check for updates** asks GitHub for
@@ -390,24 +390,23 @@ tray such as KDE, XFCE, Cinnamon, or GNOME with the AppIndicator
 extension). Click it to open the dashboard; right-click it for **Open
 dashboard**, **Lock now** and **Quit TunnelTab**.
 
-**Closing the dashboard tab.** The first time the dashboard opens with a
-tray icon, it asks what closing the tab should do:
+**Closing the dashboard tab.** Choose what happens in **Settings → General →
+When the dashboard tab is closed**:
 
-- **Keep running in the tray**: tunnels and terminals stay up. Click the
-  tray icon (or start TunnelTab again) to get the dashboard back.
-- **Quit when I close the tab**: a few seconds after the last TunnelTab tab
+- **Quit TunnelTab** (the default): a few seconds after the last TunnelTab tab
   closes (popped-out terminals count as TunnelTab tabs), TunnelTab quits as
   if you had pressed Quit. Reloading the page doesn't make it quit. If the
   browser drops a tab without telling the page (for example a sleeping tab
   discarded to save memory, or a crash), TunnelTab keeps running, so you
   never lose your tunnels by accident.
+- **Keep TunnelTab running**: tunnels and terminals stay up. Click the tray
+  icon (or start TunnelTab again) to get the dashboard back.
 
-You can change the answer in **Settings → General → When the dashboard tab
-is closed**. Without a tray icon, TunnelTab isn't asked and keeps running
-when you close the tab, unless you choose Quit there.
+Browsers don't let a page ask a question as its tab closes, so this is a
+setting rather than a question.
 
-To get back to the dashboard after closing the tab, click the tray icon or
-start TunnelTab again: it notices it's already running and opens the dashboard in a new tab.
+With **Keep TunnelTab running**, to get back to the dashboard after closing
+the tab, click the tray icon or start TunnelTab again: it notices it's already running and opens the dashboard in a new tab.
 Only one copy can use a data folder at a time; if the running copy is still
 starting or quitting, the new one waits up to 20 seconds for it.
 

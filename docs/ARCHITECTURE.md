@@ -204,8 +204,8 @@ browser ──▶ 127.0.0.1:<port> ──▶ forward.handle ──▶ client.Dia
 
 - `settings.json`: `port` (1024–65535, default 47811), `autoLockMinutes`
   (0 = never, max 1440, default 15), `closeTunnelsOnLock` (default false),
-  `closeAction` (what closing the last TunnelTab tab does: `"tray"` keep
-  running, `"quit"`, or `""` (left out) until the dashboard has asked).
+  `closeAction` (what closing the last TunnelTab tab does: `"quit"`, the
+  default, or `"tray"` keep running; `""` means the default).
   A missing file means defaults; an invalid file is reported and defaults are used.
 - Logs: `data/logs/tunneltab.log`, rotated at 1 MiB, keeping 3 old files.
   **Log policy:** IDs and error types (`sshx.ErrorKind`) only — never
@@ -257,7 +257,7 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 |---|---|---|
 | `POST /session` | `{launch}` | `{session}` |
 | `POST /instance/launch` | header `X-TunnelTab-Instance` | `{url}` (used by a second launch) |
-| `GET /state` | | `{vault: none\|locked\|unlocked, version, unlockWaitMs, minPasswordLen, tray}` (`tray`: the tray icon is shown, so the dashboard asks what closing the tab does) |
+| `GET /state` | | `{vault: none\|locked\|unlocked, version, unlockWaitMs, minPasswordLen, tray}` (`tray`: the tray icon is shown; Settings words its close option for it) |
 | `GET /events` | | event stream (see below) |
 | `GET /settings` · `PUT /settings` | `Settings` | settings (+ `restartRequired` if the port changed) |
 | `POST /quit` | | stops tunnels and exits |

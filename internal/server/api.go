@@ -297,9 +297,13 @@ func (s *Server) handleClosing(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// closeAction is the setting, with "" (never set) meaning the default.
 func (s *Server) closeAction() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.settings.CloseAction == "" {
+		return config.CloseQuit
+	}
 	return s.settings.CloseAction
 }
 

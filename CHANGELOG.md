@@ -12,11 +12,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   (Windows, and Linux desktops with a tray). Click it to open the dashboard;
   right-click it for Open dashboard, Lock now and Quit TunnelTab. Where there
   is no tray, nothing changes. `--no-tray` turns it off.
-- **"When you close this tab…"** The first time the dashboard opens with a
-  tray icon, it asks whether closing the tab should keep TunnelTab running
-  in the tray or quit it. With "Quit when I close the tab", TunnelTab quits a
-  few seconds after the last TunnelTab tab closes (a reload doesn't count).
-  The answer can be changed in Settings → General.
+- **Settings → General → When the dashboard tab is closed.** By default
+  TunnelTab now quits a few seconds after the last TunnelTab tab closes (a
+  reload doesn't count); choose "Keep TunnelTab running" to leave it running
+  in the tray instead. (Before, closing the tab always left it running.)
 
 ## [0.7.4] - 2026-10-02
 

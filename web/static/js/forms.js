@@ -332,8 +332,8 @@ export async function settingsDialog({ tray = false, knownHosts, minPasswordLen,
     "Otherwise tunnels keep running while locked, and reconnect after you unlock if they drop.");
   const port = number(current.port, { min: 1024, max: 65535 });
   const closeAction = select(
-    [["tray", tray ? "Keep TunnelTab running in the system tray" : "Keep TunnelTab running"], ["quit", "Quit TunnelTab"]],
-    current.closeAction || "tray",
+    [["quit", "Quit TunnelTab"], ["tray", tray ? "Keep TunnelTab running in the system tray" : "Keep TunnelTab running"]],
+    current.closeAction || "quit",
   );
 
   const oldPw = password({ autocomplete: "current-password" });
@@ -454,8 +454,8 @@ export async function settingsDialog({ tray = false, knownHosts, minPasswordLen,
         h("h3", {}, "Dashboard"),
         field("Dashboard port", port, "Takes effect the next time TunnelTab starts."),
         field("When the dashboard tab is closed", closeAction, tray
-          ? "Keep running: tunnels and terminals stay up; click the TunnelTab icon in the tray to open the dashboard again. Quit: TunnelTab quits once no TunnelTab tab is open (reloading is fine)."
-          : "Keep running: tunnels and terminals stay up; start TunnelTab again to open the dashboard (this desktop shows no tray icon). Quit: TunnelTab quits once no TunnelTab tab is open (reloading is fine)."),
+          ? "Quit: TunnelTab stops a few seconds after the last TunnelTab tab closes (reloading is fine). Keep running: tunnels and terminals stay up; click the TunnelTab icon in the tray to open the dashboard again."
+          : "Quit: TunnelTab stops a few seconds after the last TunnelTab tab closes (reloading is fine). Keep running: tunnels and terminals stay up; start TunnelTab again to open the dashboard (this desktop shows no tray icon)."),
       ] },
       { label: "Password", content: [
         h("p", { class: "hint" }, "Changes the password that unlocks TunnelTab. It can't be recovered, so keep it safe."),
@@ -478,31 +478,6 @@ export async function settingsDialog({ tray = false, knownHosts, minPasswordLen,
           });
           toast(res.restartRequired ? "Settings saved. The new port applies after restarting TunnelTab." : "Settings saved.", "success");
         } },
-    ],
-  });
-}
-
-/**
- * Asks, once, what closing the dashboard tab should do: keep TunnelTab
- * running in the tray, or quit it. Not asked again once answered (it's in
- * Settings → General); Escape leaves it unanswered.
- */
-export async function askCloseAction() {
-  const current = await api("GET", "/settings");
-  if (current.closeAction) return;
-  const save = (closeAction) => async () => {
-    await api("PUT", "/settings", { ...current, closeAction });
-  };
-  await openDialog({
-    title: "When you close this tab…",
-    wide: true,
-    body: [
-      h("p", {}, "TunnelTab now has an icon in the system tray. When you close this tab, should TunnelTab keep running there, or quit?"),
-      h("p", { class: "hint" }, "Keep running: tunnels and terminals stay up, and clicking the tray icon opens the dashboard again. Quit: everything stops, as with the Quit button. You can change this in Settings → General."),
-    ],
-    actions: [
-      { label: "Quit when I close the tab", onClick: save("quit") },
-      { label: "Keep running in the tray", kind: "primary", submit: true, onClick: save("tray") },
     ],
   });
 }

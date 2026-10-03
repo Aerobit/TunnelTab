@@ -115,7 +115,7 @@ func TestSettingsMissingFileGivesDefaults(t *testing.T) {
 
 func TestSettingsRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
-	want := Settings{Port: 50000, AutoLockMinutes: 0, CloseTunnelsOnLock: true}
+	want := Settings{Port: 50000, AutoLockMinutes: 0, CloseTunnelsOnLock: true, CloseAction: CloseKeepRunning}
 	if err := SaveSettings(path, want); err != nil {
 		t.Fatal(err)
 	}

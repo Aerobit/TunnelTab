@@ -6,7 +6,7 @@ import { api, ApiError, currentSession, probe, sayClosing, signIn, streamEvents,
 import { debounce, focusKey, h, replace, restoreFocus } from "./dom.js";
 import { confirmDialog, field, toast } from "./dialogs.js";
 import {
-  askCloseAction, projectDialog, serverDialog, serviceDialog, settingsDialog, testServer, withHostKeys,
+  projectDialog, serverDialog, serviceDialog, settingsDialog, testServer, withHostKeys,
 } from "./forms.js";
 import { findServices } from "./discover.js";
 import { fmtBytes } from "./format.js";
@@ -281,7 +281,6 @@ async function loadData() {
     syncViews(state.terminals.values());
     renderDashboard();
     allViews().forEach((v) => v.resume()); // after an unlock
-    askCloseActionOnce();
   } catch (err) {
     if (err.code === "locked") {
       state.vault = "locked";
@@ -291,20 +290,6 @@ async function loadData() {
       state.vault = "none";
       return showSetup();
     }
-    toast(err.message, "error");
-  }
-}
-
-// The first time the dashboard opens with a tray icon, ask what closing the
-// tab should do (browsers don't let a closing tab ask). Escape asks again
-// next time.
-let closeActionAsked = false;
-async function askCloseActionOnce() {
-  if (closeActionAsked || !state.tray) return;
-  closeActionAsked = true;
-  try {
-    await askCloseAction();
-  } catch (err) {
     toast(err.message, "error");
   }
 }
