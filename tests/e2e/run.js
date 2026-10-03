@@ -367,8 +367,24 @@ function start(cmd, args, opts) {
   await termPage.keyboard.type("exit 7");
   await termPage.keyboard.press("Enter");
   await termPage.locator(".termview-msg", { hasText: "exited with code 7" }).waitFor();
-  await termPage.close();
   step("reload re-attaches to the same session; exit code shown");
+
+  // Locking blanks an ended terminal too (it has no connection to do it),
+  // and unlocking shows it ended again rather than opening a new shell.
+  assert.ok((await termText()).includes("after unlock"), "the ended terminal's output is gone before locking");
+  await page.getByRole("button", { name: "Lock" }).click();
+  await page.getByRole("heading", { name: "Unlock TunnelTab" }).waitFor();
+  await termPage.locator("#term-status", { hasText: "Locked" }).waitFor();
+  assert.ok(!(await termText()).includes("after unlock"), "an ended terminal's output still readable while locked");
+  assert.ok(!(await termPage.locator(".termview-screen").isVisible()), "ended terminal view visible while locked");
+  await page.getByLabel("Master password").fill("a brand new passphrase");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await termPage.locator(".termview-msg", { hasText: "exited with code 7" }).waitFor();
+  await termPage.waitForTimeout(1000);
+  assert.strictEqual(await termPage.locator("#term-status").innerText(), "Ended", "unlocking reopened the ended terminal");
+  await page.locator(".page-tabs").getByRole("link", { name: /Services/ }).waitFor();
+  await termPage.close();
+  step("locking blanks an ended popped-out terminal; unlocking leaves it ended");
 
   // A terminal page of its own (not shown in the dashboard) ends when its tab closes.
   const serverPath = new URL(page.url()).hash.split("/")[2];

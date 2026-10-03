@@ -138,7 +138,7 @@ func New(cfg Config) (*Server, error) {
 		pendingKeys:  map[string]pendingKey{},
 		terms:        newTerminals(),
 		health:       healthStore{readings: map[string]healthReading{}, running: map[string]bool{}},
-		checks:       checkStore{readings: map[string]checkReading{}},
+		checks:       checkStore{readings: map[string]checkReading{}, changes: map[string]uint64{}},
 		stopReaper:   make(chan struct{}),
 		started:      make(chan struct{}),
 	}

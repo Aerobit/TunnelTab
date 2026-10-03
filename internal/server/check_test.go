@@ -166,3 +166,89 @@ LISTEN 0      4096           0.0.0.0:22          0.0.0.0:*
 		t.Errorf("connection kept: %+v", list)
 	}
 }
+
+// A check still running when its service is edited or deleted must not
+// store or publish its result afterwards: it describes the old settings.
+func TestCheckDiscardedWhenServiceChanges(t *testing.T) {
+	for _, change := range []string{"edit", "delete"} {
+		t.Run(change, func(t *testing.T) {
+			h := ready(t)
+			_, serverID, _ := sshSetup(t, h)
+			entered, release := make(chan struct{}, 4), make(chan struct{})
+			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				entered <- struct{}{}
+				<-release
+			}))
+			defer app.Close()
+			releaseOnce := func() {
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+			}
+			defer releaseOnce() // before app.Close, which waits for the handler
+			svc := h.mustCall("POST", "/api/services", map[string]any{"serverId": serverID, "label": "slow", "remotePort": port(t, app)}, 201)
+			path := "/api/services/" + id(svc) + "/check"
+			m := h.mustCall("POST", path, nil, http.StatusConflict)
+			h.mustCall("POST", "/api/hostkeys/confirm", map[string]any{"token": m["token"]}, 200)
+
+			type answer struct {
+				status int
+				body   map[string]any
+			}
+			done := make(chan answer, 1)
+			go func() {
+				status, body := h.call("POST", path, nil)
+				done <- answer{status, body}
+			}()
+			select {
+			case <-entered: // the check is waiting for the app's answer
+			case <-time.After(5 * time.Second):
+				t.Fatal("the check never reached the app")
+			}
+
+			dashboard := h.srv.events.subscribe()
+			defer h.srv.events.unsubscribe(dashboard)
+			if change == "edit" {
+				h.mustCall("PUT", "/api/services/"+id(svc), map[string]any{"serverId": serverID, "label": "slow", "remotePort": closedPort(t)}, 200)
+			} else {
+				h.mustCall("DELETE", "/api/services/"+id(svc), nil, 204)
+			}
+			releaseOnce()
+
+			var a answer
+			select {
+			case a = <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the check never finished")
+			}
+			if a.status != 200 || a.body["check"] != nil {
+				t.Fatalf("check answered %d %v, want 200 with no result", a.status, a.body)
+			}
+			if _, ok := h.srv.checkReadings()[id(svc)]; ok {
+				t.Fatal("stale check result stored")
+			}
+			for len(dashboard) > 0 {
+				var ev struct {
+					Type, ServiceID string
+					Check           map[string]any
+				}
+				json.Unmarshal(<-dashboard, &ev)
+				if ev.Type == "check" && ev.ServiceID == id(svc) && ev.Check != nil {
+					t.Fatalf("stale check result published: %v", ev.Check)
+				}
+			}
+
+			// With nothing changed meanwhile, a check is stored as before.
+			if change == "edit" {
+				if c := h.mustCall("POST", path, nil, 200)["check"]; c == nil {
+					t.Fatal("no result from an unchanged service")
+				}
+				if _, ok := h.srv.checkReadings()[id(svc)]; !ok {
+					t.Fatal("result of an unchanged service not stored")
+				}
+			}
+		})
+	}
+}

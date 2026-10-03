@@ -6,7 +6,7 @@
 // is kept while this tab exists (even while locked); closing the tab ends it.
 // Reloading re-attaches. See docs/ARCHITECTURE.md → "Terminals".
 
-import { sayClosing, streamEvents } from "./api.js";
+import { api, sayClosing, streamEvents } from "./api.js";
 import { TERM_STATES, TermView } from "./termview.js";
 
 const [serverId, savedTerminalId] = location.hash.slice(1).split("/").map(decodeURIComponent);
@@ -50,8 +50,10 @@ function remember(id) {
   watchEvents();
 }
 
-// The event stream tells us when TunnelTab unlocks, and — because it names
-// our session — keeps the session alive for as long as this tab is open.
+// The event stream tells us when TunnelTab locks and unlocks, and — because
+// it names our session — keeps the session alive for as long as this tab is
+// open.
+let vaultEvents = 0; // a resync's answer is stale once a vault event came
 function watchEvents() {
   stopEvents?.();
   stopEvents = streamEvents((ev) => {
@@ -60,9 +62,23 @@ function watchEvents() {
       view.stopped();
       return;
     }
-    const unlocked = (ev.type === "vault" && ev.state === "unlocked") || ev.type === "resync";
-    if (unlocked) view.resume();
+    if (ev.type === "vault") {
+      vaultEvents++;
+      lockedIs(ev.state === "locked");
+    } else if (ev.type === "resync") {
+      // Events may have been missed while away (a lock among them): ask.
+      const seen = vaultEvents;
+      api("GET", "/state").then((st) => seen === vaultEvents && lockedIs(st.vault !== "unlocked"), () => {});
+    }
   }, () => {}, watchedId ? `?terminal=${encodeURIComponent(watchedId)}` : "");
+}
+
+// Locking blanks the view even when it has no connection of its own (the
+// shell ended, or the session moved to another tab): its output is still on
+// screen.
+function lockedIs(locked) {
+  if (locked) view.lock();
+  else view.resume();
 }
 
 window.addEventListener("pagehide", sayClosing);

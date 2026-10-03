@@ -61,6 +61,7 @@ export class TermView {
     this.ws = null;
     this.retryTimer = null;
     this.disposed = false;
+    this.beforeLock = null; // {state, message} shown when lock() blanked the view
 
     this.msgText = h("span", { class: "grow" });
     this.msgButton = h("button", { type: "button", class: "btn primary small" });
@@ -219,9 +220,30 @@ export class TermView {
     else this.attach();
   }
 
-  /** Re-attaches after TunnelTab was unlocked. */
+  /**
+   * TunnelTab locked: blank the view whatever it shows. Its own connection
+   * usually does this, but a view without one (the shell ended, the session
+   * moved to another tab, waiting to reconnect) still has output on screen.
+   */
+  lock() {
+    if (this.disposed || this.state === "locked") return;
+    clearTimeout(this.retryTimer);
+    this.beforeLock = { state: this.state, message: this.message };
+    const ws = this.ws;
+    this.ws = null; // its close is then ignored
+    ws?.close();
+    this.showLocked();
+  }
+
+  /** After TunnelTab was unlocked: re-attaches, or shows again what it said. */
   resume() {
-    if (this.state === "locked") this.start();
+    if (this.disposed || this.state !== "locked") return;
+    const before = this.beforeLock;
+    this.beforeLock = null;
+    // An ended session stays ended (Enter or New session opens another),
+    // and one shown in another tab stays there.
+    if (before?.state === "ended" || before?.state === "elsewhere") return this.setState(before.state, before.message);
+    this.start();
   }
 
   showError(err) {

@@ -6,6 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Locking now also hides a popped-out terminal whose shell had ended, that
+  had moved to another tab or that was reconnecting; before, its last output
+  stayed readable while TunnelTab was locked. After unlocking, an ended
+  terminal stays ended rather than opening a new shell.
+- A service check that was still running when the service was edited or
+  deleted no longer brings back its old result afterwards.
+
 ## [0.8.2] - 2026-10-03
 
 ### Fixed

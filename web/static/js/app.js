@@ -1290,7 +1290,8 @@ async function checkService(svc, button) {
   button.textContent = "Checking…";
   try {
     const res = await withHostKeys(() => api("POST", `/services/${svc.id}/check`));
-    if (res) state.checks.set(svc.id, res.check);
+    // No result: the service was edited or deleted while it was checked.
+    if (res?.check) state.checks.set(svc.id, res.check);
   } catch (err) {
     toast(`${svc.label}: ${err.message}`, "error");
   } finally {
@@ -1304,6 +1305,7 @@ async function recheckOnOpen(svc) {
   if (!last || checkOK(svc, last)) return;
   try {
     const { check } = await api("POST", `/services/${svc.id}/check`);
+    if (!check) return; // the service changed meanwhile
     state.checks.set(svc.id, check);
     renderSoon();
     if (!checkOK(svc, check)) {

@@ -403,7 +403,10 @@ Run after Start (once the tunnel is up), on **Check**
 (`POST /services/{id}/check`), by the dashboard on **Open** when the last
 result wasn't OK, and in Find services. Results are in memory, sent as
 `check` events and in `GET /api/data`, and dropped when the service is
-edited or deleted.
+edited or deleted. A check still running then discards its result: each
+service has a change counter (raised by `dropCheck`), read before the
+service itself, and a result is stored and published only if the counter
+is unchanged (the Check button then answers `{check: null}`).
 
 
 ## Terminals
@@ -435,7 +438,11 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   typed; the shells — and programs running in them, like a `docker pull` —
   keep going. Attaching is refused while locked. After unlock the page
   re-attaches by itself (it watches the event stream) and the output is
-  replayed. The page also blanks its screen while locked.
+  replayed. The page also blanks its screen while locked. A popped-out
+  terminal page also locks on the `vault` event (`TermView.lock`), so a
+  view with no connection of its own (shell ended, moved to another tab,
+  reconnecting) is blanked too; after unlock an ended view stays ended. On
+  `resync` the page asks `/api/state` rather than assuming it is unlocked.
 - **Closing the tab ends the session.** The page keeps its event stream
   open with `?terminal=<id>` for as long as the tab exists (locked, hidden
   or not — browsers don't throttle open connections in background tabs,

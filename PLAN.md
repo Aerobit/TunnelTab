@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.2 released** (2026-10-03). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14 and §18 (tray icon). Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.2 released** (2026-10-03); v0.8.3 fixes in progress (§19). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -593,3 +593,18 @@ running in the tray.
 | T1 ✅ | **Tray icon**: `internal/platform` tray (Windows + Linux, no-op elsewhere), icon file, Open / Lock / Quit, main-thread loop, `--no-tray` | Builds for both; unit tests for icon generation and the menu actions; real check on Windows (user, CI zip) |
 | T2 ✅ | **Quit on close**: `closeAction` setting in Settings → General, `POST /api/closing` | Server tests (quit after close, not with a page open, not when "tray"); browser test for the setting, a reload (no quit) and a real tab close (quits) |
 | T3 ✅ | **Docs**: USER_GUIDE, ARCHITECTURE, SECURITY, CLAUDE.md conventions (new dependency), README, CHANGELOG; PLAN §9/§10 updated | Docs match behaviour |
+
+## 19. v0.8.3 — Fourth review round (2026-10-03)
+
+An external review of v0.8.2 found two more issues; both were confirmed in
+the code. Both are fixed (not yet committed); `go test ./...` and the browser
+test pass, and both new tests fail on the old code.
+
+| # | Issue | Fix |
+|---|---|---|
+| R1 (P1) | **Locking leaves old output visible in popped-out terminals.** The terminal page ignored `vault: locked` and relied on its own WebSocket to blank the screen. A terminal whose shell had ended, that was moved to another tab, or that was waiting to reconnect has no socket, so its output stayed on screen while locked. Also, an event stream that came back ("resync") resumed without asking whether TunnelTab was still locked. | `TermView.lock()` blanks every view whatever its state (closes any socket, clears the screen, shows Locked) and remembers what it was showing. `resume()` brings that back: live/disconnected views re-attach, an ended view stays ended (no new shell is opened by itself), "In another tab" stays so. terminal.js calls `lock()` on `vault: locked`, and on "resync" asks `/api/state` whether it is locked before resuming. |
+| R2 (P2) | **A check still running when a service is edited or deleted stores its old result afterwards.** `dropCheck` removed the result, but the check then stored and published its own. | Each service has a change counter, raised by `dropCheck`. A check reads the counter *before* reading the service and stores and publishes its result only if the counter is unchanged, under the same lock as `dropCheck` (so its event can't arrive after the "dropped" one). A stale Check answers `{"check": null}`; the dashboard treats that as no result. |
+
+Tests: server test with a service whose check is held open while the
+service is edited / deleted (no result stored or published), plus a browser
+test locking with an ended popped-out terminal.

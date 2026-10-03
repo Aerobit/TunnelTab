@@ -684,6 +684,7 @@ func (s *Server) handleOrder(w http.ResponseWriter, r *http.Request, fn func(d *
 
 func (s *Server) handleStartService(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	version := s.checkVersion(id) // before reading the service: see checkVersion
 	var svc model.Service
 	if err := s.view(func(d *model.Data) error {
 		var ok bool
@@ -700,7 +701,7 @@ func (s *Server) handleStartService(w http.ResponseWriter, r *http.Request) {
 		s.writeSSHError(w, err)
 		return
 	}
-	go s.checkService(svc) // does the app answer? (the tunnel is up; this reuses its connection)
+	go s.checkService(svc, version) // does the app answer? (the tunnel is up; this reuses its connection)
 	url := string(svc.Protocol) + "://127.0.0.1:" + strconv.Itoa(st.LocalPort) + svc.Path
 	writeJSON(w, http.StatusOK, map[string]any{"forward": st, "url": url})
 }
