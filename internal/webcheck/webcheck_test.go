@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -104,9 +105,9 @@ func TestDialCountsTowardsTimeout(t *testing.T) {
 	release := make(chan struct{})
 	ours, theirs := net.Pipe()
 	defer theirs.Close()
-	dials := 0
+	var dials atomic.Int32 // counted on dialWithin's goroutine
 	dial := func() (net.Conn, error) {
-		dials++
+		dials.Add(1)
 		<-release
 		return ours, nil
 	}
@@ -115,8 +116,8 @@ func TestDialCountsTowardsTimeout(t *testing.T) {
 	if took := time.Since(start); took > time.Second {
 		t.Fatalf("took %v", took)
 	}
-	if got != (Result{State: NoAnswer}) || dials != 1 {
-		t.Fatalf("got %+v after %d dials", got, dials)
+	if got != (Result{State: NoAnswer}) || dials.Load() != 1 {
+		t.Fatalf("got %+v after %d dials", got, dials.Load())
 	}
 	close(release)
 	theirs.SetReadDeadline(time.Now().Add(2 * time.Second))
