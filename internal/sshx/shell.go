@@ -58,6 +58,7 @@ func (m *Manager) OpenShell(serverID string, cols, rows int) (*Shell, error) {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("too many open terminals (max %d)", MaxShells)
 	}
+	stops := m.serverStops[serverID]
 	m.mu.Unlock()
 
 	sc, err := m.acquire(serverID)
@@ -68,7 +69,7 @@ func (m *Manager) OpenShell(serverID string, cols, rows int) (*Shell, error) {
 		m.release(sc)
 		return nil, errors.New("the server is reconnecting; try again in a moment")
 	}
-	return m.startShell(sc, cols, rows)
+	return m.startShell(sc, cols, rows, stops)
 }
 
 // Reopen opens a new shell in place of s, whose connection dropped, once
@@ -84,6 +85,7 @@ func (s *Shell) Reopen(cols, rows int) (*Shell, error) {
 		m.mu.Unlock()
 		return nil, ErrShellClosed
 	}
+	stops := m.serverStops[sc.id]
 	sc.mu.Lock()
 	state, failure, done := sc.state, sc.err, sc.done
 	if !done {
@@ -101,7 +103,7 @@ func (s *Shell) Reopen(cols, rows int) (*Shell, error) {
 		m.release(sc)
 		return nil, ErrReconnecting
 	}
-	ns, err := m.startShell(sc, cols, rows)
+	ns, err := m.startShell(sc, cols, rows, stops)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +113,10 @@ func (s *Shell) Reopen(cols, rows int) (*Shell, error) {
 
 // startShell opens a shell on sc, using a reference to sc the caller took
 // (released if it fails).
-func (m *Manager) startShell(sc *serverConn, cols, rows int) (*Shell, error) {
+//
+// stops is the server's StopServer count when the caller began: if the
+// server was stopped since, the shell is closed instead of registered.
+func (m *Manager) startShell(sc *serverConn, cols, rows int, stops uint64) (*Shell, error) {
 	client := sc.currentClient()
 	if client == nil {
 		m.release(sc)
@@ -150,6 +155,12 @@ func (m *Manager) startShell(sc *serverConn, cols, rows int) (*Shell, error) {
 	sh := &Shell{m: m, sc: sc, serverID: sc.id, session: session, stdin: stdin, stdout: stdout,
 		done: make(chan struct{}), dropped: make(chan struct{})}
 	m.mu.Lock()
+	if m.serverStops[sc.id] != stops {
+		m.mu.Unlock()
+		session.Close()
+		m.release(sc)
+		return nil, ErrConnectCancelled
+	}
 	m.shells[sh] = struct{}{}
 	m.mu.Unlock()
 	m.log.Info("terminal opened", "server", sc.id)

@@ -109,7 +109,12 @@ type Manager struct {
 	starting map[string]*startingForward // by service ID; see StartForward
 	shells   map[*Shell]struct{}
 	holds    map[string]*serverConn // by server ID; see Hold
-	closed   bool
+	// How often each server's work was stopped (StopServer) and how often
+	// all holds were (StopAll): a Hold or OpenShell still connecting when
+	// its count changes gives up instead of registering.
+	serverStops map[string]uint64
+	allStops    uint64
+	closed      bool
 
 	traffic *trafficMeter
 }
@@ -132,7 +137,7 @@ func NewManager(cfg Config) *Manager {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, starting: map[string]*startingForward{}, shells: map[*Shell]struct{}{}, holds: map[string]*serverConn{}, traffic: newTrafficMeter()}
+	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, starting: map[string]*startingForward{}, shells: map[*Shell]struct{}{}, holds: map[string]*serverConn{}, serverStops: map[string]uint64{}, traffic: newTrafficMeter()}
 }
 
 func (m *Manager) emit(e Event) {
@@ -173,6 +178,9 @@ func (m *Manager) Resume() {
 // StopServer stops every forward using the server and closes its connection.
 // Call it when a server is edited or deleted.
 func (m *Manager) StopServer(serverID string) {
+	m.mu.Lock()
+	m.serverStops[serverID]++
+	m.mu.Unlock()
 	m.Unhold(serverID)
 	m.cancelStarting(func(p *startingForward) bool { return p.serverID == serverID })
 	for _, f := range m.forwardsFor(serverID) {
@@ -195,6 +203,9 @@ func (m *Manager) StopServer(serverID string) {
 // connection terminals don't use). The Manager stays usable. Called when
 // the vault locks with "close tunnels on lock" enabled.
 func (m *Manager) StopAll() {
+	m.mu.Lock()
+	m.allStops++
+	m.mu.Unlock()
 	m.UnholdAll()
 	m.cancelStarting(func(*startingForward) bool { return true })
 	for _, f := range m.allForwards() {

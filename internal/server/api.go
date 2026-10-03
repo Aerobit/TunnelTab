@@ -372,6 +372,9 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 			"error": "wrong_password", "message": "Wrong master password. Check Caps Lock and your keyboard layout.", "retryAfterMs": s.unlockWait().Milliseconds(),
 		})
 		return
+	case errors.Is(err, vault.ErrLockedMeanwhile):
+		writeError(w, http.StatusConflict, "locked_meanwhile", err.Error())
+		return
 	case err != nil:
 		s.writeDataError(w, err)
 		return

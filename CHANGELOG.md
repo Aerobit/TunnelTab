@@ -29,6 +29,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Unlocking in a second tab while already unlocked no longer brings back an
   older copy of the vault (an edit made meanwhile could be lost on the next
   save), and it still checks the password.
+- Closing a terminal (or any other action) that finishes after TunnelTab
+  locked no longer brings the dashboard back over the unlock screen.
+- Locking while an unlock is still under way now wins: that unlock asks you
+  to try again instead of unlocking with an older copy of the vault.
+- Editing or deleting a server while Connect or a new terminal is still
+  connecting to it now cancels them, instead of leaving a connection or a
+  terminal to the old server.
+- Server health and Find services now give up after their time limit even
+  when the server never answers the request to run the command.
+- Notes typed while earlier notes are being saved are no longer marked as
+  saved (and then replaced on the next redraw).
 - If an update can't start, the rollback now also restores a TunnelTab
   program that was renamed (e.g. to `myssh.exe`), and the clean-up removes
   its `.old` copy.

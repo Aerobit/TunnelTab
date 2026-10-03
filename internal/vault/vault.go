@@ -27,6 +27,9 @@ var (
 	ErrCorrupt       = errors.New("vault file is damaged")
 	ErrUnsupported   = errors.New("vault was created by a newer version of TunnelTab")
 	ErrWeakPassword  = fmt.Errorf("master password must be at least %d characters", MinPasswordLen)
+	// ErrLockedMeanwhile means the vault was locked while an unlock was
+	// under way; that unlock is abandoned rather than undoing the lock.
+	ErrLockedMeanwhile = errors.New("TunnelTab was locked while unlocking: please try again")
 )
 
 // MinPasswordLen is the minimum master password length, in characters.
@@ -49,6 +52,7 @@ type Vault struct {
 	key      []byte      // nil while locked
 	data     *model.Data // nil while locked
 	lastUsed time.Time
+	locks    uint64        // how often Lock locked; see Unlock
 	autoLock time.Duration // 0 = never
 	onLock   []func()
 
@@ -119,8 +123,13 @@ func Open(path, backupPath string, opts Options) (*Vault, error) {
 //
 // Unlocking an unlocked vault only checks the password: the data in memory
 // is newer than (or the same as) the file read here, since it was read
-// before the key derivation, which takes a while.
+// before the key derivation, which takes a while. If the vault is locked
+// during that time, the unlock fails with ErrLockedMeanwhile: the lock came
+// later, and the file read may be older than what was saved before it.
 func (v *Vault) Unlock(password []byte) error {
+	v.mu.RLock()
+	locks := v.locks
+	v.mu.RUnlock()
 	f, err := readFile(v.path)
 	if err != nil {
 		return err
@@ -138,6 +147,9 @@ func (v *Vault) Unlock(password []byte) error {
 		return err
 	}
 
+	if testHookUnlocking != nil {
+		testHookUnlocking()
+	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.key != nil {
@@ -152,9 +164,17 @@ func (v *Vault) Unlock(password []byte) error {
 		v.lastUsed = v.now()
 		return nil
 	}
+	if v.locks != locks {
+		wipe(key)
+		return ErrLockedMeanwhile
+	}
 	v.hdr, v.key, v.data, v.lastUsed = f.header, key, data, v.now()
 	return nil
 }
+
+// testHookUnlocking, if set (by tests), runs in Unlock between reading the
+// file and using it.
+var testHookUnlocking func()
 
 // Lock wipes the key and forgets the decrypted data, then runs the OnLock
 // callbacks. Locking a locked vault does nothing.
@@ -166,6 +186,7 @@ func (v *Vault) Lock() {
 	}
 	wipe(v.key)
 	v.key, v.data = nil, nil
+	v.locks++
 	callbacks := append([]func(){}, v.onLock...)
 	v.mu.Unlock()
 

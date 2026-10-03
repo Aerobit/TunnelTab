@@ -1281,3 +1281,70 @@ func TestThrough(t *testing.T) {
 		t.Fatalf("got %v, called %v", err, called)
 	}
 }
+
+// Editing or deleting a server (StopServer) while a Connect (Hold) or a new
+// terminal (OpenShell) is still connecting cancels them: nothing of the old
+// server is left running once the connection comes up.
+func TestStopServerCancelsConnecting(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		stop func(m *Manager, serverID string)
+		open func(m *Manager, serverID string) error
+	}{
+		{"Hold/StopServer", (*Manager).StopServer, (*Manager).Hold},
+		{"Hold/StopAll", func(m *Manager, _ string) { m.StopAll() }, (*Manager).Hold},
+		{"OpenShell/StopServer", (*Manager).StopServer, func(m *Manager, id string) error {
+			sh, err := m.OpenShell(id, 80, 24)
+			if err == nil {
+				sh.Close()
+			}
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv()
+			srv, s := passwordServer(t, e)
+			resume := srv.PauseHandshakes()
+			t.Cleanup(resume)
+			m := newManager(t, e, nil)
+			errc := make(chan error, 1)
+			go func() { errc <- tc.open(m, s.ID) }()
+			waitFor(t, "the connection to start", func() bool {
+				m.mu.Lock()
+				defer m.mu.Unlock()
+				return m.servers[s.ID] != nil
+			})
+			tc.stop(m, s.ID)
+			resume()
+			select {
+			case err := <-errc:
+				if !errors.Is(err, ErrConnectCancelled) {
+					t.Fatalf("got %v, want ErrConnectCancelled", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("never returned")
+			}
+			if len(m.Held()) != 0 || m.ShellCount() != 0 {
+				t.Fatalf("held %v, %d shells after the server was stopped", m.Held(), m.ShellCount())
+			}
+			waitFor(t, "the connection to close", func() bool { return srv.ActiveConnections() == 0 })
+		})
+	}
+}
+
+// Health checks and Find services must end within their timeout even if the
+// server never answers the request to open a session.
+func TestRunTimeoutCoversOpeningSession(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	srv.StallSessions(true)
+	m := newManager(t, e, nil)
+	start := time.Now()
+	_, err := m.Run(s.ID, "scan", 1024, 200*time.Millisecond)
+	if err == nil || time.Since(start) > 2*time.Second {
+		t.Fatalf("got %v after %v, want a timeout after 200ms", err, time.Since(start))
+	}
+	if srv.Stalled() != 1 {
+		t.Fatalf("%d session requests left hanging, want 1", srv.Stalled())
+	}
+}

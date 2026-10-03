@@ -26,6 +26,9 @@ var (
 	// ErrStartCancelled is returned by StartForward when the service was
 	// stopped (or its server stopped) while it was starting.
 	ErrStartCancelled = errors.New("the tunnel was stopped while it was starting")
+	// ErrConnectCancelled is returned by Hold and OpenShell when the server
+	// was stopped (edited or deleted, say) while they were connecting.
+	ErrConnectCancelled = errors.New("the server was stopped or changed while connecting")
 )
 
 // UnknownHostKeyError means the server's host key hasn't been confirmed yet.

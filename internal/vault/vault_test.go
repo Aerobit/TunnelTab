@@ -498,3 +498,34 @@ func TestUnlockWhenUnlockedKeepsData(t *testing.T) {
 		t.Fatal("a wrong password locked the vault")
 	}
 }
+
+// A lock that lands while an unlock is deriving its key wins: the unlock
+// must not unlock again with the file it read before an edit was saved.
+func TestLockDuringUnlockWins(t *testing.T) {
+	v, _ := create(t)
+	v.Lock()
+	addDuringUnlock := func() {
+		// Another tab unlocks, saves an edit, and TunnelTab locks again.
+		testHookUnlocking = nil
+		if err := v.Unlock([]byte(pw)); err != nil {
+			t.Fatal(err)
+		}
+		addSample(t, v, "hunter2")
+		v.Lock()
+	}
+	testHookUnlocking = addDuringUnlock
+	t.Cleanup(func() { testHookUnlocking = nil })
+
+	if err := v.Unlock([]byte(pw)); !errors.Is(err, ErrLockedMeanwhile) {
+		t.Fatalf("got %v, want ErrLockedMeanwhile", err)
+	}
+	if v.Unlocked() {
+		t.Fatal("the unlock undid the later lock")
+	}
+	if err := v.Unlock([]byte(pw)); err != nil {
+		t.Fatal(err)
+	}
+	if pr, _, _ := counts(t, v); pr != 1 {
+		t.Fatalf("got %d projects, want the 1 saved during the first unlock", pr)
+	}
+}

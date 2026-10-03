@@ -419,6 +419,9 @@ window.addEventListener("hashchange", () => {
 });
 
 function renderDashboard() {
+  // Never over the unlock (or setup) screen: a request that was under way
+  // when TunnelTab locked may finish with a redraw.
+  if (state.vault !== "unlocked" || !state.data) return;
   const d = state.data;
   let r = currentRoute();
   const server = r.page === "server" ? d.servers.find((s) => s.id === r.id) : null;
@@ -1023,11 +1026,13 @@ function renderNotesTab(s) {
     });
     save.addEventListener("click", async () => {
       save.disabled = true;
+      const text = textarea.value; // typing goes on while this is saved
       try {
-        await api("PUT", `/servers/${encodeURIComponent(s.id)}/notes`, { notes: textarea.value });
-        ed.saved = textarea.value;
-        status.className = "inline-status ok";
-        status.textContent = "Saved.";
+        await api("PUT", `/servers/${encodeURIComponent(s.id)}/notes`, { notes: text });
+        ed.saved = text;
+        const more = textarea.value !== text;
+        status.className = more ? "inline-status" : "inline-status ok";
+        status.textContent = more ? "Not saved yet" : "Saved.";
       } catch (err) {
         status.className = "inline-status bad";
         status.textContent = err.message;

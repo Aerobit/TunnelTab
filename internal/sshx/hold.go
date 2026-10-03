@@ -12,6 +12,7 @@ package sshx
 func (m *Manager) Hold(serverID string) error {
 	m.mu.Lock()
 	_, held := m.holds[serverID]
+	stops := m.holdStops(serverID)
 	m.mu.Unlock()
 	if held {
 		return nil
@@ -21,12 +22,17 @@ func (m *Manager) Hold(serverID string) error {
 		return err
 	}
 	m.mu.Lock()
-	if _, held := m.holds[serverID]; held || m.closed {
-		// Another Hold won the race (or the Manager closed meanwhile).
+	if _, held := m.holds[serverID]; held || m.closed || m.holdStops(serverID) != stops {
+		// Another Hold won the race, the server was stopped (or the Manager
+		// closed) meanwhile.
+		cancelled := !held && !m.closed
 		m.mu.Unlock()
 		m.release(sc)
-		if m.isClosed() {
+		switch {
+		case m.isClosed():
 			return ErrClosed
+		case cancelled:
+			return ErrConnectCancelled
 		}
 		return nil
 	}
@@ -38,6 +44,12 @@ func (m *Manager) Hold(serverID string) error {
 	m.mu.Unlock()
 	m.emit(st.event())
 	return nil
+}
+
+// holdStops counts what drops a server's hold: StopServer and StopAll.
+// Call with m.mu held.
+func (m *Manager) holdStops(serverID string) uint64 {
+	return m.serverStops[serverID] + m.allStops
 }
 
 // Unhold drops the server's hold, if any. The connection closes unless a

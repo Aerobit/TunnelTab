@@ -49,24 +49,51 @@ func (m *Manager) Run(serverID, command string, limit int, timeout time.Duration
 	return sc.run(command, limit, timeout)
 }
 
+var errTooSlow = errors.New("the server took too long to answer")
+
 func (sc *serverConn) run(command string, limit int, timeout time.Duration) ([]byte, error) {
 	client := sc.currentClient()
 	if client == nil {
 		return nil, ErrNotConnected
 	}
-	session, err := client.NewSession()
-	if err != nil {
-		return nil, fmt.Errorf("can't open a session: %w", err)
+	// The timeout covers opening the session too: a server can keep
+	// answering keepalives yet never answer the request for one.
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	type opened struct {
+		session *ssh.Session
+		err     error
+	}
+	ch := make(chan opened, 1)
+	go func() {
+		s, err := client.NewSession()
+		ch <- opened{s, err}
+	}()
+	var session *ssh.Session
+	select {
+	case o := <-ch:
+		if o.err != nil {
+			return nil, fmt.Errorf("can't open a session: %w", o.err)
+		}
+		session = o.session
+	case <-deadline.C:
+		go func() { // close it if it opens after all
+			if o := <-ch; o.session != nil {
+				o.session.Close()
+			}
+		}()
+		return nil, errTooSlow
 	}
 	defer session.Close()
 	out := &limitedBuffer{limit: limit}
 	session.Stdout = out
 	done := make(chan error, 1)
 	go func() { done <- session.Run(command) }()
+	var err error
 	select {
 	case err = <-done:
-	case <-time.After(timeout):
-		return nil, errors.New("the server took too long to answer")
+	case <-deadline.C:
+		return nil, errTooSlow
 	}
 	var exit *ssh.ExitError
 	if err != nil && !errors.As(err, &exit) {

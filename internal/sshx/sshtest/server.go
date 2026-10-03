@@ -64,6 +64,7 @@ type Server struct {
 
 	gate    atomic.Pointer[chan struct{}] // see PauseHandshakes
 	stall   atomic.Bool                   // see StallForwards
+	stallS  atomic.Bool                   // see StallSessions
 	stalled atomic.Int64
 }
 
@@ -149,7 +150,12 @@ func (s *Server) PauseHandshakes() (resume func()) {
 // called with false. Stalled reports how many requests it left hanging.
 func (s *Server) StallForwards(stall bool) { s.stall.Store(stall) }
 
-// Stalled returns how many forwarding requests StallForwards left hanging.
+// StallSessions is StallForwards for session requests (shells and
+// one-off commands).
+func (s *Server) StallSessions(stall bool) { s.stallS.Store(stall) }
+
+// Stalled returns how many requests StallForwards and StallSessions left
+// hanging.
 func (s *Server) Stalled() int { return int(s.stalled.Load()) }
 
 // Close stops the server and closes all connections.
@@ -275,6 +281,10 @@ func (s *Server) handle(nc net.Conn, cfg *ssh.ServerConfig) {
 		case "direct-tcpip":
 			go s.handleDirectTCPIP(nc)
 		case "session":
+			if s.stallS.Load() {
+				s.stalled.Add(1) // never answered
+				continue
+			}
 			go handleSession(nc, s.opts)
 		default:
 			nc.Reject(ssh.UnknownChannelType, "unsupported channel type")
