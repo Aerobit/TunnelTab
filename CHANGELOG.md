@@ -6,6 +6,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Locking now always closes open dialogs before showing the unlock screen,
+  also when the dashboard learns of the lock late (its connection to
+  TunnelTab was away) or from a refused request. Before, a dialog such as
+  Edit server, with a key or password typed into it, could stay on top of
+  the unlock screen.
+- A tunnel no longer starts with old settings when its service is edited or
+  deleted while the start is on its way (Start, or "start after unlocking"
+  while an earlier service is still connecting).
+- Auto-lock no longer locks just as activity arrives at the timeout: the
+  check and the lock are now one step.
+
 ## [0.8.3] - 2026-10-03
 
 ### Fixed

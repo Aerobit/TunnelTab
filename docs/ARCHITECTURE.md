@@ -122,7 +122,10 @@ data/
 **API:** `Create` (new vault, returned unlocked) · `Open` (existing, locked) ·
 `Unlock` · `Lock` · `View(fn)` (read a copy) · `Update(fn)` (change a copy;
 validated, saved, then swapped in) · `ChangePassword` · `Touch` /
-`SetAutoLock` / `LockIfIdle` / `RunAutoLock` · `OnLock(fn)` callbacks.
+`SetAutoLock` / `LockIfIdle` / `RunAutoLock` · `OnLock(fn)` callbacks
+(run after the vault's lock is released). `LockIfIdle` checks for
+inactivity and locks in one step, so activity either counts or waits for
+the lock.
 
 **File format** (`data/vault.enc`, JSON):
 
@@ -403,10 +406,17 @@ Run after Start (once the tunnel is up), on **Check**
 (`POST /services/{id}/check`), by the dashboard on **Open** when the last
 result wasn't OK, and in Find services. Results are in memory, sent as
 `check` events and in `GET /api/data`, and dropped when the service is
-edited or deleted. A check still running then discards its result: each
-service has a change counter (raised by `dropCheck`), read before the
-service itself, and a result is stored and published only if the counter
-is unchanged (the Check button then answers `{check: null}`).
+edited or deleted. A check still running then discards its result, and a
+tunnel start (Start, auto-start) still on its way is cancelled: each
+service has a change counter (`servicever.go`; raised by `serviceChanged`
+after an edit or delete is saved, before `StopForward`), read before the
+service itself. A check result is stored and published only if the counter
+is unchanged (the Check button then answers `{check: null}`); a start
+passes the comparison to `Manager.StartForwardIf`, which asks it under the
+manager's lock as it publishes the forward, so either the forward is
+published first and `StopForward` stops it, or it is refused
+(`ErrStartCancelled`). Auto-start takes all counters before it reads the
+services.
 
 
 ## Terminals
@@ -512,7 +522,7 @@ the executable as-is.
 | `js/dom.js` | `h(tag, attrs, …children)` element builder — text is always inserted as text nodes, never `innerHTML` |
 | `js/dialogs.js` | Native `<dialog>` modals (`openDialog`, `confirmDialog`), form `field`/`checkbox`, `tabs` (Settings), toasts |
 | `js/forms.js` | Project/server/service/settings dialogs; `withHostKeys(fn)` runs a connecting call and handles fingerprint confirmation |
-| `js/app.js` | Screens (signed out, setup, unlock, dashboard), state, rendering, live events, actions |
+| `js/app.js` | Screens (signed out, setup, unlock, dashboard), state, rendering, live events, actions. Every way into the locked state goes through `enterLocked` (closes and removes dialogs, then the unlock screen); a resync's `/api/state` answer is dropped if a vault event arrived meanwhile |
 | `js/termview.js` | `TermView`: one terminal session (xterm.js + WebSocket), used by the dashboard and the terminal page |
 | `terminal.html`, `js/terminal.js`, `terminal.css` | The terminal page (see Terminals) |
 | `vendor/xterm/` | xterm.js 6 + fit addon (MIT), bundled; see its README to update |

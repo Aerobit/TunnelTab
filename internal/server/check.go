@@ -34,21 +34,11 @@ type checkEvent struct {
 type checkStore struct {
 	mu       sync.Mutex
 	readings map[string]checkReading // by service ID
-	changes  map[string]uint64       // by service ID: edits and deletes so far
-}
-
-// checkVersion is the number of times the service was edited or deleted.
-// Callers take it before reading the service, so that an edit saved after
-// that read always makes the check's result stale.
-func (s *Server) checkVersion(id string) uint64 {
-	s.checks.mu.Lock()
-	defer s.checks.mu.Unlock()
-	return s.checks.changes[id]
 }
 
 // checkService checks one service and records the result, unless the
-// service was edited or deleted since version was taken: then the result
-// describes settings that no longer exist, and ok is false.
+// service was edited or deleted since version (serviceVersion) was taken:
+// then the result describes settings that no longer exist, and ok is false.
 func (s *Server) checkService(svc model.Service, version uint64) (reading checkReading, ok bool, err error) {
 	var res webcheck.Result
 	err = s.mgr.Through(svc.ServerID, func(dial func(string, int) (net.Conn, error)) {
@@ -62,7 +52,7 @@ func (s *Server) checkService(svc model.Service, version uint64) (reading checkR
 	// land (or reach the dashboards) after the service changed.
 	s.checks.mu.Lock()
 	defer s.checks.mu.Unlock()
-	if s.checks.changes[svc.ID] != version {
+	if s.serviceVersion(svc.ID) != version {
 		s.log.Info("service check discarded: the service changed", "service", svc.ID)
 		return checkReading{}, false, nil
 	}
@@ -72,12 +62,11 @@ func (s *Server) checkService(svc model.Service, version uint64) (reading checkR
 	return reading, true, nil
 }
 
-// dropCheck forgets a service's result (it was edited or deleted) and makes
-// checks still running for it discard theirs.
+// dropCheck forgets a service's result (it was edited or deleted; see
+// serviceChanged).
 func (s *Server) dropCheck(id string) {
 	s.checks.mu.Lock()
 	defer s.checks.mu.Unlock()
-	s.checks.changes[id]++
 	if _, had := s.checks.readings[id]; had {
 		delete(s.checks.readings, id)
 		s.events.publish(checkEvent{Type: "check", ServiceID: id})
@@ -97,7 +86,7 @@ func (s *Server) checkReadings() map[string]checkReading {
 // handleCheckService (the Check button) checks a service now. It may
 // connect to the server, like Start.
 func (s *Server) handleCheckService(w http.ResponseWriter, r *http.Request) {
-	version := s.checkVersion(r.PathValue("id")) // before reading the service: see checkVersion
+	version := s.serviceVersion(r.PathValue("id")) // before reading the service
 	var svc model.Service
 	if err := s.view(func(d *model.Data) error {
 		var ok bool

@@ -71,7 +71,10 @@ async function start() {
 }
 
 async function loadState() {
-  const st = await api("GET", "/state");
+  return applyState(await api("GET", "/state"));
+}
+
+function applyState(st) {
   state.vault = st.vault;
   state.version = st.version;
   state.minPasswordLen = st.minPasswordLen;
@@ -82,8 +85,19 @@ async function loadState() {
 async function route() {
   // Don't redraw a form the user may be typing into.
   if (state.vault === "none") return currentScreen === "setup" || showSetup();
-  if (state.vault === "locked") return currentScreen === "unlock" || showUnlock();
+  if (state.vault === "locked") return enterLocked();
   await loadData();
+}
+
+/**
+ * Every way into the locked state goes through here: open dialogs are closed
+ * (and removed: a server form may hold a pasted key or password), then the
+ * unlock screen is shown — unless it already is (the user may be typing).
+ */
+function enterLocked() {
+  state.vault = "locked";
+  closeDialogs();
+  if (currentScreen !== "unlock") showUnlock();
 }
 
 // --- Simple screens ---------------------------------------------------------
@@ -121,6 +135,7 @@ function showStopped() {
   stopEvents?.();
   stopEvents = null;
   dropViews();
+  closeDialogs();
   messageScreen("TunnelTab has stopped", h("p", {}, "All tunnels are closed. You can close this tab."));
 }
 
@@ -291,16 +306,26 @@ async function loadData() {
     renderDashboard();
     allViews().forEach((v) => v.resume()); // after an unlock
   } catch (err) {
-    if (err.code === "locked") {
-      state.vault = "locked";
-      return showUnlock();
-    }
+    if (err.code === "locked") return enterLocked();
     if (err.code === "no_vault") {
       state.vault = "none";
       return showSetup();
     }
     toast(err.message, "error");
   }
+}
+
+// Events may have been missed while the event stream was away (a lock among
+// them): ask for the state. A vault event that arrives while asking is newer
+// than the answer, which is then dropped.
+let vaultEvents = 0;
+function resync() {
+  const seen = vaultEvents;
+  api("GET", "/state").then((st) => {
+    if (seen !== vaultEvents) return;
+    applyState(st);
+    return route();
+  }).catch(() => {});
 }
 
 const reloadSoon = debounce(() => state.vault === "unlocked" && loadData(), 150);
@@ -323,14 +348,13 @@ function onEvent(ev) {
       break;
     case "resync":
     case "data":
-      if (ev.type === "resync") loadState().then(route).catch(() => {});
+      if (ev.type === "resync") resync();
       else reloadSoon();
       break;
     case "vault":
+      vaultEvents++;
       if (ev.state === "locked" && state.vault !== "locked") {
-        state.vault = "locked";
-        closeDialogs();
-        showUnlock();
+        enterLocked();
       } else if (ev.state === "unlocked" && state.vault !== "unlocked") {
         state.vault = "unlocked";
         loadData();
@@ -1554,9 +1578,7 @@ async function openSettings() {
 async function lock() {
   try {
     await api("POST", "/vault/lock");
-    state.vault = "locked";
-    closeDialogs();
-    showUnlock();
+    enterLocked();
   } catch (err) {
     toast(err.message, "error");
   }

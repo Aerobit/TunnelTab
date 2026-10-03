@@ -76,6 +76,16 @@ func (m *Manager) cancelStarting(match func(*startingForward) bool) {
 // key, retry), *HostKeyChangedError, ErrAuthFailed, ErrKeyPassphrase and
 // ErrPortInUse; ErrStartCancelled if the service was stopped meanwhile.
 func (m *Manager) StartForward(svc model.Service) (ForwardStatus, error) {
+	return m.StartForwardIf(svc, nil)
+}
+
+// StartForwardIf is StartForward for settings that may have changed since
+// they were read: current (if not nil) is asked, under m.mu, just before the
+// forward is published, and the start is cancelled (ErrStartCancelled) if it
+// says no. current must not call into m. A caller that edits a service makes
+// current answer no before calling StopForward, so either the forward is
+// published first and StopForward stops it, or current refuses it.
+func (m *Manager) StartForwardIf(svc model.Service, current func() bool) (ForwardStatus, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -117,13 +127,15 @@ func (m *Manager) StartForward(svc model.Service) (ForwardStatus, error) {
 	f := &forward{m: m, svc: svc, sc: sc, ln: ln, port: ln.Addr().(*net.TCPAddr).Port, conns: map[net.Conn]struct{}{}, stop: make(chan struct{})}
 	m.mu.Lock()
 	closed := m.closed
-	current := !closed && m.starting[svc.ID] == p
-	if current {
+	ok := !closed && m.starting[svc.ID] == p && (current == nil || current())
+	if m.starting[svc.ID] == p {
 		delete(m.starting, svc.ID)
+	}
+	if ok {
 		m.forwards[svc.ID] = f
 	}
 	m.mu.Unlock()
-	if !current {
+	if !ok {
 		ln.Close()
 		m.release(sc)
 		if closed {

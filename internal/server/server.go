@@ -95,9 +95,10 @@ type Server struct {
 	pendingKeys map[string]pendingKey
 
 	terms      terminals
-	activity   activityLog // recent events, in memory only
-	health     healthStore // opt-in server health readings, in memory only
-	checks     checkStore  // service check results, in memory only
+	activity   activityLog     // recent events, in memory only
+	health     healthStore     // opt-in server health readings, in memory only
+	checks     checkStore      // service check results, in memory only
+	versions   serviceVersions // change counts of services (servicever.go)
 	stopReaper chan struct{}
 	closeOnce  sync.Once
 
@@ -138,7 +139,8 @@ func New(cfg Config) (*Server, error) {
 		pendingKeys:  map[string]pendingKey{},
 		terms:        newTerminals(),
 		health:       healthStore{readings: map[string]healthReading{}, running: map[string]bool{}},
-		checks:       checkStore{readings: map[string]checkReading{}, changes: map[string]uint64{}},
+		checks:       checkStore{readings: map[string]checkReading{}},
+		versions:     serviceVersions{n: map[string]uint64{}},
 		stopReaper:   make(chan struct{}),
 		started:      make(chan struct{}),
 	}

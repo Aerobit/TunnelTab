@@ -562,3 +562,67 @@ func TestSaveTooLargeRefused(t *testing.T) {
 		t.Fatalf("the vault no longer opens: %v", err)
 	}
 }
+
+// Auto-lock checks for inactivity and locks in one step: activity arriving
+// during the check waits for the lock rather than slipping in between and
+// being ignored, and OnLock callbacks run after the vault's lock is released.
+func TestLockIfIdleIsOneStep(t *testing.T) {
+	v, _ := create(t)
+	start := time.Now()
+	var mu sync.Mutex
+	now, arm := start, false
+	touched := make(chan bool, 1) // whether the vault was unlocked when Touch returned
+	v.now = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		if arm { // LockIfIdle's check: activity arrives now
+			arm = false
+			go func() {
+				v.Touch()
+				touched <- v.Unlocked()
+			}()
+			time.Sleep(50 * time.Millisecond) // give Touch every chance to get in
+		}
+		return now
+	}
+	v.SetAutoLock(time.Minute)
+	callbackSawUnlocked := make(chan bool, 1)
+	v.OnLock(func() { callbackSawUnlocked <- v.Unlocked() }) // would deadlock under v.mu
+
+	// Activity before the check counts.
+	mu.Lock()
+	now = start.Add(2 * time.Minute)
+	mu.Unlock()
+	v.Touch()
+	if v.LockIfIdle() {
+		t.Fatal("locked right after activity")
+	}
+
+	mu.Lock()
+	now, arm = now.Add(2*time.Minute), true
+	mu.Unlock()
+	if !v.LockIfIdle() {
+		t.Fatal("did not lock after the timeout")
+	}
+	select {
+	case unlocked := <-callbackSawUnlocked:
+		if unlocked {
+			t.Fatal("OnLock ran before the vault was locked")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("OnLock never ran")
+	}
+	select {
+	case unlocked := <-touched:
+		if unlocked {
+			t.Fatal("activity during the idle check got in before the lock: the check and the lock aren't one step")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Touch never returned")
+	}
+
+	// Locked meanwhile: nothing to do, and it says so.
+	if v.LockIfIdle() {
+		t.Fatal("LockIfIdle reported locking a locked vault")
+	}
+}

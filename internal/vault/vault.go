@@ -183,17 +183,28 @@ var testHookUnlocking func()
 // callbacks. Locking a locked vault does nothing.
 func (v *Vault) Lock() {
 	v.mu.Lock()
+	callbacks, locked := v.lockHeld()
+	v.mu.Unlock()
+	if locked {
+		runAll(callbacks)
+	}
+}
+
+// lockHeld wipes the key and forgets the data; the caller holds v.mu. It
+// returns the OnLock callbacks, to run once v.mu is released, and whether it
+// locked (false: already locked).
+func (v *Vault) lockHeld() (callbacks []func(), locked bool) {
 	if v.key == nil {
-		v.mu.Unlock()
-		return
+		return nil, false
 	}
 	wipe(v.key)
 	v.key, v.data = nil, nil
 	v.locks++
-	callbacks := append([]func(){}, v.onLock...)
-	v.mu.Unlock()
+	return append([]func(){}, v.onLock...), true
+}
 
-	for _, fn := range callbacks {
+func runAll(fns []func()) {
+	for _, fn := range fns {
 		fn()
 	}
 }
@@ -322,15 +333,21 @@ func (v *Vault) OnLock(fn func()) {
 }
 
 // LockIfIdle locks the vault if auto-lock is enabled and the vault has been
-// unused for at least the timeout. It reports whether it locked.
+// unused for at least the timeout. It reports whether it locked. The check
+// and the lock are one step, so activity (Touch, a save, a new timeout, an
+// unlock) either comes before the check and counts, or waits for the lock.
 func (v *Vault) LockIfIdle() bool {
-	v.mu.RLock()
-	idle := v.key != nil && v.autoLock > 0 && v.now().Sub(v.lastUsed) >= v.autoLock
-	v.mu.RUnlock()
-	if idle {
-		v.Lock()
+	v.mu.Lock()
+	var callbacks []func()
+	locked := false
+	if v.key != nil && v.autoLock > 0 && v.now().Sub(v.lastUsed) >= v.autoLock {
+		callbacks, locked = v.lockHeld()
 	}
-	return idle
+	v.mu.Unlock()
+	if locked {
+		runAll(callbacks)
+	}
+	return locked
 }
 
 // RunAutoLock checks for inactivity every interval until ctx is done.

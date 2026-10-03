@@ -441,8 +441,11 @@ func (s *Server) tooManyAttempts(w http.ResponseWriter) bool {
 	return true
 }
 
-// autoStart starts services marked "start after unlocking".
+// autoStart starts services marked "start after unlocking", one after the
+// other. A service edited or deleted before its turn isn't started with the
+// settings read here: the change counts are taken before reading them.
 func (s *Server) autoStart() {
+	versions := s.allServiceVersions()
 	var services []model.Service
 	s.view(func(d *model.Data) error {
 		for _, svc := range d.Services {
@@ -453,7 +456,10 @@ func (s *Server) autoStart() {
 		return nil
 	})
 	for _, svc := range services {
-		if _, err := s.mgr.StartForward(svc); err != nil {
+		_, err := s.startForward(svc, versions[svc.ID])
+		if errors.Is(err, sshx.ErrStartCancelled) {
+			s.log.Info("auto-start skipped: the service changed or was stopped", "service", svc.ID)
+		} else if err != nil {
 			s.log.Info("auto-start failed", "service", svc.ID, "reason", sshx.ErrorKind(err))
 			s.events.publish(tunnelEvent{Type: "tunnel", Event: sshx.Event{
 				Kind: "forward", ID: svc.ID, ServerID: svc.ServerID, State: sshx.StateFailed, Error: err.Error(),
@@ -631,8 +637,7 @@ func (s *Server) handleUpdateService(w http.ResponseWriter, r *http.Request) {
 		s.writeDataError(w, err)
 		return
 	}
-	s.mgr.StopForward(out.ID) // settings changed: the user restarts it
-	s.dropCheck(out.ID)
+	s.serviceChanged(out.ID) // stops its tunnel: the user restarts it
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -642,8 +647,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 		s.writeDataError(w, err)
 		return
 	}
-	s.mgr.StopForward(id)
-	s.dropCheck(id)
+	s.serviceChanged(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -684,7 +688,7 @@ func (s *Server) handleOrder(w http.ResponseWriter, r *http.Request, fn func(d *
 
 func (s *Server) handleStartService(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	version := s.checkVersion(id) // before reading the service: see checkVersion
+	version := s.serviceVersion(id) // before reading the service
 	var svc model.Service
 	if err := s.view(func(d *model.Data) error {
 		var ok bool
@@ -696,7 +700,7 @@ func (s *Server) handleStartService(w http.ResponseWriter, r *http.Request) {
 		s.writeDataError(w, err)
 		return
 	}
-	st, err := s.mgr.StartForward(svc)
+	st, err := s.startForward(svc, version)
 	if err != nil {
 		s.writeSSHError(w, err)
 		return

@@ -479,6 +479,46 @@ function start(cmd, args, opts) {
   await page.locator(".pill.active").waitFor();
   step("edit server keeps the saved password, and a rename keeps the tunnel running");
 
+  // Every way into the locked screen closes open dialogs (a server form may
+  // hold a pasted key). A second dashboard tab whose event stream is away
+  // misses the lock event; when the stream is back, its resync finds the
+  // vault locked. Then a "locked" answer while it loads its data.
+  const away = await context.newPage();
+  await away.route("**/api/events**", (r) => r.abort());
+  await away.goto(page.url());
+  const openEditServer = async () => {
+    await away.locator(".page-head").getByRole("button", { name: /More actions/ }).click();
+    await away.getByRole("menuitem", { name: "Edit server" }).click();
+    await away.getByLabel("Password", { exact: true }).fill("secret typed into a form");
+  };
+  const lockedAndCleared = async (how) => {
+    await away.getByRole("heading", { name: "Unlock TunnelTab" }).waitFor();
+    assert.strictEqual(await away.locator("dialog").count(), 0, `${how}: a dialog was left over the unlock screen`);
+  };
+  const callAPI = (method, p, body) => page.evaluate(async ([method, p, body]) => {
+    const r = await fetch("/api" + p, { method, body: body && JSON.stringify(body), headers: {
+      Authorization: "Bearer " + localStorage.getItem("tunneltab.session"), "Content-Type": "application/json" } });
+    return r.status === 200 ? r.json() : r.status;
+  }, [method, p, body]);
+  await openEditServer();
+  await callAPI("POST", "/vault/lock");
+  await page.getByRole("heading", { name: "Unlock TunnelTab" }).waitFor();
+  await away.waitForTimeout(500);
+  assert.strictEqual(await away.locator("dialog").count(), 1, "the tab without events heard of the lock anyway");
+  await away.unroute("**/api/events**");
+  await lockedAndCleared("missed lock event");
+  await page.getByLabel("Master password").fill("a brand new passphrase");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.locator(".page-head").getByRole("button", { name: /More actions/ }).waitFor();
+  await openEditServer();
+  await away.route("**/api/data", (r) => r.fulfill({ status: 423, contentType: "application/json",
+    body: JSON.stringify({ error: "locked", message: "TunnelTab is locked" }) }));
+  const projects = (await callAPI("GET", "/data")).data.projects.map((p) => p.id);
+  await callAPI("PUT", "/projects/order", { ids: projects }); // a "data" event: the tab reloads its data
+  await lockedAndCleared("locked answer while loading");
+  await away.close();
+  step("a missed lock event or a \"locked\" answer still closes dialogs (with what they hold) for the unlock screen");
+
   // A "Confirm new server" question answered after another key was
   // confirmed for that server (e.g. in another tab): the dialog closes and
   // it connects again by itself. A second fake SSH server, restarted on the

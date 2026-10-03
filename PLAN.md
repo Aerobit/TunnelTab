@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.3 released** (2026-10-03). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.3 released** (2026-10-03); v0.8.4 fixes in progress (§20). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon), §19 and §20. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -608,3 +608,25 @@ test pass, and both new tests fail on the old code.
 Tests: server test with a service whose check is held open while the
 service is edited / deleted (no result stored or published), plus a browser
 test locking with an ended popped-out terminal.
+
+## 20. v0.8.4 — Fifth review round (2026-10-03)
+
+An external review of v0.8.3 found three issues; all were confirmed in the
+code. The fix plan was reviewed too, and its corrections (counters taken
+before auto-start's snapshot, tests that open the gap *before* a start is
+reserved, the auto-lock test's expectation, a guard for stale resync
+answers) are included. All fixed (not yet committed); `go test ./...` and
+the browser test pass, and every new test fails on the old code.
+
+| # | Issue | Fix |
+|---|---|---|
+| R1 (P1) | **Dialogs could stay over the unlock screen.** Only the `vault` event and the Lock button closed dialogs; the resync path (`route()`) and a "locked" answer in `loadData` went straight to the unlock screen, leaving e.g. an Edit server form with a pasted key on top. | One `enterLocked()` for every way in: closes (and removes) dialogs, then the unlock screen. "TunnelTab has stopped" closes dialogs too. A resync's `/api/state` answer is dropped if a vault event arrived while asking (as the terminal page does). |
+| R2 (P2) | **A tunnel could start with old settings.** Auto-start reads all services, then starts them one by one; Start reads the service, then reserves it. An edit or delete in between found nothing for `StopForward` to cancel. | The v0.8.3 change counter moved to `servicever.go` and now covers starts: `serviceChanged` raises it (lock released) before `StopForward`; Start and auto-start take it before reading services (auto-start: all of them, before its snapshot) and start with `Manager.StartForwardIf`, which compares it under the manager's lock as it publishes the forward. |
+| R3 (P2) | **Auto-lock could ignore activity at the timeout.** `LockIfIdle` checked under a read lock, released it, then called `Lock`. | Check and lock under one write lock (`lockHeld`); OnLock callbacks run after it is released; returns whether it locked. |
+
+Tests: `TestLockIfIdleIsOneStep`; `TestAutoStartSkipsChangedService` (an
+earlier service's handshake held while a later one is edited / deleted) and
+`TestStartSkipsChangedService` (paused between reading the service and
+starting); browser test: a dashboard tab with its event stream cut misses
+the lock (Edit server dialog open), and a "locked" answer to its data
+request — both leave no dialog over the unlock screen.
