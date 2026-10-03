@@ -103,9 +103,10 @@ function foundAs(c) {
   if (c.container) parts.push(`Docker container ${c.container}${c.image ? ` (${c.image})` : ""}`);
   else if (c.process) parts.push(`program ${c.process}`);
   if (c.kind === "other") parts.push(c.app ? `${c.app}, not a web page` : "not a web page");
-  // Listening only on the server itself is the usual, safe case: not mentioned.
+  // Listening only on 127.0.0.1 is the usual, safe case: not mentioned.
+  // Any other address is shown: one port can hold a service on each.
   if (c.listen === "all") parts.push("open on all addresses");
-  else if (c.listen === "other") parts.push(`only on ${c.host}`);
+  else if (c.host !== "127.0.0.1") parts.push(`only on ${c.host}`);
   const text = parts.join(" · ") || "listening port";
   if (!c.check) return text;
   const ok = c.check.state === "responding";

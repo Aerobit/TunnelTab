@@ -11,6 +11,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Service checks (Check, Start, Open and Find services) no longer wait past
   their 4-second limit when the server doesn't answer the request to open a
   connection to the service; such a port now shows as not answering.
+- Find services no longer merges different services that listen on the same
+  port at different addresses, and no longer suggests 127.0.0.1 for a
+  service that listens only on another loopback address such as 127.0.0.2
+  (its tunnel would have gone to the wrong place). The address is shown
+  whenever it isn't 127.0.0.1.
 
 ## [0.8.0] - 2026-10-03
 

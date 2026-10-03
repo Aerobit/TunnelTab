@@ -371,12 +371,16 @@ so it closes unless a tunnel or terminal uses it), runs the constant
 three-field JSON format; `;` only, so it works in fish too), 20 s timeout,
 256 KiB output limit. `discover.Parse` prefers `ss` (falls back to
 `netstat`), joins listening ports with published container ports (one
-candidate per port), names them by a built-in table of well-known images
+candidate per port and address: a port listening on every address is one,
+otherwise each address is its own, with `127.0.0.1` and `::1` counted as
+one), names them by a built-in table of well-known images
 (then ports), else by container or program name (cleaned: printable, ≤ 60
-characters), and picks the address to tunnel to (`127.0.0.1` for loopback
-or all-address listeners). At most 200 candidates; every candidate makes a
-valid service (fuzzed). The server marks ports that already have a
-service; the result isn't stored. The user ticks rows and `POST
+characters), and picks the address to tunnel to (`127.0.0.1` for all-address
+listeners and 127.0.0.1, otherwise the address listened on, such as
+`127.0.0.2` or `::1`). At most 200 candidates; every candidate makes a
+valid service (fuzzed). The server marks candidates that already have a
+service (same port and address; localhost, `127.0.0.1` and `::1` count as
+one); the result isn't stored. The user ticks rows and `POST
 /servers/{id}/services` adds them in one vault update. Each search adds an
 activity line (kind `discover`).
 The scan and the checks share one connection (`Manager.Through` around

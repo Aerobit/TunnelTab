@@ -155,3 +155,22 @@ func TestAddServices(t *testing.T) {
 		{"label": "x", "remoteHost": "127.0.0.1", "remotePort": 1, "protocol": "http"},
 	}}, 404)
 }
+
+func TestSameHost(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want bool
+	}{
+		{"localhost", "127.0.0.1", true},
+		{"::1", "127.0.0.1", true},
+		{"LOCALHOST", "::1", true},
+		{"10.0.0.5", "10.0.0.5", true},
+		{"127.0.0.2", "127.0.0.1", false},
+		{"127.0.0.53", "localhost", false},
+		{"10.0.0.5", "127.0.0.1", false},
+	} {
+		if got := sameHost(tc.a, tc.b); got != tc.want {
+			t.Errorf("sameHost(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
+	}
+}

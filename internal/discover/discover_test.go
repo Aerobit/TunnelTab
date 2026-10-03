@@ -2,6 +2,7 @@ package discover
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -56,7 +57,7 @@ func TestParseUbuntuWithDocker(t *testing.T) {
 		3000:  {Name: "Grafana", Host: "127.0.0.1", Port: 3000, Protocol: "http", Kind: KindWeb, App: "Grafana", Container: "grafana", Image: "grafana/grafana-oss", Listen: "all"},
 		9443:  {Name: "Portainer", Host: "127.0.0.1", Port: 9443, Protocol: "https", Kind: KindWeb, App: "Portainer", Container: "portainer", Image: "portainer/portainer-ce", Listen: "local"},
 		22:    {Name: "SSH", Host: "127.0.0.1", Port: 22, Protocol: "http", Kind: KindOther, App: "SSH", Listen: "all"},
-		53:    {Name: "DNS", Host: "127.0.0.1", Port: 53, Protocol: "http", Kind: KindOther, App: "DNS", Listen: "local"},
+		53:    {Name: "DNS", Host: "127.0.0.53", Port: 53, Protocol: "http", Kind: KindOther, App: "DNS", Listen: "local"},
 		41235: {Name: "node", Host: "127.0.0.1", Port: 41235, Protocol: "http", Kind: KindMaybe, Process: "node", Listen: "local"},
 		8081:  {Name: "myapp", Host: "10.8.0.1", Port: 8081, Protocol: "http", Kind: KindMaybe, Process: "myapp", Listen: "other"},
 		631:   {Name: "Printers (CUPS)", Host: "::1", Port: 631, Protocol: "http", Kind: KindWeb, App: "Printers (CUPS)", Listen: "local"},
@@ -76,6 +77,44 @@ func TestParseUbuntuWithDocker(t *testing.T) {
 	}
 	if got, w := order, []int{631, 3000, 5678, 9443, 8081, 41235, 22, 53}; !equalInts(got, w) {
 		t.Errorf("order %v, want %v", got, w)
+	}
+}
+
+// One port can hold different services on different addresses; they must
+// stay apart and keep their own address. Only a port that listens on every
+// address, or 127.0.0.1 together with ::1, is one service.
+func TestSamePortOnDifferentAddresses(t *testing.T) {
+	out := "@@ss\n" +
+		"LISTEN 0 1 127.0.0.1:53 0.0.0.0:*\n" +
+		"LISTEN 0 1 127.0.0.53%lo:53 0.0.0.0:*\n" +
+		"LISTEN 0 1 10.0.0.5:53 0.0.0.0:*\n" +
+		"LISTEN 0 1 127.0.0.2:8080 0.0.0.0:* users:((\"app2\",pid=2,fd=3))\n" +
+		"LISTEN 0 1 127.0.0.1:631 0.0.0.0:*\n" +
+		"LISTEN 0 1 [::1]:631 [::]:*\n" +
+		"LISTEN 0 1 127.0.0.1:3000 0.0.0.0:*\n" +
+		"LISTEN 0 1 [::]:3000 [::]:*\n" +
+		"@@docker\n" +
+		`{"name":"web","image":"nginx:1","ports":"127.0.0.3:8081->80/tcp, 127.0.0.4:8081->81/tcp"}` + "\n"
+	r, err := Parse([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range r.Candidates {
+		got = append(got, fmt.Sprintf("%s:%d %s %s", c.Host, c.Port, c.Listen, c.Name))
+	}
+	want := []string{
+		"127.0.0.1:631 local Printers (CUPS)",
+		"127.0.0.1:3000 all ",
+		"127.0.0.2:8080 local app2",
+		"127.0.0.3:8081 local nginx",
+		"127.0.0.4:8081 local nginx",
+		"10.0.0.5:53 other DNS",
+		"127.0.0.1:53 local DNS",
+		"127.0.0.53:53 local DNS",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
 
@@ -326,12 +365,16 @@ func checkCandidates(t *testing.T, r Result) {
 	if len(r.Candidates) > MaxCandidates {
 		t.Fatalf("%d candidates", len(r.Candidates))
 	}
-	seen := map[int]bool{}
+	type where struct {
+		host string
+		port int
+	}
+	seen := map[where]bool{}
 	for _, c := range r.Candidates {
-		if seen[c.Port] {
-			t.Fatalf("port %d listed twice", c.Port)
+		if seen[where{c.Host, c.Port}] {
+			t.Fatalf("%s port %d listed twice", c.Host, c.Port)
 		}
-		seen[c.Port] = true
+		seen[where{c.Host, c.Port}] = true
 		label := c.Name
 		if label == "" {
 			label = "x"

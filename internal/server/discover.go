@@ -168,7 +168,9 @@ func checkCandidates(dial func(string, int) (net.Conn, error), cands []discover.
 	return out
 }
 
-// sameHost compares remote hosts, counting every loopback name as one.
+// sameHost compares remote hosts, counting localhost, 127.0.0.1 and ::1 as
+// one. Other loopback addresses (127.0.0.2, 127.0.0.53, …) are other
+// places: a different service can listen there on the same port.
 func sameHost(a, b string) bool {
 	key := func(h string) string {
 		h = strings.ToLower(h)
@@ -176,7 +178,7 @@ func sameHost(a, b string) bool {
 			return "loopback"
 		}
 		if ip := net.ParseIP(h); ip != nil {
-			if ip.IsLoopback() {
+			if ip.Equal(net.IPv4(127, 0, 0, 1)) || ip.Equal(net.IPv6loopback) {
 				return "loopback"
 			}
 			return ip.String()

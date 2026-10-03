@@ -383,19 +383,43 @@ type entry struct {
 }
 
 // merge joins listening sockets and published container ports into one
-// candidate per port.
+// candidate per port and address. A port that listens on every address is
+// one candidate; otherwise each address is its own (127.0.0.1 and ::1
+// count as one: the usual localhost service on both), so different
+// services on one port aren't merged and keep their own address.
 func merge(ls []listener, cs []container) Result {
-	byPort := map[int]*entry{}
-	get := func(port int) *entry {
-		e := byPort[port]
+	everywhere := map[int]bool{}
+	for _, l := range ls {
+		everywhere[l.port] = everywhere[l.port] || l.ip == nil
+	}
+	for _, c := range cs {
+		for _, p := range c.ports {
+			everywhere[p.hostPort] = everywhere[p.hostPort] || p.ip == nil
+		}
+	}
+	type key struct {
+		port int
+		addr string
+	}
+	entries := map[key]*entry{}
+	get := func(ip net.IP, port int) *entry {
+		k := key{port: port}
+		switch {
+		case everywhere[port]:
+		case ip.Equal(net.IPv4(127, 0, 0, 1)) || ip.Equal(net.IPv6loopback):
+			k.addr = "loopback"
+		default:
+			k.addr = ip.String()
+		}
+		e := entries[k]
 		if e == nil {
 			e = &entry{port: port}
-			byPort[port] = e
+			entries[k] = e
 		}
 		return e
 	}
 	for _, l := range ls {
-		e := get(l.port)
+		e := get(l.ip, l.port)
 		e.ips = append(e.ips, l.ip)
 		if e.process == "" && l.process != "docker-proxy" {
 			e.process = l.process
@@ -403,7 +427,7 @@ func merge(ls []listener, cs []container) Result {
 	}
 	for i := range cs {
 		for _, p := range cs[i].ports {
-			e := get(p.hostPort)
+			e := get(p.ip, p.hostPort)
 			if e.container == nil {
 				e.container, e.ctrPort = &cs[i], p.containerPort
 			}
@@ -412,7 +436,7 @@ func merge(ls []listener, cs []container) Result {
 	}
 
 	var res Result
-	for _, e := range byPort {
+	for _, e := range entries {
 		res.Candidates = append(res.Candidates, e.candidate())
 	}
 	rank := map[Kind]int{KindWeb: 0, KindMaybe: 1, KindOther: 2}
@@ -421,7 +445,10 @@ func merge(ls []listener, cs []container) Result {
 		if rank[a.Kind] != rank[b.Kind] {
 			return rank[a.Kind] < rank[b.Kind]
 		}
-		return a.Port < b.Port
+		if a.Port != b.Port {
+			return a.Port < b.Port
+		}
+		return a.Host < b.Host
 	})
 	if len(res.Candidates) > MaxCandidates {
 		res.Candidates, res.Truncated = res.Candidates[:MaxCandidates], true
@@ -474,29 +501,26 @@ func (e *entry) candidate() Candidate {
 }
 
 // pickHost chooses the address to tunnel to: 127.0.0.1 when the port
-// listens on loopback or on every address, otherwise the address it
-// listens on.
+// listens on every address or on 127.0.0.1, otherwise the address it
+// listens on (e.g. 127.0.0.2 or ::1). merge has grouped ips so that they
+// all reach the same service.
 func pickHost(ips []net.IP) (host, listen string) {
-	var loop6, other net.IP
+	var pick net.IP
 	for _, ip := range ips {
 		switch {
 		case ip == nil:
 			return "127.0.0.1", "all"
-		case ip.To4() != nil && ip.IsLoopback():
-			host, listen = "127.0.0.1", "local"
-		case ip.IsLoopback():
-			loop6 = ip
-		case other == nil:
-			other = ip
+		case ip.Equal(net.IPv4(127, 0, 0, 1)):
+			pick = ip
+		case pick == nil:
+			pick = ip
 		}
 	}
 	switch {
-	case host != "":
-		return host, listen
-	case loop6 != nil:
-		return loop6.String(), "local"
-	case other != nil:
-		return other.String(), "other"
+	case pick == nil:
+		return "127.0.0.1", "all"
+	case pick.IsLoopback():
+		return pick.String(), "local"
 	}
-	return "127.0.0.1", "all"
+	return pick.String(), "other"
 }
