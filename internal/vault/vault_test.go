@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -527,5 +528,37 @@ func TestLockDuringUnlockWins(t *testing.T) {
 	}
 	if pr, _, _ := counts(t, v); pr != 1 {
 		t.Fatalf("got %d projects, want the 1 saved during the first unlock", pr)
+	}
+}
+
+// A save that would make the file too large to read back is refused, and
+// neither the vault file nor its backup changes.
+func TestSaveTooLargeRefused(t *testing.T) {
+	v, p := create(t)
+	addSample(t, v, "hunter2") // the backup now exists too
+	vaultBefore, _ := os.ReadFile(p.vault)
+	backupBefore, _ := os.ReadFile(p.backup)
+	old := maxFileSize
+	maxFileSize = len(vaultBefore) + 100
+	t.Cleanup(func() { maxFileSize = old })
+
+	err := v.Update(func(d *model.Data) error {
+		d.Servers[0].Notes = strings.Repeat("x", 500)
+		return nil
+	})
+	if !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("got %v, want ErrTooLarge", err)
+	}
+	vaultAfter, _ := os.ReadFile(p.vault)
+	backupAfter, _ := os.ReadFile(p.backup)
+	if !bytes.Equal(vaultBefore, vaultAfter) || !bytes.Equal(backupBefore, backupAfter) {
+		t.Fatal("a refused save changed the vault or its backup")
+	}
+	if pr, _, _ := counts(t, v); pr != 1 {
+		t.Fatalf("got %d projects in memory, want the 1 saved", pr)
+	}
+	v.Lock()
+	if err := v.Unlock([]byte(pw)); err != nil {
+		t.Fatalf("the vault no longer opens: %v", err)
 	}
 }

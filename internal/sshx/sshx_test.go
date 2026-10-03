@@ -1348,3 +1348,166 @@ func TestRunTimeoutCoversOpeningSession(t *testing.T) {
 		t.Fatalf("%d session requests left hanging, want 1", srv.Stalled())
 	}
 }
+
+// openShellAsync opens a terminal in the background; the result arrives on
+// the channel (the shell is closed at once if it opened).
+func openShellAsync(m *Manager, serverID string) chan error {
+	errc := make(chan error, 1)
+	go func() {
+		sh, err := m.OpenShell(serverID, 80, 24)
+		if err == nil {
+			sh.Close()
+		}
+		errc <- err
+	}()
+	return errc
+}
+
+func waitErr(t *testing.T, errc chan error, within time.Duration) error {
+	t.Helper()
+	select {
+	case err := <-errc:
+		return err
+	case <-time.After(within):
+		t.Fatalf("still waiting after %v", within)
+		return nil
+	}
+}
+
+// A server that keeps the connection alive but never answers the request
+// for a session must not leave opening a terminal hanging: it gives up
+// after the connect timeout, or at once when the server is stopped or
+// TunnelTab shuts down, and lets go of the connection.
+func TestOpenShellNeverAnswered(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		timeout time.Duration
+		stop    func(m *Manager, serverID string)
+		want    error
+	}{
+		{"timeout", 300 * time.Millisecond, nil, nil},
+		{"StopServer", time.Hour, (*Manager).StopServer, ErrConnectCancelled},
+		{"Close", time.Hour, func(m *Manager, _ string) { m.Close() }, ErrClosed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv()
+			srv, s := passwordServer(t, e)
+			srv.StallSessions(true)
+			m := newManager(t, e, func(c *Config) { c.DialTimeout = tc.timeout })
+			errc := openShellAsync(m, s.ID)
+			waitFor(t, "the session request", func() bool { return srv.Stalled() > 0 })
+			if tc.stop != nil {
+				tc.stop(m, s.ID)
+			}
+			err := waitErr(t, errc, 5*time.Second)
+			if err == nil || (tc.want != nil && !errors.Is(err, tc.want)) {
+				t.Fatalf("got %v, want %v", err, tc.want)
+			}
+			if m.ShellCount() != 0 {
+				t.Fatal("a terminal was registered")
+			}
+			waitFor(t, "the connection to close", func() bool { return srv.ActiveConnections() == 0 })
+		})
+	}
+}
+
+// Shutting down while a terminal is still connecting: it must not be
+// registered afterwards, and its connection must not outlive Close.
+func TestCloseCancelsConnectingShell(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	resume := srv.PauseHandshakes()
+	t.Cleanup(resume)
+	m := newManager(t, e, nil)
+	errc := openShellAsync(m, s.ID)
+	waitFor(t, "the connection to start", func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.servers[s.ID] != nil
+	})
+	m.Close()
+	resume()
+	if err := waitErr(t, errc, 10*time.Second); err == nil {
+		t.Fatal("a terminal opened after Close")
+	}
+	if m.ShellCount() != 0 {
+		t.Fatal("a terminal was registered after Close")
+	}
+	waitFor(t, "the connection to close", func() bool { return srv.ActiveConnections() == 0 })
+}
+
+// Terminals opened at the same time can't get past MaxShells: those still
+// connecting count too.
+func TestMaxShellsWithConcurrentOpens(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	resume := srv.PauseHandshakes()
+	t.Cleanup(resume)
+	m := newManager(t, e, nil)
+	const n = MaxShells + 8
+	results := make(chan error, n)
+	var opened []*Shell
+	var mu sync.Mutex
+	for range n {
+		go func() {
+			sh, err := m.OpenShell(s.ID, 80, 24)
+			if err == nil {
+				mu.Lock()
+				opened = append(opened, sh)
+				mu.Unlock()
+			}
+			results <- err
+		}()
+	}
+	// All of them have asked before any could connect.
+	waitFor(t, "every request", func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.opening == MaxShells
+	})
+	time.Sleep(50 * time.Millisecond) // the other 8 are turned away meanwhile
+	resume()
+	refused := 0
+	for range n {
+		if err := waitErr(t, results, 10*time.Second); err != nil {
+			if !strings.Contains(err.Error(), "too many open terminals") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			refused++
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(opened) != MaxShells || refused != n-MaxShells || m.ShellCount() != MaxShells {
+		t.Fatalf("opened %d, refused %d, %d registered; want %d opened", len(opened), refused, m.ShellCount(), MaxShells)
+	}
+	for _, sh := range opened {
+		sh.Close()
+	}
+	m.mu.Lock()
+	opening := m.opening
+	m.mu.Unlock()
+	if opening != 0 || m.ShellCount() != 0 {
+		t.Fatalf("after closing: %d reserved, %d registered", opening, m.ShellCount())
+	}
+}
+
+// Close also ends connections still in use by work that isn't a forward,
+// terminal or hold (a Find services scan waiting for the server, say).
+func TestCloseEndsConnectionsInUse(t *testing.T) {
+	e := newEnv()
+	srv, s := passwordServer(t, e)
+	srv.StallSessions(true)
+	m := newManager(t, e, nil)
+	errc := make(chan error, 1)
+	go func() {
+		_, err := m.Run(s.ID, "scan", 1024, time.Hour)
+		errc <- err
+	}()
+	waitFor(t, "the session request", func() bool { return srv.Stalled() > 0 })
+	m.Close()
+	if err := waitErr(t, errc, 5*time.Second); err == nil {
+		t.Fatal("the scan succeeded after Close")
+	}
+	waitFor(t, "the connection to close", func() bool { return srv.ActiveConnections() == 0 })
+}

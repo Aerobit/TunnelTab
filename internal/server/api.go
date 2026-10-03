@@ -120,6 +120,8 @@ func (s *Server) writeDataError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, vault.ErrLocked):
 		writeError(w, http.StatusLocked, "locked", "the vault is locked")
+	case errors.Is(err, vault.ErrTooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, "too_large", err.Error())
 	case errors.Is(err, errNoVault):
 		writeError(w, http.StatusConflict, "no_vault", "create a vault first")
 	default:

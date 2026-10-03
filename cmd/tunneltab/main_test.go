@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -52,4 +53,17 @@ func TestClaimDataDir(t *testing.T) {
 		t.Fatalf("released while waiting: lock=%v url=%q err=%v", l, url, err)
 	}
 	l.Close()
+}
+
+// Relative key paths resolve in the TunnelTab folder, wherever --data puts
+// the data folder.
+func TestKeyBaseDirIgnoresDataFolder(t *testing.T) {
+	app, err := config.AppFolder()
+	if err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := t.TempDir()
+	if got := keyBaseDir(filepath.Join(elsewhere, "vault")); got != app {
+		t.Fatalf("keyBaseDir = %s, want the TunnelTab folder %s", got, app)
+	}
 }

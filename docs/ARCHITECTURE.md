@@ -181,7 +181,7 @@ browser ──▶ 127.0.0.1:<port> ──▶ forward.handle ──▶ client.Dia
   no credentials reach an unconfirmed server.
 - **Login methods** (`auth.go`): password (+ keyboard-interactive), vault key,
   key file (relative paths resolve against `Config.BaseDir`, the portable
-  folder), ssh-agent (`agent_unix.go`: `SSH_AUTH_SOCK`; `agent_windows.go`:
+  folder: `config.AppFolder`, the program's folder even with `--data`), ssh-agent (`agent_unix.go`: `SSH_AUTH_SOCK`; `agent_windows.go`:
   the OpenSSH agent pipe).
 - **Forwards** (`forward.go`) listen on 127.0.0.1 only. The port is bound
   before connecting, so a busy port fails fast (`ErrPortInUse`). Auto ports

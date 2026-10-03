@@ -30,6 +30,9 @@ var (
 	// ErrLockedMeanwhile means the vault was locked while an unlock was
 	// under way; that unlock is abandoned rather than undoing the lock.
 	ErrLockedMeanwhile = errors.New("TunnelTab was locked while unlocking: please try again")
+	// ErrTooLarge means saving would make the vault file larger than it
+	// may be read back (maxFileSize); nothing was saved.
+	ErrTooLarge = fmt.Errorf("the vault would grow over %d MiB, too large to open again: nothing was saved (remove large notes or keys)", maxFileSize>>20)
 )
 
 // MinPasswordLen is the minimum master password length, in characters.
@@ -356,6 +359,10 @@ func (v *Vault) write(key []byte, h header, data *model.Data) error {
 	if err != nil {
 		return fmt.Errorf("encrypt vault: %w", err)
 	}
+	// readFile refuses larger files: never save one that can't be opened.
+	if len(out) > maxFileSize {
+		return ErrTooLarge
+	}
 	if current, err := os.ReadFile(v.path); err == nil {
 		if err := atomicfile.WriteFile(v.backupPath, current, 0o600); err != nil {
 			return fmt.Errorf("back up vault: %w", err)
@@ -378,7 +385,7 @@ func readFile(path string) (file, error) {
 		return file{}, fmt.Errorf("open vault: %w", err)
 	}
 	defer fh.Close()
-	raw, err := io.ReadAll(io.LimitReader(fh, maxFileSize+1))
+	raw, err := io.ReadAll(io.LimitReader(fh, int64(maxFileSize)+1))
 	if err != nil {
 		return file{}, fmt.Errorf("read vault: %w", err)
 	}

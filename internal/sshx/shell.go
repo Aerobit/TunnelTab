@@ -54,22 +54,31 @@ func (m *Manager) OpenShell(serverID string, cols, rows int) (*Shell, error) {
 		return nil, fmt.Errorf("invalid terminal size %dx%d", cols, rows)
 	}
 	m.mu.Lock()
-	if len(m.shells) >= MaxShells {
+	if m.closed {
+		m.mu.Unlock()
+		return nil, ErrClosed
+	}
+	// Terminals still being opened count too, so that requests arriving
+	// together can't open more than MaxShells.
+	if len(m.shells)+m.opening >= MaxShells {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("too many open terminals (max %d)", MaxShells)
 	}
+	m.opening++ // until startShell registers the shell or gives up
 	stops := m.serverStops[serverID]
 	m.mu.Unlock()
 
 	sc, err := m.acquire(serverID)
 	if err != nil {
+		m.unreserveShell()
 		return nil, err
 	}
 	if sc.currentClient() == nil {
 		m.release(sc)
+		m.unreserveShell()
 		return nil, errors.New("the server is reconnecting; try again in a moment")
 	}
-	return m.startShell(sc, cols, rows, stops)
+	return m.startShell(sc, cols, rows, stops, true)
 }
 
 // Reopen opens a new shell in place of s, whose connection dropped, once
@@ -103,7 +112,8 @@ func (s *Shell) Reopen(cols, rows int) (*Shell, error) {
 		m.release(sc)
 		return nil, ErrReconnecting
 	}
-	ns, err := m.startShell(sc, cols, rows, stops)
+	// Not counted against MaxShells: the new shell replaces s.
+	ns, err := m.startShell(sc, cols, rows, stops, false)
 	if err != nil {
 		return nil, err
 	}
@@ -115,53 +125,86 @@ func (s *Shell) Reopen(cols, rows int) (*Shell, error) {
 // (released if it fails).
 //
 // stops is the server's StopServer count when the caller began: if the
-// server was stopped since, the shell is closed instead of registered.
-func (m *Manager) startShell(sc *serverConn, cols, rows int, stops uint64) (*Shell, error) {
+// server is stopped (or the Manager closes) before the shell is ready, it
+// gives up. reserved says the caller counted it in m.opening.
+//
+// The server may never answer (while still answering keepalives), so
+// setting up the shell is abandoned after DialTimeout too.
+func (m *Manager) startShell(sc *serverConn, cols, rows int, stops uint64, reserved bool) (*Shell, error) {
+	registered := false
+	if reserved {
+		defer func() {
+			if !registered {
+				m.unreserveShell()
+			}
+		}()
+	}
 	client := sc.currentClient()
 	if client == nil {
 		m.release(sc)
 		return nil, ErrReconnecting
 	}
-	session, err := client.NewSession()
-	if err != nil {
+	ch := make(chan shellSetup, 1)
+	go func() { ch <- openShellSession(client, cols, rows) }()
+	deadline := time.NewTimer(m.cfg.DialTimeout)
+	defer deadline.Stop()
+	var r shellSetup
+	for waiting := true; waiting; {
+		m.mu.Lock()
+		closed, stopped, signal := m.closed, m.serverStops[sc.id] != stops, m.stopSignal
+		m.mu.Unlock()
+		var giveUp error
+		switch {
+		case closed:
+			giveUp = ErrClosed
+		case stopped:
+			giveUp = ErrConnectCancelled
+		default:
+			select {
+			case r = <-ch:
+				waiting = false
+				continue
+			case <-deadline.C:
+				giveUp = errors.New("the server took too long to open a terminal")
+			case <-signal:
+				continue // something was stopped: check whether it was this
+			}
+		}
+		go func() { // close the session if it opens after all
+			if r := <-ch; r.session != nil {
+				r.session.Close()
+			}
+		}()
 		m.release(sc)
-		if sc.currentClient() != client {
+		return nil, giveUp
+	}
+	if r.err != nil {
+		m.release(sc)
+		if r.noSession && sc.currentClient() != client {
 			return nil, ErrReconnecting // it dropped just now
 		}
-		return nil, fmt.Errorf("can't open a session: %w", err)
+		return nil, r.err
 	}
-	fail := func(what string, err error) (*Shell, error) {
-		session.Close()
-		m.release(sc)
-		return nil, fmt.Errorf("%s: %w", what, err)
-	}
-	modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 115200, ssh.TTY_OP_OSPEED: 115200}
-	if err := session.RequestPty("xterm-256color", rows, cols, modes); err != nil {
-		return fail("the server refused a terminal", err)
-	}
-	stdin, err := session.StdinPipe()
-	if err != nil {
-		return fail("terminal input", err)
-	}
-	stdout, err := session.StdoutPipe()
-	if err != nil {
-		return fail("terminal output", err)
-	}
-	session.Stderr = nil // with a PTY, errors arrive on stdout
-	if err := session.Shell(); err != nil {
-		return fail("the server refused a shell", err)
-	}
+	session := r.session
 
-	sh := &Shell{m: m, sc: sc, serverID: sc.id, session: session, stdin: stdin, stdout: stdout,
+	sh := &Shell{m: m, sc: sc, serverID: sc.id, session: session, stdin: r.stdin, stdout: r.stdout,
 		done: make(chan struct{}), dropped: make(chan struct{})}
 	m.mu.Lock()
-	if m.serverStops[sc.id] != stops {
+	if m.closed || m.serverStops[sc.id] != stops {
+		err := ErrConnectCancelled
+		if m.closed {
+			err = ErrClosed
+		}
 		m.mu.Unlock()
 		session.Close()
 		m.release(sc)
-		return nil, ErrConnectCancelled
+		return nil, err
 	}
 	m.shells[sh] = struct{}{}
+	if reserved {
+		m.opening--
+		registered = true
+	}
 	m.mu.Unlock()
 	m.log.Info("terminal opened", "server", sc.id)
 	go func() {
@@ -182,6 +225,52 @@ func (m *Manager) startShell(sc *serverConn, cols, rows int, stops uint64) (*She
 		}
 	}()
 	return sh, nil
+}
+
+// unreserveShell gives back a place OpenShell reserved in m.opening.
+func (m *Manager) unreserveShell() {
+	m.mu.Lock()
+	m.opening--
+	m.mu.Unlock()
+}
+
+// shellSetup is the result of openShellSession.
+type shellSetup struct {
+	session   *ssh.Session
+	stdin     io.WriteCloser
+	stdout    io.Reader
+	err       error
+	noSession bool // the session itself couldn't be opened
+}
+
+// openShellSession opens a session with a pseudo-terminal and starts the
+// shell in it. On failure the session is closed.
+func openShellSession(client *ssh.Client, cols, rows int) shellSetup {
+	session, err := client.NewSession()
+	if err != nil {
+		return shellSetup{err: fmt.Errorf("can't open a session: %w", err), noSession: true}
+	}
+	fail := func(what string, err error) shellSetup {
+		session.Close()
+		return shellSetup{err: fmt.Errorf("%s: %w", what, err)}
+	}
+	modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 115200, ssh.TTY_OP_OSPEED: 115200}
+	if err := session.RequestPty("xterm-256color", rows, cols, modes); err != nil {
+		return fail("the server refused a terminal", err)
+	}
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		return fail("terminal input", err)
+	}
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return fail("terminal output", err)
+	}
+	session.Stderr = nil // with a PTY, errors arrive on stdout
+	if err := session.Shell(); err != nil {
+		return fail("the server refused a shell", err)
+	}
+	return shellSetup{session: session, stdin: stdin, stdout: stdout}
 }
 
 // Read reads terminal output.

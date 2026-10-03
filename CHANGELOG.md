@@ -6,6 +6,21 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Saving no longer accepts a vault too large to open again (over 64 MiB):
+  the save is refused with a message, and the vault and its backup are left
+  as they were.
+- Opening a terminal no longer hangs when the server never answers the
+  request for a session: it gives up after the connect timeout, or at once
+  if the server is edited, deleted or TunnelTab quits.
+- Quitting now also closes connections that were still being set up or used
+  (a terminal being opened, Find services), and no terminal can open after.
+- Terminals opened at the same moment can no longer exceed the limit of 32.
+- With `--data` pointing elsewhere, a relative key path such as
+  `keys/id_ed25519` again means "in the TunnelTab folder", as documented,
+  rather than next to the data folder.
+
 ## [0.8.1] - 2026-10-03
 
 ### Fixed

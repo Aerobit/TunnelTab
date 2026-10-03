@@ -145,7 +145,7 @@ func run(tray *platform.Tray) int {
 
 	srv, err := server.New(server.Config{
 		Paths:          paths,
-		BaseDir:        filepath.Dir(dataDir),
+		BaseDir:        keyBaseDir(dataDir),
 		Settings:       settings,
 		Logger:         log,
 		Version:        version,
@@ -290,6 +290,16 @@ func show(url string, noBrowser bool, log *slog.Logger) {
 
 // programPath returns the running program and its folder, or "" if unknown
 // (then "Update now" is off).
+// keyBaseDir is the folder relative key paths resolve against: the
+// TunnelTab folder, even when --data puts the data folder elsewhere. It
+// falls back to the data folder's parent if that folder is unknown.
+func keyBaseDir(dataDir string) string {
+	if dir, err := config.AppFolder(); err == nil {
+		return dir
+	}
+	return filepath.Dir(dataDir)
+}
+
 func programPath() (exe, dir string) {
 	exe, err := os.Executable()
 	if err == nil {

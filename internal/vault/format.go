@@ -38,10 +38,11 @@ const (
 	keyLen   = 32
 	saltLen  = 16
 	nonceLen = 12
-
-	// maxFileSize bounds how much is read from disk before parsing.
-	maxFileSize = 64 << 20
 )
+
+// maxFileSize bounds how much is read from disk before parsing, and so how
+// large a vault may be saved (a variable for tests).
+var maxFileSize = 64 << 20
 
 // Params are the Argon2id cost parameters. They are stored in the vault
 // header, so they can be raised in later versions without breaking existing

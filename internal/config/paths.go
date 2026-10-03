@@ -49,6 +49,17 @@ func ResolveDataDir(flagValue string) (string, error) {
 	if flagValue != "" {
 		return filepath.Abs(flagValue)
 	}
+	dir, err := AppFolder()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, DataDirName), nil
+}
+
+// AppFolder is the TunnelTab folder: the one with the program in it (the
+// current directory for a "go run" build). The data folder is there unless
+// --data says otherwise, and relative key paths always resolve there.
+func AppFolder() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("find executable: %w", err)
@@ -57,9 +68,9 @@ func ResolveDataDir(flagValue string) (string, error) {
 		exe = resolved
 	}
 	if isGoRunBinary(exe) {
-		return filepath.Abs(DataDirName)
+		return filepath.Abs(".")
 	}
-	return filepath.Join(filepath.Dir(exe), DataDirName), nil
+	return filepath.Dir(exe), nil
 }
 
 // isGoRunBinary reports whether exe was built by `go run` (which places the

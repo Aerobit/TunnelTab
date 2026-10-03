@@ -114,7 +114,12 @@ type Manager struct {
 	// its count changes gives up instead of registering.
 	serverStops map[string]uint64
 	allStops    uint64
-	closed      bool
+	// stopSignal is closed (and replaced) whenever a server is stopped,
+	// everything is (StopAll) or the Manager closes, to wake work that is
+	// waiting on a server so it can check whether to give up.
+	stopSignal chan struct{}
+	opening    int // terminals being opened; they count towards MaxShells
+	closed     bool
 
 	traffic *trafficMeter
 }
@@ -137,7 +142,7 @@ func NewManager(cfg Config) *Manager {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, starting: map[string]*startingForward{}, shells: map[*Shell]struct{}{}, holds: map[string]*serverConn{}, serverStops: map[string]uint64{}, traffic: newTrafficMeter()}
+	return &Manager{cfg: cfg, log: log, servers: map[string]*serverConn{}, forwards: map[string]*forward{}, starting: map[string]*startingForward{}, shells: map[*Shell]struct{}{}, holds: map[string]*serverConn{}, serverStops: map[string]uint64{}, stopSignal: make(chan struct{}), traffic: newTrafficMeter()}
 }
 
 func (m *Manager) emit(e Event) {
@@ -180,6 +185,7 @@ func (m *Manager) Resume() {
 func (m *Manager) StopServer(serverID string) {
 	m.mu.Lock()
 	m.serverStops[serverID]++
+	m.signalStopsLocked()
 	m.mu.Unlock()
 	m.Unhold(serverID)
 	m.cancelStarting(func(p *startingForward) bool { return p.serverID == serverID })
@@ -205,6 +211,7 @@ func (m *Manager) StopServer(serverID string) {
 func (m *Manager) StopAll() {
 	m.mu.Lock()
 	m.allStops++
+	m.signalStopsLocked()
 	m.mu.Unlock()
 	m.UnholdAll()
 	m.cancelStarting(func(*startingForward) bool { return true })
@@ -226,10 +233,19 @@ func (m *Manager) TestConnection(serverID string) error {
 	return nil
 }
 
-// Close stops all forwards and connections. The Manager can't be used again.
+// signalStopsLocked wakes the work waiting on stopSignal. Call with m.mu
+// held.
+func (m *Manager) signalStopsLocked() {
+	close(m.stopSignal)
+	m.stopSignal = make(chan struct{})
+}
+
+// Close stops all forwards, terminals and connections, including those
+// still being set up. The Manager can't be used again.
 func (m *Manager) Close() {
 	m.mu.Lock()
 	m.closed = true
+	m.signalStopsLocked()
 	clear(m.starting)
 	ids := make([]string, 0, len(m.forwards))
 	for id := range m.forwards {
@@ -241,6 +257,20 @@ func (m *Manager) Close() {
 	}
 	m.CloseShells()
 	m.UnholdAll()
+	// Whatever is still connecting or in use (a terminal being opened, a
+	// Find services scan) loses its connection now rather than when it ends.
+	m.mu.Lock()
+	conns := make([]*serverConn, 0, len(m.servers))
+	for id, sc := range m.servers {
+		conns = append(conns, sc)
+		delete(m.servers, id)
+	}
+	m.mu.Unlock()
+	for _, sc := range conns {
+		if sc.shutdown() {
+			m.emit(Event{Kind: "server", ID: sc.id, ServerID: sc.id, State: StateStopped})
+		}
+	}
 }
 
 // --- Server connections -----------------------------------------------------
