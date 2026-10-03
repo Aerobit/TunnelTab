@@ -89,8 +89,12 @@ one, stop and ask the user instead.
 ## Conventions
 
 - **Go:** standard library first; minimal, well-known dependencies only
-  (in use: `golang.org/x/crypto`, `github.com/coder/websocket`; frontend:
-  vendored xterm.js). Ask before adding others.
+  (in use: `golang.org/x/crypto`, `github.com/coder/websocket`,
+  `fyne.io/systray` with `github.com/godbus/dbus/v5` for the tray icon;
+  frontend: vendored xterm.js). Ask before adding others. The tray library
+  must stay off the system temp folder (`platform.setTrayIcon` writes the
+  icon into the data folder) and must never auto-launch D-Bus
+  (`trayAvailable` checks the bus with auto-launch off first).
 - All data changes go through `vault.Update` (which validates and saves
   atomically); never write `vault.enc` or `settings.json` directly — use
   `internal/atomicfile`.

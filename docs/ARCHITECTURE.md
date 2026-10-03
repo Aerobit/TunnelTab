@@ -58,7 +58,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/discover` | "Find services": the fixed, read-only command TunnelTab runs on a server when the user clicks Find services (`Command`: `ss`/`netstat` + `docker ps`), its strict parser (`Parse`, fuzzed) and the table of well-known apps (`apps.go`) | Done |
 | `internal/webcheck` | Service checks: does a port answer like a web page? One fixed `HEAD` request, https first (certificate not verified) then http, over connections the caller dials through SSH (`Manager.Through`); path validated (fuzzed) | Done |
 | `internal/update` | Updates, only when the user clicks: "Check for updates" (GitHub releases/latest API, version comparison) and "Update now" (download, signature + checksum verification, unpack, install with `.old` backups, rollback, cleanup). Release signature format in `signature.go` | Done |
-| `internal/platform` | Open browser, error dialog, instance file and data folder lock | Done |
+| `internal/platform` | Open browser, error dialog, instance file and data folder lock, tray icon (`tray*.go`: `fyne.io/systray` on Windows and Linux; icon made from the embedded `trayicon.png`) | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
 | `web/static` | The dashboard (vanilla JS modules + CSS) | Done |
 | `internal/devtools/fakessh` | Local SSH server + demo web app for trying the dashboard (not shipped) | Done |
@@ -77,6 +77,7 @@ data/
 ├── settings.json    non-secret preferences
 ├── instance.json    port + secret of the running copy (deleted on exit)
 ├── instance.lock    locked while a copy runs (one copy per data folder)
+├── tray-icon.ico    Windows tray icon (Windows loads tray icons from a file)
 └── logs/            rotated logs; never contain secrets
 ```
 
@@ -202,7 +203,9 @@ browser ──▶ 127.0.0.1:<port> ──▶ forward.handle ──▶ client.Dia
 ## Settings and logs (`internal/config`)
 
 - `settings.json`: `port` (1024–65535, default 47811), `autoLockMinutes`
-  (0 = never, max 1440, default 15), `closeTunnelsOnLock` (default false).
+  (0 = never, max 1440, default 15), `closeTunnelsOnLock` (default false),
+  `closeAction` (what closing the last TunnelTab tab does: `"tray"` keep
+  running, `"quit"`, or `""` (left out) until the dashboard has asked).
   A missing file means defaults; an invalid file is reported and defaults are used.
 - Logs: `data/logs/tunneltab.log`, rotated at 1 MiB, keeping 3 old files.
   **Log policy:** IDs and error types (`sshx.ErrorKind`) only — never
@@ -254,10 +257,11 @@ Errors are `{"error": "<code>", "message": "…", "field": "…"}`.
 |---|---|---|
 | `POST /session` | `{launch}` | `{session}` |
 | `POST /instance/launch` | header `X-TunnelTab-Instance` | `{url}` (used by a second launch) |
-| `GET /state` | | `{vault: none\|locked\|unlocked, version, unlockWaitMs, minPasswordLen}` |
+| `GET /state` | | `{vault: none\|locked\|unlocked, version, unlockWaitMs, minPasswordLen, tray}` (`tray`: the tray icon is shown, so the dashboard asks what closing the tab does) |
 | `GET /events` | | event stream (see below) |
 | `GET /settings` · `PUT /settings` | `Settings` | settings (+ `restartRequired` if the port changed) |
 | `POST /quit` | | stops tunnels and exits |
+| `POST /closing` | | sent by a dashboard or terminal page on `pagehide` (fetch `keepalive`). With `closeAction` `"quit"`, TunnelTab quits 5 s later if no event stream (page) is connected; a reload reconnects in time. A page that disappears without sending it never causes a quit |
 | `POST /touch` | | 204; the user is working in the dashboard (it sends this on clicks, keys and scrolling, at most every 30 s), so auto-lock waits — moving between pages makes no other request |
 | `GET /traffic` | | `{services: [{serviceId, todayIn, todayOut, lastHour: [60 × bytes per minute, oldest first]}]}` — counted on this PC (`sshx` traffic meter), in memory only |
 | `POST /vault/create` | `{password}` | 400 `weak_password`, 409 `vault_exists` |
@@ -543,6 +547,15 @@ endpoints, and focus returns to the moved item's grip after re-rendering.
 3. Listen on 127.0.0.1:`port` (settings, `--port`); if busy, any free port.
 4. Write `instance.json` (port + random secret), create the server, open the
    browser at the launch link (`--no-browser` prints it instead).
+   Then show the tray icon (`platform.Tray`; `--no-tray` turns it off). The
+   tray must run on the main thread, so `main` runs the tray loop and
+   everything else runs in `run` on another goroutine, which exits the
+   program (after removing the icon) when it returns. On Linux the icon is
+   shown only if a session bus with a `StatusNotifierWatcher` is found
+   without auto-launching D-Bus (no external program is started); on
+   Windows the icon file is written to `data/tray-icon.ico` (the library
+   would otherwise write it to the system temp folder). Tray menu: Open
+   dashboard (a new launch link), Lock now, Quit TunnelTab.
 5. Run until Quit, Ctrl+C or SIGTERM; then stop all tunnels, end event
    streams, shut the HTTP server down and delete `instance.json`. The lock
    is released when the process exits. If this takes more than 15 s, a
@@ -597,7 +610,7 @@ that session and says whether the new version runs or the previous one
 came back (rollback).
 
 
-Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--version`,
+Flags: `--data <dir>`, `--port <n>`, `--no-browser`, `--no-tray`, `--version`,
 `--update-url <url>` (tests: a fake release API; downloads may then come
 from that server).
 

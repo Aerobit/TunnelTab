@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.7.4 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.7.4 released** (2026-10-02). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers). In progress: §18 (tray icon).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -183,12 +183,12 @@ Testing environment: everything through phase 6 is built and tested in the dev c
 ## 9. Known trade-offs
 
 - Unsigned `.exe` → Windows SmartScreen warning ("More info → Run anyway"). Code signing is optional/paid.
-- No system tray icon in v1 (adds per-OS complexity); the app runs until **Quit**.
+- No system tray icon in v1 (adds per-OS complexity); the app runs until **Quit**. Added in v0.8.0 (§18).
 - Dashboard is a browser tab, not a native window — by design, so no extra runtime is bundled.
 
 ## 10. Out of scope for v1 (possible later)
 
-System tray icon · macOS build · Linux ARM build · "Open in system terminal" (would need TunnelTab's host-key checks and vault keys handed to an external ssh) · jump hosts / ProxyJump · SOCKS proxy mode · SFTP file browser (idea written up in §17) · import from local.browser or `~/.ssh/config` · code signing.
+~~System tray icon~~ (§18) · macOS build · Linux ARM build · "Open in system terminal" (would need TunnelTab's host-key checks and vault keys handed to an external ssh) · jump hosts / ProxyJump · SOCKS proxy mode · SFTP file browser (idea written up in §17) · import from local.browser or `~/.ssh/config` · code signing.
 
 ## 11. v0.2.0 — "Update now" (released 2026-10-01)
 
@@ -541,3 +541,54 @@ has SFTP).
 | F3 | **Manage**: new folder, rename, delete (with counts), Activity entries | Tests per operation, including refusing to delete `/` or the home folder without a second confirmation |
 | F4 | **Docs + security review**: CLAUDE.md invariant 7, SECURITY.md (what SFTP can change on a server), SECURITY_REVIEW.md, USER_GUIDE | Review done; docs match behaviour |
 | F5 | *(optional)* **Two-pane view** with a local folder pane, limited to one chosen folder | Only if decided above; tests that nothing outside that folder can be listed or read |
+
+## 18. v0.8.0 — Tray icon and "when I close the tab" (built; Windows check pending)
+
+The user asked (2026-10-03) for TunnelTab to sit in the system tray, so the
+dashboard tab can be closed while the program keeps running, and for a
+question asking whether closing the tab should quit TunnelTab or leave it
+running in the tray.
+
+### What the user sees
+
+- **Tray icon** (notification area by the clock on Windows; Linux desktops
+  with a tray: KDE, XFCE, Cinnamon, GNOME with the AppIndicator extension).
+  It appears when TunnelTab starts and goes away when it quits. Tooltip:
+  "TunnelTab 0.8.0".
+  - **Click** → opens the dashboard in the browser, like starting
+    tunneltab.exe a second time (a double-click opens one tab, not two).
+  - **Right-click** menu: **Open dashboard**, **Lock now**, **Quit**.
+  - Where there is no tray (GNOME without the extension, no desktop at
+    all) nothing changes: no icon, no error, TunnelTab runs as before.
+- **"When I close the tab" question.** Browsers don't let a page show its
+  own question when its tab is closing (only the browser's generic "Leave
+  site?" box, with no choice of buttons). So the dashboard asks **once**,
+  the first time it opens with a tray icon:
+  *"When you close this tab, should TunnelTab keep running in the system
+  tray (tunnels stay up) or quit?"* — **Keep running in the tray** /
+  **Quit when I close the tab**. The answer is a setting, shown and
+  changeable in Settings → General ("When the dashboard tab is closed").
+- **Quit when the tab closes:** closing the last TunnelTab page (dashboard
+  tabs and popped-out terminals) quits TunnelTab after a few seconds, like
+  pressing Quit. Reloading the page doesn't.
+
+### Decisions
+
+| Topic | Decision |
+|---|---|
+| Library | `fyne.io/systray` (maintained fork of getlantern/systray; BSD-3) and, on Linux only, its `github.com/godbus/dbus/v5` (BSD-2). Both build with CGO off for Windows and Linux (checked), so the build stays the same. Approved by the user with this plan. |
+| Main thread | The tray must run on the program's main thread: `main` runs the tray loop and the rest of the program in a goroutine. Quitting from anywhere (dashboard, tray, Ctrl+C, Update now) ends the program the same way as today, then removes the icon. |
+| Portable (invariant 10) | The library's `SetIcon` on Windows writes the icon to the system temp folder. TunnelTab instead writes `tray-icon.ico` into the data folder and passes that path. On Linux the icon is sent over D-Bus from memory. |
+| No external programs (invariant 7) | godbus can launch `dbus-launch` when no session bus is known. Before starting the tray, TunnelTab connects with auto-launch off and checks that a tray (`org.kde.StatusNotifierWatcher`) is running; if not, there is no tray. |
+| No network (invariant 9) | The tray makes no network calls; its menu calls the same code as the dashboard's buttons. |
+| Detecting the close | `pagehide` on the dashboard sends `POST /api/closing` (fetch `keepalive`, with the session token like every request). If the setting is "quit", TunnelTab waits 5 s and quits if no TunnelTab page is connected by then (a reload reconnects in time). Without that request (a browser discarding a sleeping tab, a crash) it keeps running, so tunnels are never dropped by accident. |
+| Setting | `settings.json`: `closeAction` = `""` (not asked yet), `"tray"` or `"quit"`. Old settings files read as `""`. |
+| Turning it off | `--no-tray` command-line flag (also used by the browser tests). |
+
+### Build phases
+
+| # | Phase | Done when |
+|---|---|---|
+| T1 ✅ | **Tray icon**: `internal/platform` tray (Windows + Linux, no-op elsewhere), icon file, Open / Lock / Quit, main-thread loop, `--no-tray` | Builds for both; unit tests for icon generation and the menu actions; real check on Windows (user, CI zip) |
+| T2 ✅ | **Close question + quit on close**: `closeAction` setting, one-time dialog, Settings → General, `POST /api/closing` | Server tests (quit after close, not after reload, not when "tray"); browser test for the dialog and setting |
+| T3 ✅ | **Docs**: USER_GUIDE, ARCHITECTURE, SECURITY, CLAUDE.md conventions (new dependency), README, CHANGELOG; PLAN §9/§10 updated | Docs match behaviour |

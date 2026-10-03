@@ -46,6 +46,7 @@ type Config struct {
 	VaultOptions   vault.Options // Argon2id costs (tests use cheap ones)
 	InstanceSecret string        // authenticates a second launch (see platform.Instance)
 	OnQuit         func()        // called after the Quit request is answered
+	TrayShown      func() bool   // reports whether the tray icon is shown (nil: never)
 	UpdateURL      string        // releases/latest API for "Check for updates" (default: GitHub)
 
 	// "Update now". AppDir is the folder with the running program and
@@ -59,6 +60,7 @@ type Config struct {
 
 	// Timing overrides for tests (zero = defaults).
 	UnlockBaseDelay time.Duration
+	CloseGrace      time.Duration // see closeGrace
 	Now             func() time.Time
 }
 
@@ -115,6 +117,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.UnlockBaseDelay == 0 {
 		cfg.UnlockBaseDelay = unlockBaseDelay
+	}
+	if cfg.CloseGrace == 0 {
+		cfg.CloseGrace = closeGrace
 	}
 	staticFS, err := fs.Sub(web.Files, "static")
 	if err != nil {

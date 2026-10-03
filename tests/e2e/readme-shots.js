@@ -47,7 +47,7 @@ function start(cmd, args) {
   }
   const fake = start(path.join(tmp, "fakessh" + exe), ["-demo", "-port", "2222"]);
   const [, webPort] = await fake.waitFor(/remote port (\d+)/);
-  const app = start(path.join(tmp, "tunneltab" + exe), ["--no-browser", "--port", "47901", "--data", path.join(tmp, "data")]);
+  const app = start(path.join(tmp, "tunneltab" + exe), ["--no-browser", "--no-tray", "--port", "47901", "--data", path.join(tmp, "data")]);
   const [url] = await app.waitFor(/http:\/\/127\.0\.0\.1:47901\/\?launch=\S+/);
 
   const browser = await chromium.launch();

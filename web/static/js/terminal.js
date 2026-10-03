@@ -6,7 +6,7 @@
 // is kept while this tab exists (even while locked); closing the tab ends it.
 // Reloading re-attaches. See docs/ARCHITECTURE.md → "Terminals".
 
-import { streamEvents } from "./api.js";
+import { sayClosing, streamEvents } from "./api.js";
 import { TERM_STATES, TermView } from "./termview.js";
 
 const [serverId, savedTerminalId] = location.hash.slice(1).split("/").map(decodeURIComponent);
@@ -59,6 +59,8 @@ function watchEvents() {
     if (unlocked) view.resume();
   }, () => {}, watchedId ? `?terminal=${encodeURIComponent(watchedId)}` : "");
 }
+
+window.addEventListener("pagehide", sayClosing);
 
 if (!serverId) {
   view.setState("ended", "Open terminals from the TunnelTab dashboard.");

@@ -109,6 +109,17 @@ export async function api(method, path, body) {
 }
 
 /**
+ * Tells TunnelTab this page is going away (closed, reloaded or left), so it
+ * can quit if the user chose "Quit when I close the tab" and no page is left.
+ * keepalive lets the request finish after the page is gone.
+ */
+export function sayClosing() {
+  const token = session();
+  if (!token) return;
+  fetch("/api/closing", { method: "POST", keepalive: true, headers: { Authorization: "Bearer " + token } }).catch(() => {});
+}
+
+/**
  * Streams live events (Server-Sent Events read with fetch, so the session
  * header can be sent). Reconnects with back-off. onStatus receives true when
  * connected and false while disconnected. query is appended to the URL

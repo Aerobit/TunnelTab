@@ -25,8 +25,10 @@ YOUR DATA
   PC or a USB stick, quit it and copy this whole folder.
 
 STOPPING
-  Use the Quit button in the dashboard. Closing the browser tab alone
-  leaves your tunnels running; start TunnelTab again to reopen it.
+  Use the Quit button in the dashboard, or Quit TunnelTab in the tray
+  icon's menu. Closing the browser tab keeps TunnelTab running in the
+  tray (click the icon to reopen the dashboard), unless you chose
+  "Quit when I close the tab" (Settings, General).
 
 FILES
   tunneltab.exe             the Windows program

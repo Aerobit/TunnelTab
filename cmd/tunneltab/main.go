@@ -32,14 +32,24 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(run())
+	// The tray icon must run on the main thread, so the program itself runs
+	// on another goroutine and exits from there, removing the icon first.
+	tray := platform.NewTray()
+	go func() {
+		code := run(tray)
+		tray.Stop()
+		os.Exit(code)
+	}()
+	tray.Loop()
+	select {} // the goroutine above ends the program
 }
 
-func run() int {
+func run(tray *platform.Tray) int {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	dataFlag := flag.String("data", "", "data folder (default: \"data\" next to the executable)")
 	portFlag := flag.Int("port", 0, "dashboard port on 127.0.0.1 (default: from settings, 47811)")
 	noBrowser := flag.Bool("no-browser", false, "print the dashboard link instead of opening a browser")
+	noTray := flag.Bool("no-tray", false, "don't show an icon in the system tray")
 	updateURL := flag.String("update-url", "", "release API used by \"Check for updates\" (for testing; default: GitHub)")
 	flag.Parse()
 
@@ -141,6 +151,7 @@ func run() int {
 		Version:        version,
 		InstanceSecret: inst.Secret,
 		OnQuit:         stop,
+		TrayShown:      tray.Shown,
 		UpdateURL:      *updateURL,
 		AppDir:         appDir,
 		ExeName:        filepath.Base(exe),
@@ -171,6 +182,15 @@ func run() int {
 	autoLockStop := make(chan struct{})
 	go srv.RunAutoLock(autoLockStop)
 
+	if !*noTray {
+		tray.Show(platform.TrayMenu{
+			Tooltip:  "TunnelTab " + version,
+			IconFile: paths.TrayIcon,
+			Open:     func() { show(srv.LaunchURL(), false, log) },
+			Lock:     srv.Lock,
+			Quit:     stop,
+		})
+	}
 	show(srv.LaunchURL(), *noBrowser, log)
 	if appDir != "" {
 		go cleanupAfterUpdate(appDir, srv.UpdateConfirmed(), log)

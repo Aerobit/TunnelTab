@@ -24,7 +24,16 @@ type Settings struct {
 	AutoLockMinutes int `json:"autoLockMinutes"`
 	// CloseTunnelsOnLock stops all tunnels and terminals when the vault locks.
 	CloseTunnelsOnLock bool `json:"closeTunnelsOnLock"`
+	// CloseAction is what closing the last dashboard tab does: CloseKeepRunning
+	// or CloseQuit, or "" until the dashboard has asked.
+	CloseAction string `json:"closeAction,omitempty"`
 }
+
+// Settings.CloseAction values.
+const (
+	CloseKeepRunning = "tray"
+	CloseQuit        = "quit"
+)
 
 // DefaultSettings returns the settings used on first run.
 func DefaultSettings() Settings {
@@ -42,6 +51,9 @@ func (s Settings) Validate() error {
 	}
 	if s.AutoLockMinutes < 0 || s.AutoLockMinutes > 1440 {
 		return fmt.Errorf("auto-lock must be between 0 (never) and 1440 minutes, got %d", s.AutoLockMinutes)
+	}
+	if s.CloseAction != "" && s.CloseAction != CloseKeepRunning && s.CloseAction != CloseQuit {
+		return fmt.Errorf("closeAction must be \"\", %q or %q, got %q", CloseKeepRunning, CloseQuit, s.CloseAction)
 	}
 	return nil
 }

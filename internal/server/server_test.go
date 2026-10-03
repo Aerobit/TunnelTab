@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -474,6 +476,76 @@ func TestQuit(t *testing.T) {
 	case <-h.quit:
 	case <-time.After(2 * time.Second):
 		t.Fatal("OnQuit not called")
+	}
+}
+
+// "When I close the tab": with "quit" chosen, a page saying it is closing
+// makes TunnelTab quit unless a page is connected after the grace period.
+func TestCloseAction(t *testing.T) {
+	var shown atomic.Bool
+	h := newHarness(t, func(c *Config) {
+		c.CloseGrace = 50 * time.Millisecond
+		c.TrayShown = shown.Load
+	})
+	h.login()
+	if h.mustCall("GET", "/api/state", nil, 200)["tray"] != false {
+		t.Fatal("tray shown")
+	}
+	shown.Store(true)
+	if h.mustCall("GET", "/api/state", nil, 200)["tray"] != true {
+		t.Fatal("tray not shown")
+	}
+	quits := func() bool {
+		t.Helper()
+		h.mustCall("POST", "/api/closing", nil, 200)
+		select {
+		case <-h.quit:
+			return true
+		case <-time.After(300 * time.Millisecond):
+			return false
+		}
+	}
+	setAction := func(a string, want int) {
+		t.Helper()
+		h.mustCall("PUT", "/api/settings", map[string]any{"port": config.DefaultPort, "autoLockMinutes": 15, "closeAction": a}, want)
+	}
+
+	setAction("bogus", 400)
+	if quits() {
+		t.Fatal("quit before the user chose to")
+	}
+	setAction(config.CloseKeepRunning, 200)
+	if quits() {
+		t.Fatal("quit with keep running chosen")
+	}
+	setAction(config.CloseQuit, 200)
+	if saved, _ := config.LoadSettings(h.srv.cfg.Paths.Settings); saved.CloseAction != config.CloseQuit {
+		t.Fatalf("not saved: %+v", saved)
+	}
+
+	// Another page still open (or the closing one reloaded): keep running.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", h.base+"/api/events", nil)
+	req.Header.Set("Authorization", "Bearer "+h.session)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quits() {
+		t.Fatal("quit while a page is open")
+	}
+	cancel()
+	resp.Body.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for h.srv.events.count() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("event stream still counted")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !quits() {
+		t.Fatal("didn't quit after the last page closed")
 	}
 }
 

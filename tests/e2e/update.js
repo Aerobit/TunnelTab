@@ -98,7 +98,7 @@ process.on("exit", () => {
 
   // Start the test build. Restarted versions inherit its output, so every launch
   // link (old and new) shows up here.
-  const proc = spawn(program, ["--no-browser", "--port", "47902", "--data", dataDir,
+  const proc = spawn(program, ["--no-browser", "--no-tray", "--port", "47902", "--data", dataDir,
     "--update-url", `http://127.0.0.1:${gh.address().port}/latest`], { stdio: ["ignore", "pipe", "pipe"] });
   const links = [];
   const output = [];

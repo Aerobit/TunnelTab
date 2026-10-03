@@ -6,6 +6,18 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Tray icon.** TunnelTab now shows an icon in the system tray while it runs
+  (Windows, and Linux desktops with a tray). Click it to open the dashboard;
+  right-click it for Open dashboard, Lock now and Quit TunnelTab. Where there
+  is no tray, nothing changes. `--no-tray` turns it off.
+- **"When you close this tab…"** The first time the dashboard opens with a
+  tray icon, it asks whether closing the tab should keep TunnelTab running
+  in the tray or quit it. With "Quit when I close the tab", TunnelTab quits a
+  few seconds after the last TunnelTab tab closes (a reload doesn't count).
+  The answer can be changed in Settings → General.
+
 ## [0.7.4] - 2026-10-02
 
 ### Security

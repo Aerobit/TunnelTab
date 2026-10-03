@@ -30,6 +30,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	a("GET /api/state", s.handleState)
 	a("GET /api/events", s.handleEvents)
 	a("POST /api/quit", s.handleQuit)
+	a("POST /api/closing", s.handleClosing)
 	a("POST /api/touch", s.handleTouch)
 	a("GET /api/traffic", s.handleTraffic)
 	a("POST /api/updates/check", s.handleCheckUpdates)
@@ -229,6 +230,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		"version":        s.cfg.Version,
 		"unlockWaitMs":   s.unlockWait().Milliseconds(),
 		"minPasswordLen": vault.MinPasswordLen,
+		"tray":           s.cfg.TrayShown != nil && s.cfg.TrayShown(),
 	})
 }
 
@@ -273,7 +275,42 @@ func (s *Server) handleQuit(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// closeGrace is how long TunnelTab waits, after a page says it is closing,
+// for a page to connect again (a reload does) before quitting.
+const closeGrace = 5 * time.Second
+
+// handleClosing is sent by a dashboard or terminal page as it goes away
+// (closed, reloaded or navigated away from). With "Quit when I close the
+// tab" chosen, TunnelTab quits if no page is connected a moment later. A
+// page that goes away without saying so (e.g. a sleeping tab the browser
+// discards) never makes TunnelTab quit.
+func (s *Server) handleClosing(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	if s.closeAction() != config.CloseQuit || s.cfg.OnQuit == nil {
+		return
+	}
+	time.AfterFunc(s.cfg.CloseGrace, func() {
+		if s.events.count() == 0 && s.closeAction() == config.CloseQuit && !s.installing.Load() {
+			s.log.Info("quitting: the last TunnelTab page was closed")
+			s.cfg.OnQuit()
+		}
+	})
+}
+
+func (s *Server) closeAction() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.settings.CloseAction
+}
+
 // --- Vault ------------------------------------------------------------------
+
+// Lock locks the vault (the dashboard's Lock button and the tray's Lock now).
+func (s *Server) Lock() {
+	if v := s.currentVault(); v != nil {
+		v.Lock()
+	}
+}
 
 type passwordRequest struct {
 	Password string `json:"password"`
@@ -344,9 +381,7 @@ func (s *Server) handleVaultUnlock(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleVaultLock(w http.ResponseWriter, r *http.Request) {
-	if v := s.currentVault(); v != nil {
-		v.Lock()
-	}
+	s.Lock()
 	writeJSON(w, http.StatusOK, map[string]string{"vault": s.vaultState()})
 }
 

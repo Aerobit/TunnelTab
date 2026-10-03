@@ -2,11 +2,11 @@
 // first-run setup, unlock, dashboard), renders the dashboard from /api/data,
 // and keeps it live with the event stream.
 
-import { api, ApiError, currentSession, probe, signIn, streamEvents, whenSignedOut } from "./api.js";
+import { api, ApiError, currentSession, probe, sayClosing, signIn, streamEvents, whenSignedOut } from "./api.js";
 import { debounce, focusKey, h, replace, restoreFocus } from "./dom.js";
 import { confirmDialog, field, toast } from "./dialogs.js";
 import {
-  projectDialog, serverDialog, serviceDialog, settingsDialog, testServer, withHostKeys,
+  askCloseAction, projectDialog, serverDialog, serviceDialog, settingsDialog, testServer, withHostKeys,
 } from "./forms.js";
 import { findServices } from "./discover.js";
 import { fmtBytes } from "./format.js";
@@ -18,6 +18,7 @@ const state = {
   vault: null, // "none" | "locked" | "unlocked"
   version: "",
   minPasswordLen: 8,
+  tray: false, // TunnelTab has an icon in the system tray
   data: null, // PublicData
   forwards: new Map(), // serviceId → ForwardStatus
   servers: new Map(), // serverId → ServerStatus
@@ -61,6 +62,7 @@ async function start() {
     return showMessage("Can't reach TunnelTab", err.message);
   }
   if (!stopEvents) stopEvents = streamEvents(onEvent, onStreamStatus, `?client=${CLIENT_ID}`);
+  window.addEventListener("pagehide", sayClosing);
   await route();
 }
 
@@ -69,6 +71,7 @@ async function loadState() {
   state.vault = st.vault;
   state.version = st.version;
   state.minPasswordLen = st.minPasswordLen;
+  state.tray = Boolean(st.tray);
   return st;
 }
 
@@ -278,6 +281,7 @@ async function loadData() {
     syncViews(state.terminals.values());
     renderDashboard();
     allViews().forEach((v) => v.resume()); // after an unlock
+    askCloseActionOnce();
   } catch (err) {
     if (err.code === "locked") {
       state.vault = "locked";
@@ -287,6 +291,20 @@ async function loadData() {
       state.vault = "none";
       return showSetup();
     }
+    toast(err.message, "error");
+  }
+}
+
+// The first time the dashboard opens with a tray icon, ask what closing the
+// tab should do (browsers don't let a closing tab ask). Escape asks again
+// next time.
+let closeActionAsked = false;
+async function askCloseActionOnce() {
+  if (closeActionAsked || !state.tray) return;
+  closeActionAsked = true;
+  try {
+    await askCloseAction();
+  } catch (err) {
     toast(err.message, "error");
   }
 }
@@ -1513,6 +1531,7 @@ async function openSettings() {
   try {
     await settingsDialog({
       knownHosts: state.data?.knownHosts || [], minPasswordLen: state.minPasswordLen, version: state.version,
+      tray: state.tray,
       servers: state.data?.servers || [], projects: state.data?.projects || [],
       runningTunnels: state.forwards.size, onRestarting: showUpdating,
       initialTab: state.updateAvailable ? "Updates" : undefined,

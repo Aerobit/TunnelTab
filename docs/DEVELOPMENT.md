@@ -37,6 +37,7 @@ source ~/.bashrc && go version
 |---|---|
 | Run a dev build | `go run ./cmd/tunneltab` (data goes to `./data`) |
 | Run without opening a browser | `go run ./cmd/tunneltab --no-browser` (prints the login link) |
+| Run without the tray icon | `go run ./cmd/tunneltab --no-tray` (the browser tests do) |
 | Show the version | `go run ./cmd/tunneltab --version` |
 | All tests | `go test ./...` |
 | Tests + race detector (what CI runs) | `go test -race ./...` (needs a C compiler; skip `-race` if you have none) |

@@ -339,6 +339,8 @@ is listed in the server's **Activity**.
   - **Lock after inactivity** — Never, 5 min … 4 hours (default 15 min).
   - **Close all tunnels when TunnelTab locks** — off by default.
   - **Dashboard port** — default 47811; applies after restarting TunnelTab.
+  - **When the dashboard tab is closed** — keep TunnelTab running (in the
+    system tray) or quit it; see [Quitting](#quitting).
 - **Password** — change the master password: enter the current one and the
   new one twice.
 - **Updates** — shows your version. **Check for updates** asks GitHub for
@@ -361,7 +363,8 @@ folder:
 |---|---|
 | `vault.enc` | projects, servers, services, keys, passwords and confirmed fingerprints — encrypted with your master password |
 | `vault.enc.bak` | the previous version of the vault (also encrypted) |
-| `settings.json` | auto-lock, dashboard port and similar preferences (nothing secret) |
+| `settings.json` | auto-lock, dashboard port, what closing the tab does and similar preferences (nothing secret) |
+| `tray-icon.ico` | Windows only: the tray icon's picture (Windows loads tray icons from a file, and TunnelTab writes only to its own folder) |
 | `logs/` | technical logs — no secrets, no server addresses |
 
 - **To move or back up TunnelTab**, quit it, then copy the whole `tunneltab`
@@ -378,11 +381,33 @@ folder:
 
 ## Quitting
 
-Use **Quit** in the dashboard. This closes all tunnels and stops TunnelTab.
-Closing the browser tab does **not** stop it: your tunnels keep running.
+Use **Quit** in the dashboard, or **Quit TunnelTab** in the tray icon's
+menu. This closes all tunnels and stops TunnelTab.
 
-To get back to the dashboard after closing the tab, just start TunnelTab
-again: it notices it's already running and opens the dashboard in a new tab.
+**The tray icon.** While TunnelTab runs, its icon sits in the system tray
+(the notification area by the clock on Windows; on Linux, desktops with a
+tray such as KDE, XFCE, Cinnamon, or GNOME with the AppIndicator
+extension). Click it to open the dashboard; right-click it for **Open
+dashboard**, **Lock now** and **Quit TunnelTab**.
+
+**Closing the dashboard tab.** The first time the dashboard opens with a
+tray icon, it asks what closing the tab should do:
+
+- **Keep running in the tray**: tunnels and terminals stay up. Click the
+  tray icon (or start TunnelTab again) to get the dashboard back.
+- **Quit when I close the tab**: a few seconds after the last TunnelTab tab
+  closes (popped-out terminals count as TunnelTab tabs), TunnelTab quits as
+  if you had pressed Quit. Reloading the page doesn't make it quit. If the
+  browser drops a tab without telling the page (for example a sleeping tab
+  discarded to save memory, or a crash), TunnelTab keeps running, so you
+  never lose your tunnels by accident.
+
+You can change the answer in **Settings → General → When the dashboard tab
+is closed**. Without a tray icon, TunnelTab isn't asked and keeps running
+when you close the tab, unless you choose Quit there.
+
+To get back to the dashboard after closing the tab, click the tray icon or
+start TunnelTab again: it notices it's already running and opens the dashboard in a new tab.
 Only one copy can use a data folder at a time; if the running copy is still
 starting or quitting, the new one waits up to 20 seconds for it.
 
@@ -396,6 +421,12 @@ Dashboard links work once and only for two minutes. Start TunnelTab again
 It may already be running with the dashboard in another window, or your
 system has no default browser. Look at `data/logs/tunneltab.log`. On Linux
 you can also run `./tunneltab-linux-amd64 --no-browser` to print the link.
+
+**No tray icon on Linux**  
+Your desktop needs a system tray: KDE, XFCE and Cinnamon have one; on
+GNOME, install the "AppIndicator and KStatusNotifierItem Support"
+extension. Without one TunnelTab works as usual: start it again to reopen
+the dashboard. (`--no-tray` turns the icon off everywhere.)
 
 **"TunnelTab is running from a temporary folder"**  
 You opened it from inside the ZIP. Extract the ZIP first (see

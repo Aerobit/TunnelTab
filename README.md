@@ -255,6 +255,15 @@ portable, and you get your browser's tabs and zoom.
 </details>
 
 <details>
+<summary><b>What happens when I close the dashboard tab?</b></summary>
+<br>
+TunnelTab keeps running in the system tray with your tunnels up. Click its
+tray icon to open the dashboard again, or right-click it to lock or quit.
+If you'd rather it quit with the tab, choose that when the dashboard asks
+(or later in <b>Settings → General</b>).
+</details>
+
+<details>
 <summary><b>How do I update without losing my servers?</b></summary>
 <br>
 Open <b>Settings → Check for updates → Update now</b>. TunnelTab downloads
@@ -292,7 +301,7 @@ how releases are made. Contributions and AI-assisted edits follow
 ## 📄 License
 
 [MIT](LICENSE). Bundled third-party software (Go, x/crypto, x/sys,
-coder/websocket, xterm.js) is listed with its licenses in
+coder/websocket, fyne systray, godbus, xterm.js) is listed with its licenses in
 `THIRD_PARTY_NOTICES.txt` inside every release.
 
 <div align="center">
