@@ -412,7 +412,12 @@ function onStreamStatus(connected) {
 }
 
 function closeDialogs() {
-  document.querySelectorAll("dialog[open]").forEach((d) => d.close());
+  // Removed at once: "close" (which removes it too) fires later, and until
+  // then the closed dialog would still hold what was typed into it.
+  document.querySelectorAll("dialog[open]").forEach((d) => {
+    d.close();
+    d.remove();
+  });
 }
 
 function serviceLabel(id) {

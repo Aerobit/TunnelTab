@@ -6,6 +6,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- When TunnelTab locks, open dialogs are now removed at once, together with
+  anything typed into them, rather than a moment later.
+
 ## [0.8.5] - 2026-10-04
 
 ### Fixed
