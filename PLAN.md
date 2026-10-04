@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.5 released** (2026-10-04); v0.8.6 fixes in progress (§22). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§22. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.6 released** (2026-10-04). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§22. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -647,11 +647,11 @@ Tests: `TestStaleStartDoesNotReturnNewerTunnel`;
 `TestDeletingParentCancelsStart` (server and project; a check held open by
 a slow app keeps the connection in use).
 
-## 22. v0.8.6 — Seventh review round (2026-10-04)
+## 22. v0.8.6 — Seventh review round (released 2026-10-04)
 
 A review after v0.8.5 found one more issue, and its reviews of the fix
 four more; all were confirmed in the code.
-Fixed (not yet committed) together with 13442e9 (dialogs removed at once
+Fixed (bb3fb66) together with 13442e9 (dialogs removed at once
 on lock); `go test ./...` passes and every new test fails without its fix.
 
 | # | Issue | Fix |

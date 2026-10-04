@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-10-04
+
 ### Fixed
 
 - After a server's address or login is changed, new tunnels, checks and
@@ -428,7 +430,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.5...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.6...HEAD
+[0.8.6]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.6
 [0.8.5]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.5
 [0.8.4]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.4
 [0.8.3]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.3
