@@ -1,6 +1,7 @@
 package server
 
 import (
+	"slices"
 	"sync"
 
 	"github.com/Aerobit/TunnelTab/internal/model"
@@ -51,6 +52,22 @@ func (s *Server) serviceChanged(id string) {
 	s.versions.mu.Unlock()
 	s.dropCheck(id)
 	s.mgr.StopForward(id)
+}
+
+// servicesOn lists the services of the given servers, for a delete that
+// removes them with their server or project: call it inside the update,
+// before the delete, and pass the result to serviceChanged afterwards.
+// StopServer alone doesn't stop a start that hasn't reserved its service
+// yet, and a connection kept open by other work (a check, Find services)
+// would let that start through.
+func servicesOn(d *model.Data, serverIDs ...string) []string {
+	var out []string
+	for _, svc := range d.Services {
+		if slices.Contains(serverIDs, svc.ServerID) {
+			out = append(out, svc.ID)
+		}
+	}
+	return out
 }
 
 // startForward starts the service's tunnel unless the service changed since

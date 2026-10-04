@@ -80,16 +80,24 @@ func (m *Manager) StartForward(svc model.Service) (ForwardStatus, error) {
 }
 
 // StartForwardIf is StartForward for settings that may have changed since
-// they were read: current (if not nil) is asked, under m.mu, just before the
-// forward is published, and the start is cancelled (ErrStartCancelled) if it
-// says no. current must not call into m. A caller that edits a service makes
-// current answer no before calling StopForward, so either the forward is
-// published first and StopForward stops it, or current refuses it.
+// they were read: current (if not nil) is asked, under m.mu, first (a
+// forward already running for the service may be for newer settings) and
+// again just before the forward is published; the start is cancelled
+// (ErrStartCancelled) if it says no. current must not call into m. A caller
+// that edits a service makes current answer no before calling StopForward,
+// so either the forward is published first and StopForward stops it, or
+// current refuses it.
 func (m *Manager) StartForwardIf(svc model.Service, current func() bool) (ForwardStatus, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		return ForwardStatus{}, ErrClosed
+	}
+	if current != nil && !current() {
+		// Stale settings: the running forward (if any) isn't theirs.
+		m.mu.Unlock()
+		m.log.Info("forward start cancelled", "service", svc.ID)
+		return ForwardStatus{}, ErrStartCancelled
 	}
 	if f, ok := m.forwards[svc.ID]; ok {
 		m.mu.Unlock()

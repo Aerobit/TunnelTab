@@ -138,3 +138,110 @@ func TestStartSkipsChangedService(t *testing.T) {
 		})
 	}
 }
+
+// A Start that read old settings must not return the tunnel started since
+// for the new ones (with a URL built from the old settings).
+func TestStaleStartDoesNotReturnNewerTunnel(t *testing.T) {
+	h := ready(t)
+	_, serverID, svcID := sshSetup(t, h)
+	confirmHostKey(t, h, svcID)
+
+	read, release := make(chan struct{}), make(chan struct{})
+	first := true
+	testHookStarting = func(id string) {
+		if id == svcID && first { // only the old Start waits
+			first = false
+			close(read)
+			<-release
+		}
+	}
+	t.Cleanup(func() { testHookStarting = nil })
+	answered := make(chan int, 1)
+	go func() {
+		status, _ := h.call("POST", "/api/services/"+svcID+"/start", nil)
+		answered <- status
+	}()
+	waitFor(t, read, "the old Start to read the service")
+	changeService(t, h, "edit", serverID, svcID)
+	h.mustCall("POST", "/api/services/"+svcID+"/start", nil, 200) // the new settings
+	close(release)
+
+	select {
+	case status := <-answered:
+		if status == 200 {
+			t.Fatal("the old Start answered 200 with the tunnel of the new settings")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the old Start never answered")
+	}
+	if _, ok := h.srv.mgr.Forward(svcID); !ok {
+		t.Fatal("the tunnel for the new settings was stopped")
+	}
+}
+
+// Deleting a server or project removes its services: a Start paused before
+// it reserved its service must not then make a tunnel nobody can see or
+// stop, even when other work (here a check) keeps the connection open.
+func TestDeletingParentCancelsStart(t *testing.T) {
+	for _, parent := range []string{"server", "project"} {
+		t.Run(parent, func(t *testing.T) {
+			h := ready(t)
+			_, serverID, svcID := sshSetup(t, h)
+			confirmHostKey(t, h, svcID)
+
+			// A check held open by a slow app keeps the connection in use.
+			entered, appRelease := make(chan struct{}, 4), make(chan struct{})
+			app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				entered <- struct{}{}
+				<-appRelease
+			}))
+			defer app.Close()
+			defer close(appRelease) // before app.Close, which waits for the handler
+			slow := id(h.mustCall("POST", "/api/services", map[string]any{"serverId": serverID, "label": "slow", "remotePort": port(t, app)}, 201))
+			checked := make(chan struct{})
+			go func() {
+				h.call("POST", "/api/services/"+slow+"/check", nil)
+				close(checked)
+			}()
+			select {
+			case <-entered:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the check never reached the app")
+			}
+
+			read, release := make(chan struct{}), make(chan struct{})
+			testHookStarting = func(id string) {
+				if id == svcID {
+					close(read)
+					<-release
+				}
+			}
+			t.Cleanup(func() { testHookStarting = nil })
+			answered := make(chan int, 1)
+			go func() {
+				status, _ := h.call("POST", "/api/services/"+svcID+"/start", nil)
+				answered <- status
+			}()
+			waitFor(t, read, "Start to read the service")
+			if parent == "server" {
+				h.mustCall("DELETE", "/api/servers/"+serverID, nil, 204)
+			} else {
+				projects := h.mustCall("GET", "/api/data", nil, 200)["data"].(map[string]any)["projects"].([]any)
+				h.mustCall("DELETE", "/api/projects/"+id(projects[0].(map[string]any)), nil, 204)
+			}
+			close(release)
+
+			select {
+			case status := <-answered:
+				if status == 200 {
+					t.Fatalf("Start answered 200 after its %s was deleted", parent)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("Start never answered")
+			}
+			if st, ok := h.srv.mgr.Forward(svcID); ok {
+				t.Fatalf("a tunnel was made for a service deleted with its %s: %+v", parent, st)
+			}
+		})
+	}
+}

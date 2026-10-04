@@ -6,6 +6,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A Start that read a service's settings just before they were edited no
+  longer answers with the tunnel since started for the new settings (and a
+  link built from the old ones).
+- Deleting a server or project while one of its services was starting no
+  longer leaves a tunnel behind that can't be seen or stopped.
+
 ## [0.8.4] - 2026-10-03
 
 ### Fixed

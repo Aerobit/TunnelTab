@@ -514,10 +514,24 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
-	var removed []string
-	if err := s.update(func(d *model.Data) (err error) { removed, err = d.DeleteProject(r.PathValue("id")); return }); err != nil {
+	id := r.PathValue("id")
+	var removed, services []string
+	if err := s.update(func(d *model.Data) (err error) {
+		var servers []string
+		for _, srv := range d.Servers {
+			if srv.ProjectID == id {
+				servers = append(servers, srv.ID)
+			}
+		}
+		services = servicesOn(d, servers...)
+		removed, err = d.DeleteProject(id)
+		return
+	}); err != nil {
 		s.writeDataError(w, err)
 		return
+	}
+	for _, svc := range services {
+		s.serviceChanged(svc) // before StopServer: see servicesOn
 	}
 	for _, id := range removed {
 		s.mgr.StopServer(id)
@@ -563,9 +577,16 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.update(func(d *model.Data) error { return d.DeleteServer(id) }); err != nil {
+	var services []string
+	if err := s.update(func(d *model.Data) error {
+		services = servicesOn(d, id)
+		return d.DeleteServer(id)
+	}); err != nil {
 		s.writeDataError(w, err)
 		return
+	}
+	for _, svc := range services {
+		s.serviceChanged(svc) // before StopServer: see servicesOn
 	}
 	s.mgr.StopServer(id)
 	w.WriteHeader(http.StatusNoContent)

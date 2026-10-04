@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.4 released** (2026-10-03). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon), §19 and §20. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.4 released** (2026-10-03); v0.8.5 fixes in progress (§21). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§21. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -630,3 +630,19 @@ earlier service's handshake held while a later one is edited / deleted) and
 starting); browser test: a dashboard tab with its event stream cut misses
 the lock (Edit server dialog open), and a "locked" answer to its data
 request — both leave no dialog over the unlock screen.
+
+## 21. v0.8.5 — Sixth review round (2026-10-04)
+
+A review of v0.8.4 confirmed the §20 fixes and found two gaps left in the
+tunnel-start check (R2 of §20); both were confirmed in the code. Fixed (not
+yet committed); `go test ./...` passes and both new tests fail on the old
+code.
+
+| # | Issue | Fix |
+|---|---|---|
+| R1 (P2) | **A stale Start could return the newer tunnel.** `StartForwardIf` returned an already-running forward before asking `current()`: an old Start paused across an edit and a new Start answered 200 with a link built from the old settings. | `current()` is asked first, under the manager's lock, before the "already running" return (and still again at registration). |
+| R2 (P2) | **Deleting a server or project didn't invalidate its services.** Only `StopServer` ran, which can't stop a start not yet reserved; with the connection kept open by other work (a check, Find services) such a start made an orphan tunnel. | The delete collects the removed services (`servicesOn`) in the same vault update and calls `serviceChanged` for each before `StopServer`. |
+
+Tests: `TestStaleStartDoesNotReturnNewerTunnel`;
+`TestDeletingParentCancelsStart` (server and project; a check held open by
+a slow app keeps the connection in use).

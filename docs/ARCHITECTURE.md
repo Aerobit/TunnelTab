@@ -409,14 +409,17 @@ result wasn't OK, and in Find services. Results are in memory, sent as
 edited or deleted. A check still running then discards its result, and a
 tunnel start (Start, auto-start) still on its way is cancelled: each
 service has a change counter (`servicever.go`; raised by `serviceChanged`
-after an edit or delete is saved, before `StopForward`), read before the
-service itself. A check result is stored and published only if the counter
-is unchanged (the Check button then answers `{check: null}`); a start
-passes the comparison to `Manager.StartForwardIf`, which asks it under the
-manager's lock as it publishes the forward, so either the forward is
-published first and `StopForward` stops it, or it is refused
-(`ErrStartCancelled`). Auto-start takes all counters before it reads the
-services.
+after an edit or delete is saved, before `StopForward`; deleting a server
+or project raises it for each of its services, collected in the same
+update, before `StopServer`), read before the service itself. A check
+result is stored and published only if the counter is unchanged (the
+Check button then answers `{check: null}`). A start passes the comparison
+to `Manager.StartForwardIf`, which asks it under the manager's lock first
+(a forward already running may be for newer settings, so it isn't
+returned to a stale start) and again as it publishes the forward, so
+either the forward is published first and `StopForward` stops it, or it
+is refused (`ErrStartCancelled`). Auto-start takes all counters before it
+reads the services.
 
 
 ## Terminals
