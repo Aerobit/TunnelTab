@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.4 released** (2026-10-03); v0.8.5 fixes in progress (§21). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§21. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.5 released** (2026-10-04). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§21. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -631,11 +631,11 @@ starting); browser test: a dashboard tab with its event stream cut misses
 the lock (Edit server dialog open), and a "locked" answer to its data
 request — both leave no dialog over the unlock screen.
 
-## 21. v0.8.5 — Sixth review round (2026-10-04)
+## 21. v0.8.5 — Sixth review round (released 2026-10-04)
 
 A review of v0.8.4 confirmed the §20 fixes and found two gaps left in the
-tunnel-start check (R2 of §20); both were confirmed in the code. Fixed (not
-yet committed); `go test ./...` passes and both new tests fail on the old
+tunnel-start check (R2 of §20); both were confirmed in the code. Fixed
+(368da05); `go test ./...` passes and both new tests fail on the old
 code.
 
 | # | Issue | Fix |
