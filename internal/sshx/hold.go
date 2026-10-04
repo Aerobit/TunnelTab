@@ -42,7 +42,7 @@ func (m *Manager) Hold(serverID string) error {
 	st := sc.statusLocked()
 	sc.mu.Unlock()
 	m.mu.Unlock()
-	m.emit(st.event())
+	sc.publish(st.event())
 	return nil
 }
 
@@ -55,8 +55,17 @@ func (m *Manager) holdStops(serverID string) uint64 {
 // Unhold drops the server's hold, if any. The connection closes unless a
 // forward or terminal still uses it.
 func (m *Manager) Unhold(serverID string) {
+	m.unhold(serverID, nil)
+}
+
+// unhold is Unhold; with only set, just if the hold is on that connection.
+func (m *Manager) unhold(serverID string, only *serverConn) {
 	m.mu.Lock()
 	sc := m.holds[serverID]
+	if only != nil && sc != only {
+		m.mu.Unlock()
+		return
+	}
 	delete(m.holds, serverID)
 	if sc != nil {
 		sc.mu.Lock()
@@ -72,7 +81,7 @@ func (m *Manager) Unhold(serverID string) {
 	done, st := sc.done, sc.statusLocked()
 	sc.mu.Unlock()
 	if !done { // still used by something else: say it's no longer held
-		m.emit(st.event())
+		sc.publish(st.event())
 	}
 }
 

@@ -1511,3 +1511,252 @@ func TestCloseEndsConnectionsInUse(t *testing.T) {
 	}
 	waitFor(t, "the connection to close", func() bool { return srv.ActiveConnections() == 0 })
 }
+
+// A connection StopServer retired while other work (a check) still used it
+// must stay quiet when that work ends: its server ID now belongs to the
+// replacement, which must not be reported stopped.
+func TestRetiredConnectionStaysQuiet(t *testing.T) {
+	e := newEnv()
+	_, s := passwordServer(t, e)
+	m := newManager(t, e, nil)
+	host, port := backend(t, "hello")
+
+	inUse, finish := make(chan struct{}), make(chan struct{})
+	throughDone := make(chan error, 1)
+	go func() {
+		throughDone <- m.Through(s.ID, func(func(string, int) (net.Conn, error)) {
+			close(inUse)
+			<-finish
+		})
+	}()
+	select {
+	case <-inUse:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Through never got the connection")
+	}
+	m.StopServer(s.ID) // e.g. the server was edited: the connection is retired
+
+	// A tunnel started now gets a connection of its own, which connects
+	// before the old work ends.
+	if _, err := m.StartForward(service(s.ID, host, port)); err != nil {
+		t.Fatal(err)
+	}
+	connected := func() bool {
+		for _, st := range m.Servers() {
+			if st.ID == s.ID && st.State == StateConnected {
+				return true
+			}
+		}
+		return false
+	}
+	waitFor(t, "the replacement to connect", connected)
+	e.mu.Lock()
+	mark := len(e.events)
+	e.mu.Unlock()
+
+	close(finish) // the old work ends and releases the retired connection
+	select {
+	case <-throughDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Through never returned")
+	}
+	e.mu.Lock()
+	after := append([]Event(nil), e.events[mark:]...)
+	e.mu.Unlock()
+	for _, ev := range after {
+		if ev.Kind == "server" && ev.ID == s.ID && ev.State != StateConnected {
+			t.Fatalf("the retired connection reported on the server: %+v", ev)
+		}
+	}
+	if !connected() {
+		t.Fatal("the replacement isn't listed as connected any more")
+	}
+}
+
+// A retired connection whose transport drops must not reconnect (with
+// settings that may have changed), and its failure must not stop the
+// tunnels or hold of the connection that replaced it.
+func TestRetiredConnectionDoesNotReconnect(t *testing.T) {
+	e := newEnv()
+	_, s := passwordServer(t, e)
+	m := newManager(t, e, nil)
+	host, port := backend(t, "hello")
+
+	inUse, finish := make(chan struct{}), make(chan struct{})
+	throughDone := make(chan error, 1)
+	go func() {
+		throughDone <- m.Through(s.ID, func(func(string, int) (net.Conn, error)) {
+			close(inUse)
+			<-finish
+		})
+	}()
+	select {
+	case <-inUse:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Through never got the connection")
+	}
+	m.mu.Lock()
+	old := m.servers[s.ID]
+	m.mu.Unlock()
+	m.StopServer(s.ID) // retires old: the check still uses it
+
+	// The replacement: a tunnel and a hold on a new connection.
+	svc := service(s.ID, host, port)
+	if _, err := m.StartForward(svc); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Hold(s.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The old transport drops, and logging in would now fail for good: an
+	// old connection that reconnected would give up and fail the server.
+	e.setAuth(s.ID, model.Auth{Type: model.AuthPassword, Password: "wrong-password"})
+	old.currentClient().Close()
+	deadline := time.Now().Add(500 * time.Millisecond) // reconnects start after 10 ms
+	for time.Now().Before(deadline) {
+		if st, ok := m.Forward(svc.ID); !ok || st.State != StateActive {
+			t.Fatalf("the replacement's tunnel was stopped: %+v", st)
+		}
+		if !m.IsHeld(s.ID) {
+			t.Fatal("the replacement's hold was dropped")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	old.mu.Lock()
+	state := old.state
+	old.mu.Unlock()
+	if state == StateReconnecting || state == StateFailed {
+		t.Fatalf("the retired connection tried to reconnect (state %s)", state)
+	}
+	close(finish)
+	select {
+	case <-throughDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Through never returned")
+	}
+}
+
+// failServer stops the forwards it found on the failed connection, not
+// whatever runs under their service IDs by the time it gets to them: a
+// service stopped and started again meanwhile keeps its new tunnel.
+func TestFailServerSparesReplacedForward(t *testing.T) {
+	e := newEnv()
+	_, s := passwordServer(t, e)
+	m := newManager(t, e, nil)
+	host, port := backend(t, "hello")
+	svc := service(s.ID, host, port)
+	if _, err := m.StartForward(svc); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	old := m.servers[s.ID]
+	m.mu.Unlock()
+
+	found, cont := make(chan struct{}), make(chan struct{})
+	testHookFailing = func() {
+		close(found)
+		<-cont
+	}
+	t.Cleanup(func() { testHookFailing = nil })
+	e.mu.Lock()
+	good := e.servers[s.ID].Auth
+	e.mu.Unlock()
+	e.setAuth(s.ID, model.Auth{Type: model.AuthPassword, Password: "wrong-password"})
+	old.currentClient().Close() // reconnecting now fails for good
+	select {
+	case <-found:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the failed connection was never cleaned up")
+	}
+
+	// Meanwhile the service is stopped and started again (password fixed).
+	m.StopForward(svc.ID)
+	e.setAuth(s.ID, good)
+	if _, err := m.StartForward(svc); err != nil {
+		t.Fatal(err)
+	}
+	close(cont)
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if st, ok := m.Forward(svc.ID); !ok || st.State != StateActive {
+			t.Fatalf("the cleanup of the failed connection stopped the new tunnel: %+v", st)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// A stopped forward's final event can't land after the events of the
+// forward that replaced it (the dashboard would drop the running tunnel).
+func TestStoppedForwardEventComesFirst(t *testing.T) {
+	e := newEnv()
+	_, s := passwordServer(t, e)
+	m := newManager(t, e, nil)
+	host, port := backend(t, "hello")
+	svc := service(s.ID, host, port)
+	if _, err := m.StartForward(svc); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, cont := make(chan struct{}), make(chan struct{})
+	testHookForwardRemoved = func(id string) {
+		if id == svc.ID {
+			close(removed)
+			<-cont
+		}
+	}
+	t.Cleanup(func() { testHookForwardRemoved = nil })
+	e.mu.Lock()
+	mark := len(e.events)
+	e.mu.Unlock()
+	stopped := make(chan struct{})
+	go func() {
+		m.StopForward(svc.ID)
+		close(stopped)
+	}()
+	select {
+	case <-removed: // the old forward is gone, its final event not sent yet
+	case <-time.After(10 * time.Second):
+		t.Fatal("StopForward never removed the forward")
+	}
+
+	// The replacement starts while the old forward's stop isn't finished.
+	started := make(chan error, 1)
+	go func() {
+		_, err := m.StartForward(svc)
+		started <- err
+	}()
+	waitFor(t, "the replacement to be running", func() bool {
+		_, ok := m.Forward(svc.ID)
+		return ok
+	})
+	close(cont)
+	select {
+	case <-stopped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("StopForward never returned")
+	}
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("StartForward never returned")
+	}
+
+	e.mu.Lock()
+	var states []State
+	for _, ev := range e.events[mark:] {
+		if ev.Kind == "forward" && ev.ID == svc.ID {
+			states = append(states, ev.State)
+		}
+	}
+	e.mu.Unlock()
+	if len(states) == 0 || states[len(states)-1] != StateActive {
+		t.Fatalf("forward events %v: the last must be the replacement's %s", states, StateActive)
+	}
+	if st, ok := m.Forward(svc.ID); !ok || st.State != StateActive {
+		t.Fatalf("the replacement isn't running: %+v", st)
+	}
+}

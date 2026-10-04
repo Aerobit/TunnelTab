@@ -559,8 +559,10 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	in.ID = r.PathValue("id")
 	var old, out model.Server
+	var services []string
 	if err := s.update(func(d *model.Data) (err error) {
 		old, _ = d.Server(in.ID)
+		services = servicesOn(d, in.ID)
 		out, err = d.UpdateServer(in)
 		return
 	}); err != nil {
@@ -568,8 +570,13 @@ func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// If the address, username or login changed, the open connection (and
-	// its tunnels) no longer matches: close it. A rename keeps it running.
+	// its tunnels) no longer matches: close it, so new work connects with the
+	// new settings. Results of checks still running over it would describe
+	// the old server. A rename keeps it running.
 	if old.Host != out.Host || old.Port != out.Port || old.Username != out.Username || old.Auth != out.Auth {
+		for _, svc := range services {
+			s.serviceChanged(svc)
+		}
 		s.mgr.StopServer(out.ID)
 	}
 	writeJSON(w, http.StatusOK, out.Public())

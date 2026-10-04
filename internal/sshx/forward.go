@@ -156,7 +156,14 @@ func (m *Manager) StartForwardIf(svc model.Service, current func() bool) (Forwar
 	go f.serve()
 	m.log.Info("forward started", "service", svc.ID, "localPort", f.port)
 	st := f.status()
-	m.emit(Event{Kind: "forward", ID: svc.ID, ServerID: svc.ServerID, State: st.State, LocalPort: f.port})
+	m.fwdEvents.Lock() // see Manager.fwdEvents
+	m.mu.Lock()
+	running := m.forwards[svc.ID] == f // not stopped already
+	m.mu.Unlock()
+	if running {
+		m.emit(Event{Kind: "forward", ID: svc.ID, ServerID: svc.ServerID, State: st.State, LocalPort: f.port})
+	}
+	m.fwdEvents.Unlock()
 	return st, nil
 }
 
@@ -167,21 +174,48 @@ func (m *Manager) StopForward(serviceID string) {
 }
 
 func (m *Manager) stopForward(serviceID string, final State, cause error) {
+	m.stopForwardIf(serviceID, nil, final, cause)
+}
+
+// stopForwardIf is stopForward; with only set, it stops the service's
+// forward just if that is still only, and otherwise leaves the service
+// alone (its forward and any start under way are newer than only).
+func (m *Manager) stopForwardIf(serviceID string, only *forward, final State, cause error) {
+	m.fwdEvents.Lock() // see Manager.fwdEvents
 	m.mu.Lock()
-	delete(m.starting, serviceID) // a start still under way is cancelled
 	f := m.forwards[serviceID]
+	if only != nil && f != only {
+		m.mu.Unlock()
+		m.fwdEvents.Unlock()
+		return
+	}
+	if only == nil {
+		delete(m.starting, serviceID) // a start still under way is cancelled
+	}
 	if f == nil {
 		m.mu.Unlock()
+		m.fwdEvents.Unlock()
 		return
 	}
 	delete(m.forwards, serviceID)
 	m.mu.Unlock()
+	if testHookForwardRemoved != nil {
+		testHookForwardRemoved(serviceID)
+	}
+	// The final event goes out now, before closing (which waits for the
+	// forward's connections): a replacement started meanwhile publishes
+	// its own events only after this one.
+	m.emit(Event{Kind: "forward", ID: serviceID, ServerID: f.svc.ServerID, State: final, Error: errString(cause)})
+	m.fwdEvents.Unlock()
 
 	f.close()
 	m.release(f.sc)
 	m.log.Info("forward stopped", "service", serviceID)
-	m.emit(Event{Kind: "forward", ID: serviceID, ServerID: f.svc.ServerID, State: final, Error: errString(cause)})
 }
+
+// testHookForwardRemoved, if set (by tests), runs in stopForwardIf once the
+// forward is removed, before its final event.
+var testHookForwardRemoved func(serviceID string)
 
 // Forwards returns the status of every running forward.
 func (m *Manager) Forwards() []ForwardStatus {
@@ -227,6 +261,10 @@ func (m *Manager) forwardsFor(serverID string) []*forward {
 // emitForwards reports the state of a server's forwards after the server's
 // connection state changed.
 func (m *Manager) emitForwards(serverID string) {
+	// Under fwdEvents, no forward found here can be stopped (and its final
+	// event published) before its state is: see Manager.fwdEvents.
+	m.fwdEvents.Lock()
+	defer m.fwdEvents.Unlock()
 	for _, f := range m.forwardsFor(serverID) {
 		st := f.status()
 		m.emit(Event{Kind: "forward", ID: st.ServiceID, ServerID: serverID, State: st.State, Error: st.Error, LocalPort: st.LocalPort})

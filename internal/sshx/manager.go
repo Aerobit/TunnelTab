@@ -103,6 +103,12 @@ type Manager struct {
 	cfg Config
 	log *slog.Logger
 
+	// Forward events are published under fwdEvents (taken before mu): a
+	// forward's final event goes out as it is removed, and others only for
+	// forwards still running, so nothing about a stopped forward can land
+	// after the events of the one that replaced it.
+	fwdEvents sync.Mutex
+
 	mu       sync.Mutex
 	servers  map[string]*serverConn
 	forwards map[string]*forward         // by service ID; running forwards only
@@ -182,10 +188,23 @@ func (m *Manager) Resume() {
 
 // StopServer stops every forward using the server and closes its connection.
 // Call it when a server is edited or deleted.
+//
+// The connection is taken out of the pool first, so new work connects again
+// with the server's current settings: after an edit the old one may lead to
+// the old address or be logged in with the old credentials. Work still
+// using it (a check, Find services) finishes, and the last release closes
+// it. A start, hold or terminal that got it just before is cancelled or
+// stopped below.
 func (m *Manager) StopServer(serverID string) {
 	m.mu.Lock()
 	m.serverStops[serverID]++
 	m.signalStopsLocked()
+	if sc := m.servers[serverID]; sc != nil {
+		sc.emitMu.Lock()
+		sc.retired = true // before a replacement can exist: see publish
+		sc.emitMu.Unlock()
+		delete(m.servers, serverID)
+	}
 	m.mu.Unlock()
 	m.Unhold(serverID)
 	m.cancelStarting(func(p *startingForward) bool { return p.serverID == serverID })
@@ -296,6 +315,30 @@ type serverConn struct {
 	since      time.Time     // first successful connect
 	reconnects int           // successful connects after the first
 	ping       time.Duration // last keep-alive round trip
+
+	// Events about this connection go through publish. Once StopServer has
+	// retired it (taken it out of the pool while other work still used it),
+	// its server ID belongs to a newer connection, whose state its events
+	// would overwrite: they are dropped. emitMu is held while publishing and
+	// while retiring, so none is published after (lock order: m.mu, emitMu).
+	emitMu  sync.Mutex
+	retired bool
+}
+
+// publish sends one of this connection's own events unless it was retired.
+func (sc *serverConn) publish(e Event) {
+	sc.emitMu.Lock()
+	defer sc.emitMu.Unlock()
+	if !sc.retired {
+		sc.m.emit(e)
+	}
+}
+
+// isRetired reports whether StopServer retired the connection (see publish).
+func (sc *serverConn) isRetired() bool {
+	sc.emitMu.Lock()
+	defer sc.emitMu.Unlock()
+	return sc.retired
 }
 
 // acquire returns a connected (or reconnecting) connection to the server,
@@ -324,7 +367,7 @@ func (m *Manager) acquire(serverID string) (*serverConn, error) {
 	}
 	m.servers[serverID] = sc
 	m.mu.Unlock()
-	m.emit(Event{Kind: "server", ID: serverID, ServerID: serverID, State: StateConnecting})
+	sc.publish(Event{Kind: "server", ID: serverID, ServerID: serverID, State: StateConnecting})
 
 	err := sc.dial()
 	sc.initErr = err
@@ -337,7 +380,7 @@ func (m *Manager) acquire(serverID string) (*serverConn, error) {
 		}
 		m.mu.Unlock()
 		sc.shutdown()
-		m.emit(Event{Kind: "server", ID: serverID, ServerID: serverID, State: StateFailed, Error: err.Error(), Reason: ErrorKind(err)})
+		sc.publish(Event{Kind: "server", ID: serverID, ServerID: serverID, State: StateFailed, Error: err.Error(), Reason: ErrorKind(err)})
 		return nil, err
 	}
 	go sc.supervise()
@@ -363,7 +406,7 @@ func (m *Manager) release(sc *serverConn) {
 		return
 	}
 	if sc.shutdown() {
-		m.emit(Event{Kind: "server", ID: sc.id, ServerID: sc.id, State: StateStopped})
+		sc.publish(Event{Kind: "server", ID: sc.id, ServerID: sc.id, State: StateStopped})
 	}
 }
 
@@ -424,7 +467,7 @@ func (sc *serverConn) setState(st State, err error) {
 	sc.state, sc.err = st, err
 	status := sc.statusLocked()
 	sc.mu.Unlock()
-	sc.m.emit(status.event())
+	sc.publish(status.event())
 	sc.m.emitForwards(sc.id)
 }
 
@@ -480,7 +523,7 @@ func (sc *serverConn) dial() error {
 	status := sc.statusLocked()
 	sc.mu.Unlock()
 	m.log.Info("connected", "server", sc.id)
-	m.emit(status.event())
+	sc.publish(status.event())
 	m.emitForwards(sc.id)
 	return nil
 }
@@ -523,6 +566,13 @@ func (sc *serverConn) supervise() {
 			sc.client = nil
 		}
 		sc.mu.Unlock()
+		if sc.isRetired() {
+			// Retired by StopServer: the work still using it fails rather than
+			// connecting again (with settings that changed), and nothing it
+			// does may touch the connection that replaced it.
+			m.log.Info("retired connection lost", "server", sc.id)
+			return
+		}
 		sc.setState(StateReconnecting, nil)
 		delay := m.cfg.ReconnectMin
 		for {
@@ -531,6 +581,9 @@ func (sc *serverConn) supervise() {
 				return
 			case <-sc.resume:
 			case <-time.After(delay):
+			}
+			if sc.isRetired() {
+				return // see above
 			}
 			err := sc.dial()
 			if err == nil {
@@ -551,7 +604,7 @@ func (sc *serverConn) supervise() {
 			case permanent(err):
 				m.log.Info("giving up on server", "server", sc.id, "reason", ErrorKind(err))
 				sc.setState(StateFailed, err)
-				m.failServer(sc.id, err)
+				m.failServer(sc, err)
 				return
 			}
 			sc.setState(StateReconnecting, err)
@@ -613,12 +666,29 @@ func (sc *serverConn) watch(client *ssh.Client) bool {
 // failServer stops all forwards (and the hold) of a server that can't be
 // reconnected.
 // (Terminals end by themselves when their connection drops.)
-func (m *Manager) failServer(serverID string, err error) {
-	for _, f := range m.forwardsFor(serverID) {
-		m.stopForward(f.svc.ID, StateFailed, err)
+func (m *Manager) failServer(sc *serverConn, err error) {
+	// Only what uses this connection: after StopServer the server's ID may
+	// belong to a newer one. Each forward is stopped only if it is still the
+	// one found here (a service stopped and started again meanwhile has a
+	// new forward, maybe on another connection).
+	var failed []*forward
+	for _, f := range m.forwardsFor(sc.id) {
+		if f.sc == sc {
+			failed = append(failed, f)
+		}
 	}
-	m.Unhold(serverID)
+	if testHookFailing != nil {
+		testHookFailing()
+	}
+	for _, f := range failed {
+		m.stopForwardIf(f.svc.ID, f, StateFailed, err)
+	}
+	m.unhold(sc.id, sc)
 }
+
+// testHookFailing, if set (by tests), runs in failServer between finding
+// the connection's forwards and stopping them.
+var testHookFailing func()
 
 func errString(err error) string {
 	if err == nil {
@@ -639,7 +709,7 @@ func (sc *serverConn) setPing(d time.Duration) {
 	sc.ping = max(d, time.Microsecond)
 	status := sc.statusLocked()
 	sc.mu.Unlock()
-	sc.m.emit(status.event())
+	sc.publish(status.event())
 }
 
 // pingMs is d in milliseconds, rounded to 0.1 (and at least 0.1 once measured).

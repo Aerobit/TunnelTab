@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.5 released** (2026-10-04). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§21. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.5 released** (2026-10-04); v0.8.6 fixes in progress (§22). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§22. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -646,3 +646,30 @@ code.
 Tests: `TestStaleStartDoesNotReturnNewerTunnel`;
 `TestDeletingParentCancelsStart` (server and project; a check held open by
 a slow app keeps the connection in use).
+
+## 22. v0.8.6 — Seventh review round (2026-10-04)
+
+A review after v0.8.5 found one more issue, and its reviews of the fix
+four more; all were confirmed in the code.
+Fixed (not yet committed) together with 13442e9 (dialogs removed at once
+on lock); `go test ./...` passes and every new test fails without its fix.
+
+| # | Issue | Fix |
+|---|---|---|
+| R1 (P2) | **Editing a server could leave new work on its old connection.** `StopServer` stopped tunnels, shells and holds, but the pooled connection stayed while a check or Find services still used it, and `acquire` handed it to new work without looking at the new settings: Start after changing the port answered 200 over the old connection. | `StopServer` takes the connection out of the pool first (with the stop counter, under the manager's lock), so new work connects with the current settings; work still using the old one finishes and the last release closes it (closing it at once would give connects in progress a "shut down" error instead of their "cancelled" one). A change of address or login also raises the change counters of the server's services, so a check still running over the old connection doesn't keep its result. |
+| R2 (P2) | **A retired connection could report on its replacement.** Found in review of the R1 fix: the old connection's last release published "server stopped" under the shared server ID while the new connection was up, so the dashboard dropped its status and health reading. | `StopServer` marks the connection retired (under a per-connection `emitMu`, before taking it out of the pool); all of a connection's own events go through `serverConn.publish`, which drops them once retired. |
+| R3 (P2) | **A retired connection could reconnect and stop its replacement.** Found in review of R2: when the old transport dropped, its supervisor reconnected (with the current settings) and, on a permanent failure such as a changed password, `failServer` stopped the server's forwards and hold by ID — the replacement's. | A retired connection doesn't reconnect: when its transport drops (or if it is retired while reconnecting) the supervisor ends, and work still using it fails with `ErrNotConnected`. `failServer` takes the connection and only stops forwards on it and its own hold (`unhold(id, only)`). |
+| R4 (P2) | **`failServer` could stop a replacement forward.** Found in review of R3: it checked `f.sc == sc` on a snapshot, then stopped by service ID; a forward stopped and started again in between was removed instead (and a start under way cancelled). | `stopForwardIf(id, only, …)`: under the manager's lock, stops the service's forward only if it is still the one found, and otherwise leaves its forward and any start alone (as `unhold(id, only)` does). |
+| R5 (P2) | **A stopped forward's final event could land after its replacement's.** Found in review of R4: the final event was published after `f.close()`, by service ID; a replacement started during the close published "active" first, and the dashboard then dropped the running tunnel. | `Manager.fwdEvents`: every forward event is published under it. Stopping removes the forward and publishes its final event under it, before closing; registration publishes "active" under it only if the forward is still running; `emitForwards` lists forwards under it. |
+
+Tests: `TestServerEditRetiresConnection` (a check held open by a slow app
+during the edit; Start afterwards must fail on the closed new port, and
+the check's result is dropped); `TestRetiredConnectionStaysQuiet` (the
+replacement connects before the old work ends; no event from the old one
+afterwards); `TestRetiredConnectionDoesNotReconnect` (old transport dropped
+with a password that now fails: no reconnect, the replacement's tunnel and
+hold stay); `TestFailServerSparesReplacedForward` (cleanup paused by
+`testHookFailing` while the service is stopped and started again);
+`TestStoppedForwardEventComesFirst` (stop paused by `testHookForwardRemoved`
+after removal, replacement started, then the stop finishes: the last forward
+event is "active").

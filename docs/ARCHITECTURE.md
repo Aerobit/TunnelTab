@@ -170,8 +170,24 @@ browser ──▶ 127.0.0.1:<port> ──▶ forward.handle ──▶ client.Dia
 - **`Manager`** owns everything. `StartForward`, `StopForward`, `StopServer`
   (call on server edit/delete), `Forwards`, `Servers`, `Resume` (call after
   unlock), `Close`. State changes are reported through `Config.OnEvent`.
-- **One connection per server**, reference-counted by its forwards (and later
-  terminals); closed when the last user stops.
+- **One connection per server**, reference-counted by its users (forwards,
+  terminals, holds, checks, Find services); closed when the last user stops.
+  `StopServer` also takes it out of the pool at once, so work started after
+  an edit connects again with the new settings; work still using the old
+  connection finishes and the last release closes it. A retired
+  connection publishes no more events (`serverConn.publish`): its server ID
+  belongs to the replacement, which would otherwise be shown as stopped.
+  It doesn't reconnect either: if its transport drops, the work still
+  using it fails (`ErrNotConnected`), and `failServer` only stops the
+  forwards and hold of the connection that failed — each forward only if
+  the service still maps to that very forward (`stopForwardIf`), checked
+  and removed under the manager's lock.
+- **Forward events in order.** All forward events are published under
+  `Manager.fwdEvents`: a stopped forward's final event goes out as it is
+  removed (before the slow close), the "active" event of a new one only if
+  it is still running, and `emitForwards` lists forwards under the same
+  lock — so nothing about a stopped forward lands after the events of the
+  one that replaced it.
 - **Credentials are not kept.** Every (re)connect calls `Config.Targets`
   (backed by the vault) and drops the result once connected. While the vault
   is locked, `Targets` returns `ErrPaused` and the connection waits in state
@@ -410,8 +426,8 @@ edited or deleted. A check still running then discards its result, and a
 tunnel start (Start, auto-start) still on its way is cancelled: each
 service has a change counter (`servicever.go`; raised by `serviceChanged`
 after an edit or delete is saved, before `StopForward`; deleting a server
-or project raises it for each of its services, collected in the same
-update, before `StopServer`), read before the service itself. A check
+or project, or changing a server's address or login, raises it for each of
+its services, collected in the same update, before `StopServer`), read before the service itself. A check
 result is stored and published only if the counter is unchanged (the
 Check button then answers `{check: null}`). A start passes the comparison
 to `Manager.StartForwardIf`, which asks it under the manager's lock first

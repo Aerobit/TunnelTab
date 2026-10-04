@@ -245,3 +245,63 @@ func TestDeletingParentCancelsStart(t *testing.T) {
 		})
 	}
 }
+
+// Changing a server's address or login must not leave its old connection
+// for new work to reuse, even while a check still uses it; and that check's
+// result (from the old server) isn't kept.
+func TestServerEditRetiresConnection(t *testing.T) {
+	h := ready(t)
+	sshSrv, serverID, svcID := sshSetup(t, h)
+	confirmHostKey(t, h, svcID)
+
+	entered, appRelease := make(chan struct{}, 4), make(chan struct{})
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		<-appRelease
+	}))
+	defer app.Close()
+	released := false
+	release := func() {
+		if !released {
+			released = true
+			close(appRelease)
+		}
+	}
+	defer release() // before app.Close, which waits for the handler
+	slow := id(h.mustCall("POST", "/api/services", map[string]any{"serverId": serverID, "label": "slow", "remotePort": port(t, app)}, 201))
+	checked := make(chan map[string]any, 1)
+	go func() {
+		_, body := h.call("POST", "/api/services/"+slow+"/check", nil)
+		checked <- body
+	}()
+	select {
+	case <-entered: // the check holds the connection
+	case <-time.After(10 * time.Second):
+		t.Fatal("the check never reached the app")
+	}
+
+	// Nothing listens on the new port: work after the edit must fail.
+	h.mustCall("PUT", "/api/servers/"+serverID, map[string]any{
+		"name": "s", "host": sshSrv.Host, "port": closedPort(t), "username": "tester",
+		"auth": map[string]string{"type": "password", "password": sshPassword},
+	}, 200)
+	if status, m := h.call("POST", "/api/services/"+svcID+"/start", nil); status == 200 {
+		t.Fatalf("Start after the edit used the old connection: %v", m)
+	}
+	if st, ok := h.srv.mgr.Forward(svcID); ok {
+		t.Fatalf("a tunnel runs over the old connection: %+v", st)
+	}
+
+	release()
+	select {
+	case body := <-checked:
+		if body["check"] != nil {
+			t.Fatalf("the check over the old connection answered a result: %v", body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the check never answered")
+	}
+	if _, ok := h.srv.checkReadings()[slow]; ok {
+		t.Fatal("a result from the old server was kept")
+	}
+}

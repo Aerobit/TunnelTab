@@ -8,6 +8,20 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- After a server's address or login is changed, new tunnels, checks and
+  terminals connect with the new settings. Before, while a check or Find
+  services was still using the old connection, new work could reuse it and
+  so reach the old address or stay logged in with the old credentials. A
+  check still running over the old connection no longer shows its result,
+  and when it ends it no longer makes the new connection look stopped (or
+  clears its health reading). If the old connection drops, it no longer
+  reconnects, and its failing can no longer stop the new connection's
+  tunnels.
+- When a connection fails for good, its cleanup no longer stops a tunnel
+  that was stopped and started again in the meantime.
+- A tunnel stopped and started again quickly is no longer shown as stopped
+  while it runs: the old tunnel's "stopped" (or "failed") report can no
+  longer arrive after the new one's "running".
 - When TunnelTab locks, open dialogs are now removed at once, together with
   anything typed into them, rather than a moment later.
 
