@@ -191,6 +191,13 @@ by TunnelTab. It never checks by itself.
 > [!NOTE]
 > On Windows, SmartScreen may warn you because the app isn't code-signed.
 > Click **More info → Run anyway**.
+>
+> Windows Security or another antivirus program may also flag or
+> quarantine `tunneltab.exe` (for example as `Trojan:Win32/Wacatac.B!ml`).
+> That is a false alarm that unsigned programs often trigger. Check
+> your download against `SHA256SUMS.txt`, and see
+> [the troubleshooting entry](docs/USER_GUIDE.md#troubleshooting)
+> for how to allow it.
 
 📖 Full instructions, troubleshooting and FAQ: **[User guide](docs/USER_GUIDE.md)**
 

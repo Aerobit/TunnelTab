@@ -6,6 +6,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Docs
+
+- README, the zip's README.txt and the user guide say that antivirus programs
+  may flag the unsigned `tunneltab.exe`, and what to do.
+
 ## [0.8.7] - 2026-10-09
 
 ### Changed

@@ -434,7 +434,9 @@ You opened it from inside the ZIP. Extract the ZIP first (see
 **Windows protected your PC (SmartScreen)**  
 Click **More info → Run anyway**. The program isn't code-signed (signing
 costs money); it's built openly from this repository by GitHub Actions, and
-you can check the download against `SHA256SUMS.txt`.
+you can check the download against `SHA256SUMS.txt`. Antivirus programs
+may flag it too: see "Windows Security quarantined `tunneltab.exe`"
+below.
 
 **"Wrong master password"**  
 Check Caps Lock and your keyboard layout. After several wrong tries you

@@ -19,6 +19,14 @@ WINDOWS SMARTSCREEN
   The program isn't code-signed, so Windows may show "Windows protected
   your PC". Click "More info", then "Run anyway".
 
+ANTIVIRUS WARNINGS
+  Windows Security or another antivirus program may flag or
+  quarantine tunneltab.exe (for example as Trojan:Win32/Wacatac.B!ml).
+  Unsigned programs often trigger such false alarms. Check your
+  download against SHA256SUMS.txt on the release page. To allow it
+  in Windows Security: Virus & threat protection, Protection
+  history, the entry, Actions, "Allow on device".
+
 YOUR DATA
   Everything you save is in the "data" folder next to the program,
   encrypted with your master password. To move TunnelTab to another
