@@ -6,6 +6,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The terminal's last column is no longer partly hidden behind the scrollbar.
+
 ### Docs
 
 - README, the zip's README.txt and the user guide say that antivirus programs

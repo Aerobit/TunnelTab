@@ -200,6 +200,22 @@ function start(cmd, args, opts) {
     return rows && visible && rows.bottom <= visible.bottom - 3;
   }), frame);
   assert.ok(await rowsFit(page, ".term-pane"), "terminal rows run past the bottom of the pane");
+  // The last column keeps at least 2px clear of the scrollbar. How much of a
+  // column is left over depends on the window width, so try several.
+  const gaps = (p, frame) => p.evaluate((sel) => [...document.querySelectorAll(sel)].map((f) => {
+    const rows = f.querySelector(".xterm-screen")?.getBoundingClientRect();
+    const bar = f.querySelector(".xterm-scrollable-element > .scrollbar.vertical")?.getBoundingClientRect();
+    return rows && bar ? bar.left - rows.right : NaN;
+  }), frame);
+  const size = page.viewportSize();
+  for (let w = size.width; w > size.width - 12; w--) {
+    await page.setViewportSize({ width: w, height: size.height });
+    await page.waitForTimeout(150);
+    const g = await gaps(page, ".term-pane");
+    assert.ok(g.length > 0 && g.every((x) => x >= 2), "terminal columns touch the scrollbar at width " + w + ": gap " + g);
+  }
+  await page.setViewportSize(size);
+  await page.waitForTimeout(150);
   await page.locator(".page-tabs").getByRole("link", { name: "Overview" }).click();
   await page.locator(".kv").getByText("Terminals open").waitFor();
   await page.locator(".page-tabs").getByRole("link", { name: /Terminals/ }).click();

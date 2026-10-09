@@ -521,6 +521,10 @@ a.chip { text-decoration: none; display: inline-block; }
 /* xterm.css paints the scrolling layer (which covers the padding) black;
    match the terminal background so the padding doesn't look like a frame. */
 .termview-screen .xterm .xterm-viewport { background-color: #0d1117; }
+/* The fit addon leaves the scrollbar's width free, but the left-over part of a
+   column can be 0px, leaving the last column touching the scrollbar: move the
+   scrollbar 2px into the right padding so there are always at least 2px. */
+.termview-screen .xterm .xterm-scrollable-element > .scrollbar.vertical { transform: translateX(2px); }
 .termview-screen.hidden-while-locked { visibility: hidden; }
 
 /* --- Terminals tab ---------------------------------------------------------- */
