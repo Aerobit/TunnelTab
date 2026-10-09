@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-10-09
+
 ### Fixed
 
 - The terminal's last column is no longer partly hidden behind the scrollbar.
@@ -458,7 +460,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.7...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.8...HEAD
+[0.8.8]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.8
 [0.8.7]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.7
 [0.8.6]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.6
 [0.8.5]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.5
