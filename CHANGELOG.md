@@ -6,12 +6,24 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-10-09
+
 ### Changed
 
 - Windows: the dashboard opens through `ShellExecute` instead of starting
   `rundll32`, so TunnelTab starts no other program there (fewer false
   antivirus alarms). The browser opener now refuses anything but a link to
   the local dashboard (`http://127.0.0.1:<port>`).
+
+### Docs
+
+- User guide: what to do when Windows Security quarantines
+  `tunneltab.exe`.
+
+### Development
+
+- CI: the staticcheck step runs on Go 1.27.1 until staticcheck supports
+  Go 1.27.2 (temporary; see `docs/DEVELOPMENT.md`).
 
 ## [0.8.6] - 2026-10-04
 
@@ -437,7 +449,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.6...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.7...HEAD
+[0.8.7]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.7
 [0.8.6]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.6
 [0.8.5]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.5
 [0.8.4]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.4

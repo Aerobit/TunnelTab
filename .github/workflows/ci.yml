@@ -77,7 +77,15 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # TEMPORARY PIN (2026-10-09): staticcheck@latest cannot read Go 1.27.2's
+      # standard library ("export data version 5 is greater than maximum
+      # supported version 4"). Only this step runs on Go 1.27.1; govulncheck
+      # and everything else use the newest Go. Remove the env line once
+      # staticcheck supports 1.27.2 (see docs/DEVELOPMENT.md, "Staticcheck
+      # pinned to Go 1.27.1").
       - name: staticcheck
+        env:
+          GOTOOLCHAIN: go1.27.1
         run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 
       - name: govulncheck

@@ -107,6 +107,19 @@ made-up demo data. Run it when the UI changes and commit the images.
 
 ## Security checks
 
+> **Staticcheck pinned to Go 1.27.1 (since 2026-10-09).** CI's staticcheck
+> step sets `GOTOOLCHAIN: go1.27.1` in `.github/workflows/ci.yml` because
+> `staticcheck@latest` fails on Go 1.27.2 ("export data version 5 is
+> greater than maximum supported version 4"). Only that step is pinned;
+> govulncheck, the tests and the release build use the newest Go.
+>
+> **When to check:** after each new Go release, and in any case around
+> **2026-10-23**. Run `go run honnef.co/go/tools/cmd/staticcheck@latest ./...`
+> with the newest Go (no `GOTOOLCHAIN`). If it prints no "export data"
+> error, delete the `env:` / `GOTOOLCHAIN` lines and the comment above the
+> step in `ci.yml`, update this note, and push. Then check that all four
+> CI jobs are green.
+
 ```bash
 go run honnef.co/go/tools/cmd/staticcheck@latest ./...   # static analysis
 go run golang.org/x/vuln/cmd/govulncheck@latest ./...    # known vulnerabilities

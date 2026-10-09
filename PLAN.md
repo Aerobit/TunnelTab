@@ -1,6 +1,6 @@
 # TunnelTab — Project Plan
 
-> Status: **v0.8.6 released** (2026-10-04). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§22. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
+> Status: **v0.8.7 released** (2026-10-09; §23). v0.1.0 (2026-09-30) completed the original plan (§1–§9); later releases are in §11–§14, §18 (tray icon) and §19–§23. Ideas not yet scheduled are in §10, §15, §16 (remote desktop) and §17 (file browser and transfers).
 > Successor to `local.browser` (Chrome extension + Node native host). Starts fresh; no data import.
 
 ## 1. Goal
@@ -673,3 +673,31 @@ hold stay); `TestFailServerSparesReplacedForward` (cleanup paused by
 `TestStoppedForwardEventComesFirst` (stop paused by `testHookForwardRemoved`
 after removal, replacement started, then the stop finishes: the last forward
 event is "active").
+
+## 23. v0.8.7 — Windows Defender false positive (released 2026-10-09)
+
+Windows Defender quarantined the v0.8.6 `tunneltab.exe` as
+`Trojan:Win32/Cloxer` while it was running; VirusTotal showed 3 of 69
+(Microsoft `Wacatac.B!ml`, Trapmine, Bkav), all machine-learning guesses. The
+release was verified genuine first: valid signature on `SHA256SUMS.txt`, and
+the exe rebuilds byte for byte from tag v0.8.6 with the same Go version
+(`GOTOOLCHAIN=go1.27.1 bash scripts/build.sh 0.8.6`).
+
+| What | Result |
+|---|---|
+| Open the browser with `ShellExecute` instead of starting `rundll32` (`internal/platform/browser_windows.go`); `OpenBrowser` refuses anything but `http://127.0.0.1:<port>` (`browser.go`, `TestCheckDashboardURL`) | Microsoft's detection is gone in VirusTotal (Trapmine and Bkav remain: 2 of 36 / 2 of 71); Defender did not quarantine the new builds; the user ran the CI build on Windows for a good while without alarms |
+| Keep symbols (no `-s -w`) | No difference in the scores, so the build flags stay |
+| Unsigned exe | Still the strongest signal; only a code-signing certificate fixes it for good. Options to look at when wanted: SignPath Foundation (free for open source, built in CI) and Microsoft's Azure Artifact Signing (monthly fee). Either would add a signing step to `release.yml` next to the checksum signing |
+
+**CI:** Go 1.27.2 broke `staticcheck@latest` (export data version 5 vs 4;
+reproduced locally: fails on 1.27.2, passes on 1.27.1), so the staticcheck
+step alone runs with `GOTOOLCHAIN: go1.27.1`. **To do:** check around
+**2026-10-23** (and after each Go release) whether staticcheck works on the
+newest Go, then remove the pin. Steps are in `docs/DEVELOPMENT.md` →
+Security checks.
+
+**If Defender flags a release again:** check the SHA-256, restore with
+*Allow on device*, report at
+<https://www.microsoft.com/en-us/wdsi/filesubmission> (Software developer).
+After this release, submit the exe that way, and optionally to Trapmine and
+Bkav.
