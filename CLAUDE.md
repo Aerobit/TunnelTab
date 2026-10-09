@@ -45,9 +45,11 @@ one, stop and ask the user instead.
    `ssh.InsecureIgnoreHostKey()`, even in tests (use `sshtest`).
 7. **No local shell is invoked.** SSH is done in-process with
    `golang.org/x/crypto/ssh`. The only external programs launched are the
-   browser opener (`internal/platform`) and, after "Update now", TunnelTab's
-   own program (`cmd/tunneltab/restart.go`), with arguments passed as a
-   slice. When the vault locks, terminal pages are detached and blanked (the shells
+   browser opener (`internal/platform`: `xdg-open` on Linux; on Windows no
+   program at all, the link goes to `ShellExecute`, and `OpenBrowser` refuses
+   anything but an `http://127.0.0.1:<port>` link) and, after "Update now",
+   TunnelTab's own program (`cmd/tunneltab/restart.go`), with arguments
+   passed as a slice. When the vault locks, terminal pages are detached and blanked (the shells
    keep running); re-attaching needs the vault unlocked.
    **On servers**, the only command TunnelTab runs by itself is the opt-in
    health check: the constant `internal/health.Command` (read-only), only

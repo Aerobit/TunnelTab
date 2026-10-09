@@ -6,6 +6,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Windows: the dashboard opens through `ShellExecute` instead of starting
+  `rundll32`, so TunnelTab starts no other program there (fewer false
+  antivirus alarms). The browser opener now refuses anything but a link to
+  the local dashboard (`http://127.0.0.1:<port>`).
+
 ## [0.8.6] - 2026-10-04
 
 ### Fixed

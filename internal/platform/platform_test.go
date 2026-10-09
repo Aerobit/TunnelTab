@@ -54,3 +54,36 @@ func TestReadInstanceDamaged(t *testing.T) {
 		t.Fatal("damaged file accepted")
 	}
 }
+
+func TestCheckDashboardURL(t *testing.T) {
+	for _, ok := range []string{
+		"http://127.0.0.1:8123/",
+		"http://127.0.0.1:8123/#login=abc",
+		"http://127.0.0.1:1/launch?token=x",
+	} {
+		if err := checkDashboardURL(ok); err != nil {
+			t.Errorf("checkDashboardURL(%q) = %v, want nil", ok, err)
+		}
+	}
+	for _, bad := range []string{
+		"",
+		`C:\Windows\System32\calc.exe`,
+		"calc.exe",
+		"file:///C:/Windows/System32/calc.exe",
+		"https://127.0.0.1:8123/",
+		"http://example.com/",
+		"http://127.0.0.1/",
+		"http://127.0.0.1:0/",
+		"http://127.0.0.1:99999/",
+		"http://127.0.0.1:8123@example.com/",
+		"http://user@127.0.0.1:8123/",
+		"http://localhost:8123/",
+		"http://[::1]:8123/",
+		"http://127.0.0.1.example.com:8123/",
+		"ms-msdt:/id PCWDiagnostic",
+	} {
+		if err := checkDashboardURL(bad); err == nil {
+			t.Errorf("checkDashboardURL(%q) = nil, want an error", bad)
+		}
+	}
+}

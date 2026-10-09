@@ -483,6 +483,18 @@ running in it keep going; unlock in the dashboard and the terminal comes
 back by itself with its output. Typing counts as activity, so an active
 terminal keeps TunnelTab unlocked.
 
+**Windows Security quarantined `tunneltab.exe`**  
+TunnelTab is not signed with a paid code-signing certificate, and Windows
+sometimes guesses wrongly about unsigned programs (names such as
+`Trojan:Win32/Wacatac.B!ml` or `Trojan:Win32/Cloxer`). Check that your file
+is the real one first: in PowerShell run
+`Get-FileHash "C:\path\to\tunneltab\tunneltab.exe"` and compare it with
+the release's `tunneltab-<version>.zip` (the zip's checksum is in
+`SHA256SUMS.txt`; re-download the zip if you are unsure). If it is the real
+file: Windows Security → Virus & threat protection → Protection history →
+the entry → Actions → **Allow on device**, and report the false alarm at
+<https://www.microsoft.com/en-us/wdsi/filesubmission> (Software developer).
+
 **My terminal session ended**  
 The connection to the server dropped (network change, server restart), or
 the terminal tab was closed. Programs started in it were

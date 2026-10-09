@@ -3,15 +3,28 @@
 package platform
 
 import (
-	"os/exec"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
-// OpenBrowser opens url in the default browser. The URL is passed as a
-// single argument (no shell), so it can't inject commands.
+// OpenBrowser opens url in the default browser. Windows is asked directly
+// (ShellExecute), so no other program is started, and only a link to the
+// local dashboard is accepted (see checkDashboardURL).
 func OpenBrowser(url string) error {
-	return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	if err := checkDashboardURL(url); err != nil {
+		return err
+	}
+	verb, err := windows.UTF16PtrFromString("open")
+	if err != nil {
+		return err
+	}
+	target, err := windows.UTF16PtrFromString(url)
+	if err != nil {
+		return err
+	}
+	return windows.ShellExecute(0, verb, target, nil, nil, windows.SW_SHOWNORMAL)
 }
 
 // ShowError reports a fatal startup problem. The Windows build has no

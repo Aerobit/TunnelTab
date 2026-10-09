@@ -58,7 +58,7 @@ TunnelTab is one Go executable. When started it:
 | `internal/discover` | "Find services": the fixed, read-only command TunnelTab runs on a server when the user clicks Find services (`Command`: `ss`/`netstat` + `docker ps`), its strict parser (`Parse`, fuzzed) and the table of well-known apps (`apps.go`) | Done |
 | `internal/webcheck` | Service checks: does a port answer like a web page? One fixed `HEAD` request, https first (certificate not verified) then http, over connections the caller dials through SSH (`Manager.Through`); path validated (fuzzed) | Done |
 | `internal/update` | Updates, only when the user clicks: "Check for updates" (GitHub releases/latest API, version comparison) and "Update now" (download, signature + checksum verification, unpack, install with `.old` backups, rollback, cleanup). Release signature format in `signature.go` | Done |
-| `internal/platform` | Open browser, error dialog, instance file and data folder lock, tray icon (`tray*.go`: `fyne.io/systray` on Windows and Linux; icon made from the embedded `trayicon.png`) | Done |
+| `internal/platform` | Open browser (Windows: `ShellExecute`, no helper program; only `http://127.0.0.1:<port>` links are accepted, `browser.go`), error dialog, instance file and data folder lock, tray icon (`tray*.go`: `fyne.io/systray` on Windows and Linux; icon made from the embedded `trayicon.png`) | Done |
 | `web` | Embeds `web/static/` into the binary (`web.Files`) | Done |
 | `web/static` | The dashboard (vanilla JS modules + CSS) | Done |
 | `internal/devtools/fakessh` | Local SSH server + demo web app for trying the dashboard (not shipped) | Done |
