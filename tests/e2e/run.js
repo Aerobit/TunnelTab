@@ -171,7 +171,15 @@ function start(cmd, args, opts) {
   //     next to it), switch pages and come back (still there), pop one out.
   await page.getByRole("button", { name: "+ New terminal" }).click();
   await page.locator(".page-tabs a[aria-current=page]", { hasText: "Terminals" }).waitFor();
-  const paneText = (i) => page.locator(".term-pane").nth(i).locator(".xterm-rows").innerText();
+  // Terminals are drawn on a WebGL canvas, so read their text from xterm.js's
+  // buffer (termview.js puts the terminal on its screen element for this).
+  const screenText = (screen) => screen.evaluate((el) => {
+    const b = el.term.buffer.active;
+    const lines = [];
+    for (let i = 0; i < b.length; i++) lines.push(b.getLine(i).translateToString(true));
+    return lines.join("\n");
+  });
+  const paneText = (i) => screenText(page.locator(".term-pane").nth(i).locator(".termview-screen"));
   const waitPane = async (i, want) => {
     for (let n = 0; n < 100; n++) {
       if ((await paneText(i).catch(() => "")).includes(want)) return;
@@ -180,6 +188,7 @@ function start(cmd, args, opts) {
     throw new Error(`pane ${i} never showed ${JSON.stringify(want)}:\n${await paneText(i).catch(() => "")}`);
   };
   await waitPane(0, "Welcome to the fake shell");
+  assert.ok(await page.locator(".term-pane .xterm-screen canvas").count() > 0, "the terminal isn't drawn with WebGL");
   await page.keyboard.type("echo hello from the browser"); // the new terminal has the keyboard
   await page.keyboard.press("Enter");
   await waitPane(0, "hello from the browser\n");
@@ -230,7 +239,7 @@ function start(cmd, args, opts) {
   termPage.on("pageerror", (e) => problems.push("terminal pageerror: " + e.message));
   termPage.on("console", (m) => m.type() === "error" && !m.text().startsWith("Failed to load resource") && problems.push("terminal console: " + m.text()));
   await termPage.locator("#term-status", { hasText: "Connected" }).waitFor();
-  const termText = () => termPage.locator(".xterm-rows").innerText();
+  const termText = () => screenText(termPage.locator(".termview-screen"));
   const waitTerm = async (want) => {
     for (let i = 0; i < 100; i++) {
       if ((await termText()).includes(want)) return;
@@ -253,10 +262,16 @@ function start(cmd, args, opts) {
   const clipboard = () => termPage.evaluate(() => navigator.clipboard.readText());
   const interrupts = async () => ((await termText()).match(/\^C/g) || []).length;
   // xterm.js covers the text with an overlay, so click by position.
-  const wordAt = async (word) => {
-    const box = await termPage.locator(".xterm-rows > div", { hasText: new RegExp("^" + word) }).first().boundingBox();
-    return [box.x + 12, box.y + box.height / 2];
-  };
+  const wordAt = (word) => termPage.locator(".termview-screen").evaluate((el, w) => {
+    const b = el.term.buffer.active;
+    const grid = el.querySelector(".xterm-screen").getBoundingClientRect();
+    for (let r = 0; r < el.term.rows; r++) {
+      if (b.getLine(b.viewportY + r)?.translateToString(true).startsWith(w)) {
+        return [grid.left + 12, grid.top + (r + 0.5) * grid.height / el.term.rows];
+      }
+    }
+    throw new Error("word not on screen: " + w);
+  }, word);
   const selectWord = async (word) => termPage.mouse.dblclick(...(await wordAt(word)));
   await termPage.keyboard.type("echo copyme42");
   await termPage.keyboard.press("Enter");

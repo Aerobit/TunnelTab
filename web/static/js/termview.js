@@ -11,6 +11,7 @@
 
 import { Terminal } from "../vendor/xterm/xterm.mjs";
 import { FitAddon } from "../vendor/xterm/addon-fit.mjs";
+import { WebglAddon } from "../vendor/xterm/addon-webgl.mjs";
 import { api } from "./api.js";
 import { h } from "./dom.js";
 import { withHostKeys } from "./forms.js";
@@ -80,6 +81,9 @@ export class TermView {
     this.fitAddon = new FitAddon();
     this.term.loadAddon(this.fitAddon);
     this.term.open(this.screen);
+    this.useWebgl();
+    // Read by tests/e2e: the WebGL canvas has no text in the page to read.
+    this.screen.term = this.term;
     this.setupClipboard();
 
     this.term.onData((data) => this.send(encoder.encode(data)));
@@ -154,6 +158,20 @@ export class TermView {
     this.screen.classList.toggle("hidden-while-locked", state === "locked");
     requestAnimationFrame(() => this.fit());
     this.onChange(this);
+  }
+
+  // Draw with WebGL: the default renderer lays rows out as page text, which at
+  // fractional display scaling (Windows 125%, 150%) comes out slightly wider than
+  // the columns, so the last column ran under the scrollbar. Without WebGL (or
+  // after the GPU context is lost) xterm.js keeps using the page-text renderer.
+  useWebgl() {
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      this.term.loadAddon(webgl);
+    } catch {
+      // no WebGL here
+    }
   }
 
   fit() {

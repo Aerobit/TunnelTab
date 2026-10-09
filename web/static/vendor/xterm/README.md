@@ -8,5 +8,6 @@ the new npm packages, then run the browser test (`tests/e2e`).
 |---|---|---|---|
 | `xterm.mjs`, `xterm.css` | `@xterm/xterm` | 6.0.0 | MIT (`LICENSE-xterm.txt`) |
 | `addon-fit.mjs` | `@xterm/addon-fit` | 0.11.0 | MIT (`LICENSE-addon-fit.txt`) |
+| `addon-webgl.mjs` | `@xterm/addon-webgl` | 0.19.0 | MIT (`LICENSE-addon-webgl.txt`); the trailing `sourceMappingURL` comment is removed |
 
 Source: <https://github.com/xtermjs/xterm.js>

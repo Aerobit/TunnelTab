@@ -93,7 +93,7 @@ one, stop and ask the user instead.
 - **Go:** standard library first; minimal, well-known dependencies only
   (in use: `golang.org/x/crypto`, `github.com/coder/websocket`,
   `fyne.io/systray` with `github.com/godbus/dbus/v5` for the tray icon;
-  frontend: vendored xterm.js). Ask before adding others. The tray library
+  frontend: vendored xterm.js with its fit and WebGL add-ons). Ask before adding others. The tray library
   must stay off the system temp folder (`platform.setTrayIcon` writes the
   icon into the data folder) and must never auto-launch D-Bus
   (`trayAvailable` checks the bus with auto-launch off first).

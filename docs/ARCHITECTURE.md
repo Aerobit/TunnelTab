@@ -510,8 +510,8 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   closes too within 2 s (`lostConnectionWait`): otherwise it's an ordinary
   end, so a server that hangs up a shell doesn't loop.
 - **View** (`js/termview.js`, `TermView`): one session in an element —
-  xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon,
-  the WebSocket, a message bar (New session / Reconnect / Bring back here);
+  xterm.js (vendored in `web/static/vendor/xterm/`) with the fit addon and
+  the WebGL renderer, the WebSocket, a message bar (New session / Reconnect / Bring back here);
   used by the terminal page (`terminal.html`, `js/terminal.js`) and the
   dashboard's Terminals tab (several per server, Split = two side by side);
   copy/paste like Windows Terminal (Ctrl+C copies a selection, otherwise
@@ -521,7 +521,15 @@ re-attach:   POST /api/terminals/{id}/attach ──▶ {ticket} ──▶ WebSoc
   lock or blip; *New session* (or Enter) after the shell ends. On
   `reconnecting` it shows *Reconnecting…* and resets modes the old program
   may have left on (full screen, mouse reporting…) without clearing the
-  screen or moving the cursor.
+  screen or moving the cursor. **Renderer:** WebGL (`useWebgl()`): xterm.js
+  draws every character in its own cell. Its default renderer lays rows out
+  as page text, which at fractional display scaling (Windows 125 %, 150 %)
+  came out slightly wider than the columns and pushed the last column under
+  the scrollbar. If WebGL isn't available, or the GPU context is lost,
+  xterm.js falls back to that renderer by itself. The canvas has no text in
+  the page, so `tests/e2e` reads the terminal's buffer through
+  `.termview-screen.term`. The vertical scrollbar is moved 2px into the
+  padding (`app.css`) so the last column never touches it.
 - **CSP exception:** xterm.js creates `<style>` elements (it has no nonce
   support), so the two pages that show terminals — `/terminal.html` and the
   dashboard (`/`, `/index.html`) — get `style-src 'self' 'unsafe-inline'`.
@@ -544,7 +552,7 @@ the executable as-is.
 | `js/app.js` | Screens (signed out, setup, unlock, dashboard), state, rendering, live events, actions. Every way into the locked state goes through `enterLocked` (closes and removes dialogs, then the unlock screen); a resync's `/api/state` answer is dropped if a vault event arrived meanwhile |
 | `js/termview.js` | `TermView`: one terminal session (xterm.js + WebSocket), used by the dashboard and the terminal page |
 | `terminal.html`, `js/terminal.js`, `terminal.css` | The terminal page (see Terminals) |
-| `vendor/xterm/` | xterm.js 6 + fit addon (MIT), bundled; see its README to update |
+| `vendor/xterm/` | xterm.js 6 + fit and WebGL addons (MIT), bundled; see its README to update |
 | `app.css` | All styling (dark GitHub palette from local.browser) |
 
 **Flow:** `start()` signs in → `GET /api/state` → setup, unlock or

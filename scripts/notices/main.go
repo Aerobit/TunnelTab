@@ -82,6 +82,7 @@ func collect() ([]notice, error) {
 	list = append(list,
 		notice{"xterm.js (@xterm/xterm)", "6.0.0", "https://github.com/xtermjs/xterm.js", "web/static/vendor/xterm/LICENSE-xterm.txt"},
 		notice{"xterm.js fit addon (@xterm/addon-fit)", "0.11.0", "https://github.com/xtermjs/xterm.js", "web/static/vendor/xterm/LICENSE-addon-fit.txt"},
+		notice{"xterm.js WebGL addon (@xterm/addon-webgl)", "0.19.0", "https://github.com/xtermjs/xterm.js", "web/static/vendor/xterm/LICENSE-addon-webgl.txt"},
 	)
 	return list, nil
 }

@@ -6,6 +6,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-10-09
+
+### Fixed
+
+- At Windows display scaling above 100 %, the terminal's last column no longer
+  runs under the scrollbar (v0.8.8 did not fix this): terminals are now drawn
+  with xterm.js's WebGL renderer, which places every character exactly. It falls
+  back to the old renderer when WebGL isn't available.
+
+### Changed
+
+- Bundled xterm.js WebGL add-on 0.19.0 (MIT), listed in THIRD_PARTY_NOTICES.txt.
+
 ## [0.8.8] - 2026-10-09
 
 ### Fixed
@@ -460,7 +473,8 @@ servers. Successor to the `local.browser` browser extension.
 - Reviewed before release: see `docs/SECURITY_REVIEW.md`. Fuzz tests,
   staticcheck, govulncheck and a browser end-to-end test run in CI.
 
-[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.8...HEAD
+[Unreleased]: https://github.com/Aerobit/TunnelTab/compare/v0.8.9...HEAD
+[0.8.9]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.9
 [0.8.8]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.8
 [0.8.7]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.7
 [0.8.6]: https://github.com/Aerobit/TunnelTab/releases/tag/v0.8.6

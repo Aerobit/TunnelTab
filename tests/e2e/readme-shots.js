@@ -149,7 +149,10 @@ function start(cmd, args) {
   // Terminal, inside the dashboard.
   await page.locator(".side-server", { hasText: "homelab" }).getByRole("link").click();
   await page.locator(".page-head").getByRole("button", { name: "+ New terminal" }).click();
-  await page.locator(".term-pane .xterm-rows", { hasText: "demo@homelab" }).waitFor();
+  await page.waitForFunction(() => {
+    const term = document.querySelector(".term-pane .termview-screen")?.term; // drawn on a canvas: read the buffer
+    return term && Array.from({ length: term.buffer.active.length }, (_, i) => term.buffer.active.getLine(i).translateToString(true)).join("\n").includes("demo@homelab");
+  });
   for (const cmd of ["uptime", "df -h", "docker ps"]) {
     await page.keyboard.type(cmd, { delay: 15 });
     await page.keyboard.press("Enter");
